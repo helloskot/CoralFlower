@@ -345,142 +345,80 @@
   });
 
   // ------------------------------------------------------------------------------------------ the display ---
+  // the pixel rave is rave.js; here: the playhead on the editor, the queued pattern taking over at the bar, the drums'
+  // names lighting as they hit
   const markStep = (s) => {
     cols.forEach((c, i) => c.el.classList.toggle("is-now", i === s));
     cells.forEach((row) => row.forEach((d, i) => d.classList.toggle("is-now", i === s)));
   };
-  let viz = { step: -1, env: 0, acc: 0, cut: S.params.cutoff, reso: S.params.reso, amp: 0, wave: new Float32Array(64) };
-  let lastStep = -2, bounce = 0, flash = 0, scroll = 0, accGlow = 0, hatPulse = 0;
+  let viz = { step: -1 }, lastStep = -2;
+  const rave = new globalThis.AcidRave($("viz"), { pattern: () => pat(), params: () => S.params, slot: () => S.cur, playing: () => playing });
   const onViz = (m) => {
     viz = m;
+    rave.event(m);
     if (m.step !== lastStep) {
       lastStep = m.step; markStep(m.step);
       if (m.step === 0 && nextSlot >= 0) { S.cur = nextSlot; nextSlot = -1; save(); drawAll(); }
     }
-    if (m.hits & 1) bounce = 1;
-    if (m.hits & 4) flash = Math.max(flash, 0.55);
-    if (m.hits & 24) hatPulse = 1;
-    if (m.accHit) { accGlow = 1; flash = Math.max(flash, 0.25 + 0.3 * S.params.accent); }
     for (let l = 0; l < LANES.length; l++) if (m.hits & (1 << l)) {
       const n = drumsEl.querySelector(`.dr__name[data-lane="${l}"]`);
       n.classList.add("is-hit"); setTimeout(() => n.classList.remove("is-hit"), 90);
     }
   };
-  const cv = $("viz"), g = cv.getContext("2d"), W = 160, H = 100, img = g.createImageData(W, H), D = img.data;
-  const put = (x, y, r, gg, bb) => { x |= 0; y |= 0; if (x < 0 || y < 0 || x >= W || y >= H) return; const i = 4 * (y * W + x); D[i] = r; D[i + 1] = gg; D[i + 2] = bb; };
-  const add = (x, y, r, gg, bb, a) => { x |= 0; y |= 0; if (x < 0 || y < 0 || x >= W || y >= H) return; const i = 4 * (y * W + x); D[i] += r * a; D[i + 1] += gg * a; D[i + 2] += bb * a; };
-  const line = (x0, y0, x1, y1, c, a) => {
-    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) | 0;
-    for (let i = 0; i <= n; i++) { const t = n ? i / n : 0; add(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, c[0], c[1], c[2], a); }
+  rave.start();
+  // rave mode: the display fills the screen, and the whole of it is the squelch pad
+  const setRave = (on) => {
+    app.classList.toggle("is-rave", on);
+    $("raveBtn").setAttribute("aria-pressed", String(on));
+    rave.setPad(null);
   };
-  // a 3 x 5 pixel face for the display's words and numbers
-  const FONT = { 0: "111101101101111", 1: "010110010010111", 2: "111001111100111", 3: "111001111001111", 4: "101101111001001",
-    5: "111100111001111", 6: "111100111101111", 7: "111001010010010", 8: "111101111101111", 9: "111101111001111",
-    A: "010101111101101", B: "110101110101110", C: "011100100100011", D: "110101101101110", E: "111100110100111",
-    I: "111010010010111", L: "100100100100111", M: "101111111101101", P: "110101110100100", R: "110101110101101",
-    S: "011100010001110", T: "111010010010010", Y: "101101010010010", " ": "000000000000000", "%": "101001010100101" };
-  const text = (s, x, y, c) => {
-    for (const ch of String(s)) {
-      const f = FONT[ch] || FONT[" "];
-      for (let i = 0; i < 15; i++) if (f[i] === "1") put(x + (i % 3), y + ((i / 3) | 0), c[0], c[1], c[2]);
-      x += 4;
-    }
+  const onPress = (el, f) => {   // (on the touch itself; a keyboard's click too)
+    el.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); f(); });
+    el.addEventListener("click", (e) => { if (e.detail === 0) f(); });
   };
-  const YEL = [255, 225, 0], LIME = [180, 255, 43], PINK = [255, 47, 180], CYAN = [43, 240, 255], INK = [17, 10, 2];
-  const SKY = [];
-  for (let y = 0; y < H; y++) { const t = y / 64; SKY.push([10 + 26 * t, 2 + 4 * t, 24 + 38 * t]); }
-  let tPrev = performance.now(), T = 0;
-  const frame = (now) => {
-    const dt = Math.min(0.1, (now - tPrev) / 1000); tPrev = now; T += dt;
-    const bpm = S.params.tempo, beat = playing ? dt * (bpm / 60) : dt * 0.15;
-    scroll += beat;
-    bounce *= Math.pow(0.02, dt); flash *= Math.pow(0.002, dt); accGlow *= Math.pow(0.05, dt); hatPulse *= Math.pow(0.01, dt);
-    const cut = viz.cut != null ? viz.cut : S.params.cutoff, reso = viz.reso != null ? viz.reso : S.params.reso;
-    const env = viz.env || 0, acc = viz.acc || 0;
-    // the sky, a warehouse dark
-    for (let y = 0; y < H; y++) { const c = SKY[Math.min(63, y)]; for (let x = 0; x < W; x++) { const i = 4 * (y * W + x); D[i] = c[0]; D[i + 1] = c[1]; D[i + 2] = c[2]; D[i + 3] = 255; } }
-    // a few stars in the roof, on the beat
-    for (let k = 0; k < 18; k++) { const x = (k * 53 + 7) % W, y = (k * 29 + 3) % 40; add(x, y, 255, 255, 255, 0.15 + 0.4 * hatPulse * ((k & 1) ? 1 : 0.3)); }
-    // the lasers: they sweep with the music, more and brighter with the filter and the accents
-    const beams = 3 + Math.round(cut * 4) + (accGlow > 0.3 ? 3 : 0), inten = 0.18 + 0.35 * env + 0.45 * accGlow + 0.2 * cut;
-    for (let k = 0; k < beams; k++) {
-      const ox = k % 3 === 0 ? 4 : k % 3 === 1 ? W - 5 : W / 2, col = [LIME, CYAN, PINK][k % 3];
-      const a = Math.PI / 2 + Math.sin(T * (0.7 + 0.25 * k) + k * 1.7 + scroll * 0.5) * (0.55 + 0.35 * reso) + (k % 3 === 0 ? -0.35 : k % 3 === 1 ? 0.35 : 0);
-      line(ox, 0, ox + Math.cos(a) * 140, Math.sin(a) * 140, col, inten);
-    }
-    // the dance floor: a checkerboard rushing in, a step at a time, lit by the kick
-    for (let y = 62; y < H; y++) {
-      const d = y - 58, z = 60 / d, light = 0.45 + 0.55 * bounce, fade = Math.min(1, (y - 62) / 10 + 0.3);
-      for (let x = 0; x < W; x++) {
-        const u = ((x - 80) * 6) / d, par = (Math.floor(u) + Math.floor(z + scroll * 2)) & 1;
-        const c = par ? PINK : [60, 10, 90];
-        put(x, y, c[0] * light * fade, c[1] * light * fade, c[2] * light * fade);
-      }
-    }
-    // the squelch: the bass's own waveform, across the floor's horizon
-    const w = viz.wave || [];
-    let pk = 0.05; for (let j = 0; j < w.length; j++) pk = Math.max(pk, Math.abs(w[j]));
-    for (let j = 0; j < 63 && w.length === 64; j++) {
-      const x0 = 16 + j * 2, x1 = x0 + 2, y0 = 66 - (w[j] / pk) * 9 * Math.min(1, viz.amp * 3 + 0.2), y1 = 66 - (w[j + 1] / pk) * 9 * Math.min(1, viz.amp * 3 + 0.2);
-      line(x0, y0 + 1, x1, y1 + 1, [0, 0, 0], 0.6);
-      line(x0, y0, x1, y1, LIME, 0.95);
-    }
-    // the smiley: bounces on the kick, grins wider as the filter opens, wobbles with the resonance, rave eyes on accents
-    const cx = 80, cy = 36 - bounce * 5, r = 15 + Math.round(env * 2), sq = 1 - bounce * 0.12;
-    // the petals (it is an acid flower): eight round ones, pink and lime, turning with the beat and opening out with
-    // the filter's sweep; an outline first, then the colour
-    const spin = scroll * 0.35, pr = 5.2 + env * 1.6, pd = r + 3 + env * 3 + bounce * 2;
-    for (const pass of [0, 1]) for (let k = 0; k < 8; k++) {
-      const a = spin + (k * Math.PI) / 4, px = cx + Math.cos(a) * pd, py = cy + Math.sin(a) * pd * sq;
-      const rr = pass ? pr : pr + 1.2, c = pass ? (k % 2 ? LIME : PINK) : INK;
-      for (let y = Math.floor(-rr); y <= rr; y++) for (let x = Math.floor(-rr); x <= rr; x++)
-        if (x * x + y * y <= rr * rr) put(px + x, py + y, c[0], c[1], c[2]);
-    }
-    for (let y = -r - 1; y <= r + 1; y++) for (let x = -r - 1; x <= r + 1; x++) {
-      const dd = (x * x) / ((r + 0.5) * (r + 0.5)) + (y * y) / ((r * sq + 0.5) * (r * sq + 0.5));
-      if (dd <= 1) put(cx + x, cy + y, YEL[0], YEL[1] - 20 * (x + y > r ? 1 : 0), YEL[2]);
-      else if (dd <= 1.18) put(cx + x, cy + y, INK[0], INK[1], INK[2]);
-    }
-    if (accGlow > 0.35) {                                // rave eyes: crosses
-      for (const ex of [-6, 5]) for (let i = -2; i <= 2; i++) { put(cx + ex + i, cy - 5 + i, 17, 10, 2); put(cx + ex + i, cy - 5 - i, 17, 10, 2); }
-    } else {
-      for (const ex of [-6, 5]) for (let y = -2; y <= 2; y++) for (let x = 0; x <= 1; x++) put(cx + ex + x, cy - 5 + y, 17, 10, 2);
-    }
-    const grin = 0.35 + 0.6 * cut, mw = 8 + Math.round(cut * 3);
-    for (let x = -mw; x <= mw; x++) {
-      const t = x / mw, wob = Math.sin(T * 9 + x * 0.9) * reso * 1.3;
-      const y = cy + 4 + Math.round((1 - t * t) * 5 * grin + wob);
-      put(cx + x, y, 17, 10, 2); put(cx + x, y - 1 + (Math.abs(t) > 0.85 ? 1 : 0), 17, 10, 2);
-    }
-    if (accGlow > 0.2) for (const ex of [-10, 9]) for (let x = 0; x < 3; x++) add(cx + ex + x, cy + 3, 255, 47, 180, accGlow);
-    // the words: the tempo, the pattern, the steps
-    for (let x = 0; x < W; x++) for (let y = 0; y < 8; y++) { const i = 4 * (y * W + x); D[i] *= 0.4; D[i + 1] *= 0.4; D[i + 2] *= 0.4; }
-    text(Math.round(bpm) + " BPM", 2, 1, CYAN);
-    text("P" + (S.cur + 1), W - 10, 1, YEL);
-    const p = pat();
-    for (let s = 0; s < 16; s++) {
-      const x = 44 + s * 5, on = p.bass[s].on, now = s === viz.step, c = now ? YEL : on ? (p.bass[s].acc ? PINK : LIME) : [70, 50, 90];
-      if (s < p.len) for (let k = 0; k < 4; k++) { put(x + k, 2, c[0], c[1], c[2]); put(x + k, 3, c[0], c[1], c[2]); if (now) put(x + k, 4, c[0], c[1], c[2]); }
-    }
-    if (!playing && Math.floor(T * 2) % 2 === 0) text("PRESS PLAY", 60, 92, YEL);
-    // the strobe
-    if (flash > 0.02) for (let i = 0; i < D.length; i += 4) { D[i] += (255 - D[i]) * flash * 0.6; D[i + 1] += (255 - D[i + 1]) * flash * 0.6; D[i + 2] += (255 - D[i + 2]) * flash * 0.6; }
-    g.putImageData(img, 0, 0);
-    requestAnimationFrame(frame);
-  };
-  requestAnimationFrame(frame);
+  onPress($("raveBtn"), () => setRave(!app.classList.contains("is-rave")));
+  onPress($("raveExit"), () => setRave(false));
+  onPress($("raveScene"), () => rave.next());
+  onPress($("ravePlay"), () => setPlaying(!playing));
+  const vizEl = $("viz");
+  vizEl.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const raving = app.classList.contains("is-rave");
+    const at = (ev) => { const r = vizEl.getBoundingClientRect(); return [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)]; };
+    const p = { x0: e.clientX, y0: e.clientY, moved: false };
+    const move = (ev) => {
+      if (Math.abs(ev.clientX - p.x0) + Math.abs(ev.clientY - p.y0) > 6) p.moved = true;
+      if (!raving) return;
+      const [x, y] = at(ev);
+      S.params.cutoff = x; S.params.reso = 1 - y; sendParams(); save(); drawXY(); rave.setPad(x, y);
+    };
+    const end = (ev) => {
+      vizEl.removeEventListener("pointermove", move); vizEl.removeEventListener("pointerup", end); vizEl.removeEventListener("pointercancel", end);
+      if (raving) rave.setPad(null);
+      else if (!p.moved && ev.type === "pointerup") rave.next();   // a tap: the next scene
+    };
+    try { vizEl.setPointerCapture(e.pointerId); } catch {}
+    vizEl.addEventListener("pointermove", move); vizEl.addEventListener("pointerup", end); vizEl.addEventListener("pointercancel", end);
+    if (raving) move(e);
+  });
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
   // -------------------------------------------------------------------------------------------- the menu ---
   const menu = $("menu"), msg = (t) => ($("msg").textContent = t);
   $("menuBtn").addEventListener("click", () => { msg(""); menu.showModal ? menu.showModal() : menu.setAttribute("open", ""); });
   menu.addEventListener("click", (e) => { if (e.target === menu) menu.close(); });
-  const drawPrefs = () => document.querySelectorAll(".seg[data-pref]").forEach((s) => s.querySelectorAll("button").forEach((x) =>
-    x.setAttribute("aria-pressed", String(x.dataset.v === pref(s.dataset.pref, "interactive")))));
+  const PREF_DEF = { latency: "interactive", scenes: "auto", motion: matchMedia("(prefers-reduced-motion: reduce)").matches ? "calm" : "full" };
+  const applyPrefs = () => {
+    document.querySelectorAll(".seg[data-pref]").forEach((s) => s.querySelectorAll("button").forEach((x) =>
+      x.setAttribute("aria-pressed", String(x.dataset.v === pref(s.dataset.pref, PREF_DEF[s.dataset.pref])))));
+    rave.auto = pref("scenes", PREF_DEF.scenes) === "auto";
+    rave.calm = pref("motion", PREF_DEF.motion) === "calm";
+  };
   document.querySelectorAll(".seg[data-pref]").forEach((s) => s.addEventListener("click", (e) => {
     const x = e.target.closest("button");
-    if (x) { try { localStorage.setItem("acid-flower-" + s.dataset.pref, x.dataset.v); } catch {} drawPrefs(); }
+    if (x) { try { localStorage.setItem("acid-flower-" + s.dataset.pref, x.dataset.v); } catch {} applyPrefs(); }
   }));
-  drawPrefs();
+  applyPrefs();
   $("export").onclick = async () => {
     const d = new Date(), name = `acid-flower-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.json`;
     const file = new File([JSON.stringify({ app: "acid-flower", version: 1, ...S }, null, 1)], name, { type: "application/json" });
@@ -514,5 +452,5 @@
   if (!standalone && navigator.maxTouchPoints > 0) $("a2hs").hidden = false;
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   drawAll();
-  window.acid = { state: () => S, playing: () => playing, viz: () => viz };
+  window.acid = { state: () => S, playing: () => playing, viz: () => viz, rave };
 })();

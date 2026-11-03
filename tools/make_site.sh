@@ -28,7 +28,7 @@ cp web/install/index.html "$OUT/install/"
 cp "$EMU/index.html" "$EMU/emu.js" "$EMU/keymap.js" "$EMU/worklet.js" "$EMU/coralflower.wasm" "$OUT/play/"
 cp tools/emu/ipad/index.html tools/emu/ipad/app.js tools/emu/ipad/app.css tools/emu/ipad/sw.js \
    tools/emu/ipad/manifest.webmanifest "$OUT/ipad/"
-cp tools/acid/index.html tools/acid/acid.js tools/acid/acid.css tools/acid/acid-worklet.js tools/acid/sw.js \
+cp tools/acid/index.html tools/acid/acid.js tools/acid/rave.js tools/acid/acid.css tools/acid/acid-worklet.js tools/acid/sw.js \
    tools/acid/manifest.webmanifest tools/acid/icon.svg tools/acid/icon-180.png tools/acid/icon-512.png \
    tools/acid/favicon-40.png "$OUT/acid/"
 STAMP=$(cat web/site.css | shasum | cut -c1-10)

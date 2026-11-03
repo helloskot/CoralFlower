@@ -62,7 +62,9 @@
   <section class="perf" aria-label="Play the filter">
     <div class="xy" id="xy" role="slider" aria-label="Squelch pad: cutoff left to right, resonance bottom to top">
       <span class="xy__lab xy__lab--x">Cutoff &#8594;</span><span class="xy__lab xy__lab--y">Resonance &#8594;</span>
+      <span class="xy__trail" id="xyTrail" aria-hidden="true"></span>
       <i class="xy__dot" id="xyDot"></i><i class="xy__h" id="xyH"></i><i class="xy__v" id="xyV"></i>
+      <b class="xy__val" id="xyVal" aria-hidden="true"></b>
     </div>
     <div class="strips">
       <div class="strip" data-p="env" role="slider" aria-label="Envelope"><b>Env mod</b><em></em><span class="strip__bar"></span></div>
@@ -83,12 +85,12 @@
         <button type="button" role="tab" data-tab="filter" aria-selected="false" class="tab-filter">Filter</button>
       </div>
       <div class="tools">
-        <button type="button" id="wave" class="tool" title="The bass's waveform">Saw</button>
-        <div class="stepper" aria-label="Transpose"><button type="button" data-tune="-1">&minus;</button><span id="tune">C</span><button type="button" data-tune="1">+</button></div>
-        <div class="stepper" aria-label="Length"><button type="button" data-len="-1">&minus;</button><span id="len">16</span><button type="button" data-len="1">+</button></div>
-        <button type="button" class="tool" id="mutate">Mutate</button>
-        <button type="button" class="tool" id="random">Random</button>
-        <button type="button" class="tool tool--quiet" id="clear">Clear</button>
+        <button type="button" id="wave" class="tool tool--lab" title="The bass's waveform"><small>Wave</small><b>Saw</b></button>
+        <div class="stepper" aria-label="Key (transpose)"><button type="button" data-tune="-1" aria-label="Key down">&minus;</button><span class="stepper__v"><small>Key</small><b id="tune">C</b></span><button type="button" data-tune="1" aria-label="Key up">+</button></div>
+        <div class="stepper" aria-label="Length in steps"><button type="button" data-len="-1" aria-label="Shorter">&minus;</button><span class="stepper__v"><small>Len</small><b id="len">16</b></span><button type="button" data-len="1" aria-label="Longer">+</button></div>
+        <button type="button" class="tool tool--icon" id="mutate" aria-label="Mutate: change a few steps">Mutate</button>
+        <button type="button" class="tool tool--icon" id="random" aria-label="Random: a new pattern">Random</button>
+        <button type="button" class="tool tool--icon tool--danger" id="clear" aria-label="Clear the pattern (tap twice)">Clear</button>
       </div>
     </div>
     <div class="bass" id="bass" role="tabpanel" aria-label="Bass line: drag a note up or down to change it, tap it to rest"></div>
@@ -115,12 +117,14 @@
   <h2 id="menuTitle">ACID<b>FLOWER</b></h2>
   <h3>How it plays</h3>
   <ul>
-    <li><b>Bass line:</b> drag a note up or down to change it; tap it to rest it. <b>Oct</b> drops or lifts it an octave, <b>Acc</b> accents it (louder, a sharper squelch), <b>Slide</b> glides it into the next note.</li>
+    <li><b>Bass line:</b> each note sits at its pitch, like a piano roll: drag it up or down to change it; tap it to rest it. <b>Oct</b> lifts it an octave, then drops it; <b>Acc</b> accents it (louder, a sharper squelch); <b>Slide</b> glides it into the next note.</li>
+    <li><b>Tools:</b> <b>Key</b> transposes the bass, <b>Len</b> sets the pattern’s length. <b>Clear</b> asks for a second tap.</li>
     <li><b>Drums:</b> tap a step to set or clear it, or drag across steps to paint. Tap a drum’s name to hear it.</li>
     <li><b>Squelch pad:</b> cutoff left to right, resonance bottom to top. The strips do the rest: drag up or down.</li>
     <li><b>Punch:</b> hold a pad for an effect on the whole mix, let go to drop out; hold several at once. Repeats start on the beat. In rave mode they run along the bottom; on a keyboard, 1 to 0, - and =.</li>
     <li><b>Tilt:</b> lean the iPad to play the filter: left and right for the cutoff, towards you and away for the resonance. It takes the way you hold it when you turn it on as the middle; turn it off and on again to re-centre. The picture leans with it.</li>
-    <li><b>Patterns:</b> 1 to 8 along the top. While it plays, the next one starts at the end of the bar.</li>
+    <li><b>Tempo and swing:</b> drag up or down, or tap the arrows; hold an arrow to keep going.</li>
+    <li><b>Patterns:</b> 1 to 8 along the top; a dot marks the ones with something in them. While it plays, the next one blinks until the bar ends, then takes over.</li>
     <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter.</li>
   </ul>
   <h3>The rave</h3>

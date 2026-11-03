@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Acid Flower's pixel rave: 240 x 150 pixels, drawn every frame from what the sound engine reports (the step, the
+// Acid Flower's pixel rave: 150 pixels tall and 240 to 560 wide (as wide as its screen), drawn every frame from what the sound engine reports (the step, the
 // filter's envelope and the accents' charge, the cutoff and resonance, every drum hit, every bass note, a scrap of the
 // waveform). Five scenes, changing every 8 bars or on a tap: WAREHOUSE (a crowd, lasers, spotlights, fog, the smiley
 // flower on the stage), TUNNEL (rings rushing past, a radial scope), PLASMA (a palette-cycling field the filter warps,
@@ -10,7 +10,9 @@
 // the shake and the flashing words.
 "use strict";
 (() => {
-  const W = 240, H = 150, N = W * H;
+  // (the width is each display's own: 240, or wider to fill a wide screen; the module's W and N are the drawing one's)
+  let W = 240, N = W * 150;
+  const H = 150;
   const TAU = Math.PI * 2;
   const SIN = new Float32Array(1024);
   for (let i = 0; i < 1024; i++) SIN[i] = Math.sin((i / 1024) * TAU);
@@ -77,18 +79,41 @@
       this.cv = canvas; this.g = canvas.getContext("2d"); this.hooks = hooks; this.opts = opts;
       this.tilt = [0, 0];                                  // the iPad's tilt (-1..1 each way), when Tilt is on
       this.bootT = 0; this.ready = false; this.stopped = false;
-      canvas.width = W; canvas.height = H;
-      this.img = this.g.createImageData(W, H);
-      this.buf = new Float32Array(N * 3); this.prev = new Float32Array(N * 3);
+      this.W = 0;
+      this.setWidth(240);
       this.scene = 0; this.auto = true; this.calm = false;
       this.t = 0; this.tPrev = 0; this.scroll = 0; this.bar = 0; this.lastStep = -1; this.barOfScene = 0;
       this.kick = 0; this.snare = 0; this.clap = 0; this.hat = 0; this.accent = 0; this.flash = 0; this.shake = 0;
       this.v = { step: -1, env: 0, acc: 0, cut: 0.3, reso: 0.7, amp: 0, wave: new Float32Array(64) };
       this.parts = []; this.flowers = []; this.bouncers = [];
       this.word = null; this.sceneLabel = 1.5; this.pad = null;
-      for (let i = 0; i < 7; i++) this.bouncers.push({ x: 20 + i * 32, y: 100, vy: 0, s: rnd() * TAU });
+      this.layout();
+      // the punch-ins (what the sound is doing to the picture), the hacker terminal, the mainframe's flying text
+      this.fx = 0; this.tape = 1; this.fxSince = new Float32Array(12); this.freeze = null;
+      this.rowOff = new Int16Array(H); this.repIdx = -1;
+      this.term = ["> CONNECT 0XACID", "> HANDSHAKE OK"]; this.termT = 0;
+      this.flyers = [];
+      this.terrain = Array.from({ length: 12 }, () => new Float32Array(16));
+      this.loop = this.loop.bind(this);
+    }
+    // the picture's width: 150 pixels tall always, and as wide as the screen it fills (240 to 560), so a wide screen
+    // shows more of the rave instead of black bars
+    setWidth(w) {
+      w = clamp(Math.round(w / 2) * 2, 240, 560);
+      if (w === this.W) return false;
+      this.W = W = w; this.N = N = w * H;
+      this.cv.width = W; this.cv.height = H;
+      this.img = this.g.createImageData(W, H);
+      this.buf = new Float32Array(N * 3); this.prev = new Float32Array(N * 3); this.lastOut = new Float32Array(N * 3); this.freeze = null;
+      if (this.crowd) this.layout();
+      return true;
+    }
+    layout() {
+      this.bouncers = [];
+      const nb = Math.round(W / 34);
+      for (let i = 0; i < nb; i++) this.bouncers.push({ x: 20 + (i * (W - 40)) / Math.max(1, nb - 1), y: 100, vy: 0, s: rnd() * TAU });
       // the crowd: a row of heads, each with its own sway
-      this.crowd = Array.from({ length: 22 }, (_, i) => ({ x: 6 + i * 11 + rnd() * 5, h: rnd() * 4, ph: rnd() * TAU, up: 0 }));
+      this.crowd = Array.from({ length: Math.ceil(W / 11) }, (_, i) => ({ x: 6 + i * 11 + rnd() * 5, h: rnd() * 4, ph: rnd() * TAU, up: 0 }));
       // tables: a vignette, the plasma's distances
       this.vig = new Float32Array(N); this.dist = new Float32Array(N);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -96,14 +121,8 @@
         this.vig[y * W + x] = clamp(1.15 - 0.45 * d * d, 0.35, 1);
         this.dist[y * W + x] = Math.sqrt((x - W / 2) ** 2 + (y - H / 2) ** 2);
       }
-      // the punch-ins (what the sound is doing to the picture), the hacker terminal, the mainframe's flying text
-      this.fx = 0; this.tape = 1; this.fxSince = new Float32Array(12); this.freeze = null; this.lastOut = new Float32Array(N * 3);
-      this.rowOff = new Int16Array(H); this.repIdx = -1;
-      this.term = ["> CONNECT 0XACID", "> HANDSHAKE OK"]; this.termT = 0;
-      this.flyers = [];
-      this.terrain = Array.from({ length: 12 }, () => new Float32Array(16));
-      this.loop = this.loop.bind(this);
     }
+    use() { W = this.W; N = this.N; }                     // (two displays, two widths: the module draws with this one's)
     start() { requestAnimationFrame(this.loop); }
     stop() { this.stopped = true; }
     skip() { if (this.bootT < 3.9) this.bootT = 3.9; }
@@ -114,6 +133,7 @@
     release() { this.dragging = false; }
     grab() { this.dragging = true; this.spinV = 0; }
     tap(x, y) {
+      this.use();
       (this.ripples = this.ripples || []).push({ x: x * W, y: y * H, t: 0, c: [YEL, PINK, LIME, CYAN][(rnd() * 4) | 0] });
       for (let i = 0; i < 18; i++) { const a = rnd() * TAU, s = 30 + rnd() * 80; this.parts.push({ k: 1, x: x * W, y: y * H, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.8, c: [YEL, PINK, LIME, CYAN][i % 4] }); }
       this.glitch = 0.25;
@@ -124,6 +144,7 @@
 
     // ------------------------------------------------------------------------------------- the sound's news ---
     event(m) {
+      this.use();
       this.v = m;
       const fx = m.fx | 0;
       for (let b = 0; b < 12; b++) if ((fx >> b) & 1 && !((this.fx >> b) & 1)) this.fxSince[b] = this.t;
@@ -286,7 +307,7 @@
       for (let k = 0; k < beams; k++) {
         const ox = [6, W - 7, W / 2, W / 4, (3 * W) / 4][k % 5], col = [LIME, CYAN, PINK, LIME, YEL][k % 5];
         const a = Math.PI / 2 + Math.sin(this.t * (0.7 + 0.25 * k) + k * 1.7 + this.scroll * 0.5) * (0.55 + 0.35 * reso) + [-0.4, 0.4, 0, -0.2, 0.2][k % 5] - this.tilt[0] * 0.5;
-        this.line(ox, 0, ox + Math.cos(a) * 220, Math.sin(a) * 220, this.accent > 0.6 ? WHITE : col, inten, true);
+        this.line(ox, 0, ox + Math.cos(a) * 320, Math.sin(a) * 320, this.accent > 0.6 ? WHITE : col, inten, true);
       }
       // fog: slow bands, lit by the kick
       for (let y = 60; y < 100; y++) {
@@ -371,9 +392,9 @@
       for (let k = 0; k < 40; k++) { const x = (k * 71 + 13) % W, y = (k * 37 + 5) % 70; this.add(x, y, WHITE, 0.15 + 0.5 * this.hat * ((k % 3) === 0)); }
       // the moon is a face: it pulses with the kick
       const mr = 15 + this.kick * 2;
-      this.disc(190, 32, mr + 4, [60, 40, 90], 0.35); this.disc(190, 32, mr, [250, 240, 200]);
-      this.set(185, 28, [120, 110, 90]); this.set(195, 28, [120, 110, 90]);
-      for (let x = -5; x <= 5; x++) this.set(190 + x, 36 + Math.round((1 - (x / 5) ** 2) * 3 * (0.4 + v.cut)), [120, 110, 90]);
+      this.disc(W - 50, 32, mr + 4, [60, 40, 90], 0.35); this.disc(W - 50, 32, mr, [250, 240, 200]);
+      this.set(W - 55, 28, [120, 110, 90]); this.set(W - 45, 28, [120, 110, 90]);
+      for (let x = -5; x <= 5; x++) this.set(W - 50 + x, 36 + Math.round((1 - (x / 5) ** 2) * 3 * (0.4 + v.cut)), [120, 110, 90]);
       // the hills
       for (let x = 0; x < W; x++) {
         const h = 112 + Math.round(sn(x * 0.03 + 1) * 6 + sn(x * 0.011 + 2) * 8);
@@ -508,8 +529,8 @@
       this.cam(Math.sin(this.t * 0.3) * 3 + this.tilt[0] * 4, 7 + Math.sin(this.t * 0.5) * 1.5 - this.kick * 0.6, camZ, bank + this.tilt[0] * 0.35, -0.18 + (v.reso - 0.5) * 0.1 + this.tilt[1] * 0.15, 130);
       // the floor: a neon grid running under the city
       const gz0 = Math.floor(camZ / 4) * 4;
-      for (let k = 0; k < 18; k++) { const z = gz0 + k * 4; const a = this.proj(-60, 0, z), b = this.proj(60, 0, z); if (a && b) this.line(a[0], a[1], b[0], b[1], pal(sh + 200), 0.25); }
-      for (let x = -60; x <= 60; x += 6) { const a = this.proj(x, 0, camZ + 1), b = this.proj(x, 0, camZ + 70); if (a && b) this.line(a[0], a[1], b[0], b[1], pal(sh + 200), 0.2); }
+      for (let k = 0; k < 18; k++) { const z = gz0 + k * 4; const a = this.proj(-110, 0, z), b = this.proj(110, 0, z); if (a && b) this.line(a[0], a[1], b[0], b[1], pal(sh + 200), 0.25); }
+      for (let x = -108; x <= 108; x += 6) { const a = this.proj(x, 0, camZ + 1), b = this.proj(x, 0, camZ + 70); if (a && b) this.line(a[0], a[1], b[0], b[1], pal(sh + 200), 0.2); }
       // the towers, far to near
       const cell = 6, z0 = Math.floor(camZ / cell);
       const cols = [[-4, -3, -2, 2, 3, 4], [-5, -4, -3, -2, 2, 3, 4, 5]];
@@ -701,6 +722,7 @@
     // --------------------------------------------------------------------------------------------- a frame ---
     loop(now) {
       if (this.stopped) return;
+      this.use();
       const dt = Math.min(0.1, this.tPrev ? (now - this.tPrev) / 1000 : 0.016);
       this.tPrev = now; this.dt = dt; this.t += dt;
       if (this.opts.boot) {                               // the power-on (the start screen's own copy)
@@ -757,7 +779,7 @@
       this.text3(Math.round(this.hooks.params().tempo) + " BPM", 2, 1, CYAN);
       this.text3("P" + ((this.hooks.slot() | 0) + 1), W - 10, 1, YEL);
       for (let s = 0; s < 16; s++) {
-        const x = 64 + s * 7, on = p.bass[s].on, now = s === v.step, c = now ? YEL : on ? (p.bass[s].acc ? PINK : LIME) : [70, 50, 90];
+        const x = ((W - 112) >> 1) + s * 7, on = p.bass[s].on, now = s === v.step, c = now ? YEL : on ? (p.bass[s].acc ? PINK : LIME) : [70, 50, 90];
         if (s < p.len) { this.rect(x, 2, 5, 2, c); if (now) this.rect(x, 4, 5, 1, c); }
       }
       if (this.fx) {                                     // the punch-ins held, named
@@ -765,7 +787,10 @@
         this.rect(W / 2 - s.length * 2 - 3, 11, s.length * 4 + 5, 9, INK, 0.75); this.text3(s, W / 2 - s.length * 2, 13, Math.floor(this.t * 8) % 2 ? YEL : WHITE);
       }
       if (this.sceneLabel > 0) { const s = SCENES[this.scene], a = Math.min(1, this.sceneLabel * 2); this.rect(W / 2 - s.length * 2 - 3, H - 12, s.length * 4 + 5, 9, INK, 0.7 * a); this.text3(s, W / 2 - s.length * 2, H - 10, YEL, a); }
-      else if (!playing && Math.floor(this.t * 2) % 2 === 0) this.text3("PRESS PLAY", W / 2 - 20, H - 10, YEL);
+      else if (!playing) {                               // big, and breathing with the Play button (1.8 s)
+        const a = 0.55 + 0.45 * Math.cos((this.t / 1.8) * TAU), k = 2, s = "PRESS PLAY";
+        this.text5(s, ((W - s.length * 6 * k) / 2) | 0, H - 19, k, [YEL[0] * a, YEL[1] * a, YEL[2] * a], true);
+      }
       if (this.pad) {                                    // the rave mode's squelch pad: where the finger is
         const [px, py] = this.pad, x = px * W, y = py * H;
         this.line(x, 9, x, H - 1, LIME, 0.35); this.line(0, y, W - 1, y, LIME, 0.35);

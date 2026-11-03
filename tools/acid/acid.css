@@ -6,7 +6,7 @@
 
 :root {
   --black: #07020C; --panel: #120A1C; --cell: #1D1229; --cell-hi: #2C1D3D; --line: #2E1F40; --edge: #030006;
-  --text: #F4F1FF; --muted: #A493BF; --dim: #5E4F75;
+  --text: #F4F1FF; --muted: #A493BF; --dim: #7A6A94;
   --yellow: #FFE100; --lime: #B4FF2B; --pink: #FF2FB4; --cyan: #2BF0FF; --orange: #FF8A1F;
   --gap: clamp(4px, 0.7vmin, 8px);
   --r: 10px;
@@ -79,8 +79,9 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .strips { display: grid; gap: var(--gap); grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, minmax(0, 1fr)); min-height: 0; }
 
 /* ----------------------------------------------------------------------------------- the rave and the pad --- */
+/* (it fills its box: acid.js makes the picture as wide as the box, then sizes it exactly; these are the box) */
 #viz {
-  display: block; max-width: 100%; max-height: 100%; width: auto; height: 100%; aspect-ratio: 240 / 150; touch-action: none; cursor: pointer;
+  display: block; width: 100%; height: 100%; touch-action: none; cursor: pointer;
   image-rendering: pixelated; image-rendering: crisp-edges; border-radius: var(--r); background: #000;
   box-shadow: 0 0 0 2px var(--line), 0 0 44px 4px rgba(255, 47, 180, .18);
 }
@@ -115,7 +116,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .bass { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; min-height: 0; }
 .st { display: grid; grid-template-rows: auto minmax(0, 1fr) repeat(3, minmax(30px, .42fr)); gap: 4px; min-width: 0; min-height: 0; }
 .st__n { text-align: center; font-weight: 400; font-size: 11px; color: var(--dim); }
-.st:nth-child(4n + 1) .st__n { color: var(--muted); }
+.st:is([data-s="0"], [data-s="4"], [data-s="8"], [data-s="12"]) .st__n { color: var(--muted); }
 .st__note {
   position: relative; display: grid; place-items: center; border-radius: 8px; background: var(--cell); touch-action: none; cursor: ns-resize;
   box-shadow: inset 0 0 0 1.5px var(--line); font-size: clamp(14px, 1.9vw, 22px); color: var(--dim);
@@ -128,8 +129,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .st__t.is-dn { background: #2155FF; color: var(--text); }
 .st__t.is-acc { background: var(--yellow); color: var(--black); }
 .st__t.is-sld { background: var(--pink); color: var(--black); }
-.st:not(.is-on) .st__t { opacity: .45; }
-.st.is-out { opacity: .25; }
+.st:not(.is-on) .st__t { opacity: .6; }
+.st.is-out { opacity: .3; }
 .st.is-now .st__note { box-shadow: inset 0 0 0 3px var(--yellow), 0 0 14px rgba(255, 225, 0, .35); }
 .st.is-now .st__n { color: var(--yellow); }
 
@@ -201,7 +202,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .rave-btn[aria-pressed="true"] { background: var(--pink); color: var(--black); }
 .app.is-rave .rave { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; background: #000;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-.app.is-rave #viz { width: 100%; height: 100%; object-fit: contain; border-radius: 0; box-shadow: none; aspect-ratio: auto; cursor: crosshair; }
+.app.is-rave #viz { width: 100%; height: 100%; border-radius: 0; box-shadow: none; cursor: crosshair; }
 .app.is-rave .rave__bar { display: flex; gap: 8px; position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); }
 .rave__b { min-height: 44px; padding: 0 16px; border-radius: 12px; background: rgba(18, 10, 28, .75); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--line); font-size: 14px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 
@@ -394,3 +395,126 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .play { padding: 0 12px; }
   .bar { gap: 4px; }
 }
+
+/* =============================================================================================== clarity ===
+ * The bass line as a little piano roll: each note a pill at its pitch (low at the bottom, the octave above at the
+ * top), a rest an empty dashed step; the rows named once, at the start of the row; a toggle shows a word only when
+ * it is on. The playhead lights the whole column. */
+.bass { grid-template-columns: auto repeat(16, minmax(0, 1fr)); }
+.st--lab2 { display: none; }
+.st--lab .st__n { color: var(--dim); }
+.st__l { display: grid; align-items: center; justify-items: end; padding: 0 4px 0 2px; font-size: clamp(9px, .95vw, 11px); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.st__l--note { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; padding-top: 3px; padding-bottom: 3px; }
+.st__l--note i { font-style: normal; }
+.st__l--note i:first-child, .st__l--note i:last-child { font-size: .85em; color: var(--dim); }
+.st__note {
+  overflow: hidden; --ph: max(26%, 17px);
+  background: repeating-linear-gradient(to top, rgba(255, 255, 255, .04) 0 1px, transparent 1px calc(100% / 12)), var(--cell);
+}
+.st__note::before { display: none; }
+.st__pill {
+  position: absolute; left: 3px; right: 3px; height: var(--ph); bottom: calc(var(--h, 0) * (100% - var(--ph)));
+  display: grid; place-items: center; border-radius: 6px; font-style: normal; white-space: nowrap; overflow: hidden;
+  background: rgba(180, 255, 43, .2); box-shadow: inset 0 0 0 1.5px var(--lime); color: var(--text); font-size: clamp(11px, 1.6vw, 19px);
+  transition: bottom .08s ease-out;
+}
+.st.is-on .st__note { background: repeating-linear-gradient(to top, rgba(255, 255, 255, .05) 0 1px, transparent 1px calc(100% / 12)), var(--cell); }
+.st:not(.is-on) .st__note { background: transparent; box-shadow: none; border: 1.5px dashed #4E3F66; }
+.st:not(.is-on) .st__pill { background: none; box-shadow: none; color: var(--dim); font-size: clamp(9px, .9vw, 11px); letter-spacing: .06em; text-transform: uppercase; }
+.st__t:empty::after { content: ""; display: block; width: 4px; height: 4px; margin: auto; border-radius: 1px; background: #4E3F66; }
+.st.is-now:not(.st--lab) { background: rgba(255, 225, 0, .1); border-radius: 8px; box-shadow: 0 0 0 2px rgba(255, 225, 0, .1); }
+.st.is-now .st__pill { box-shadow: inset 0 0 0 2px var(--yellow); background: rgba(255, 225, 0, .25); }
+
+/* the tools: named values, icons, a Clear that asks first */
+.stepper__v, .tool--lab { display: grid; justify-items: center; align-content: center; line-height: 1.05; gap: 1px; }
+.stepper__v small, .tool--lab small { font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.stepper__v b, .tool--lab b { font-weight: 400; }
+.stepper__v b { color: var(--yellow); }
+.tool--icon { display: inline-flex; align-items: center; gap: 7px; }
+.tool--danger { color: #FF6FAE; margin-left: 6px; }
+.tool--danger.is-armed { background: var(--pink); color: var(--black); box-shadow: none; }
+.tool--danger.is-armed .pix { filter: brightness(0); }
+
+/* tempo and swing: arrows you can see and hold */
+.strip--bar { flex-basis: clamp(116px, 11.5vw, 150px); padding: 2px 38px; }
+.strip__l, .strip__r { width: 34px; font-size: 15px; color: var(--muted); }
+.strip__l.is-press, .strip__r.is-press { background: var(--cell-hi); color: var(--yellow); }
+
+/* the patterns: a dot on the ones with something in them; the queued one blinks until the bar ends */
+.slot { position: relative; }
+.slot.is-used::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 1px; background: var(--lime); }
+.slot.is-cur.is-used::after { background: var(--black); }
+.slot.is-next { animation: queued .5s steps(2) infinite; box-shadow: inset 0 0 0 2px var(--yellow); }
+@keyframes queued { 50% { background: rgba(255, 225, 0, .35); color: var(--text); } }
+@media (prefers-reduced-motion: reduce) { .slot.is-next { animation: none; background: rgba(255, 225, 0, .25); } }
+
+/* the squelch pad: its values, and a trail behind the finger */
+.xy__val { position: absolute; top: 8px; right: 10px; font-weight: 400; font-size: 12px; letter-spacing: .06em; color: var(--muted); white-space: pre; pointer-events: none; }
+.xy.is-on .xy__val { color: var(--lime); }
+.xy__trail i { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--pink); opacity: 0; pointer-events: none; }
+.xy.is-trail-off .xy__trail i { transition: opacity .6s ease-out; }
+
+/* phones: the tools on one row (icons), Rave and Tilt captioned, the steps in two rows of 8 each with its names */
+@media (max-width: 600px) and (orientation: portrait) {
+  .bass { grid-template-columns: auto repeat(8, minmax(0, 1fr)); }
+  .st--lab2 { display: grid; }
+  .st__l { font-size: 8px; letter-spacing: 0; padding: 0 2px 0 0; }
+  .tools { flex-wrap: nowrap; gap: 4px; }
+  .tool--icon { padding: 0 8px; }
+  .tool--icon span { display: none; }
+  .tool--danger { margin-left: 0; }
+  .tool--danger.is-armed span { display: inline; }
+  .tool--lab { padding: 0 8px; }
+  .stepper button { min-width: 28px; }
+  .stepper span { min-width: 2.2em; }
+  .rave-btn, .tilt-btn { flex-direction: column; justify-content: center; gap: 3px; }
+  .rave-btn span, .tilt-btn span { display: block; font-size: 9px; letter-spacing: .06em; }
+  .logo { display: none; }                  /* (the Home Screen icon is the logo; the bar needs the room) */
+  .strip--bar { flex: 1 1 0; padding: 2px 21px; }
+  .strip--bar .strip__l, .strip--bar .strip__r { width: 20px; font-size: 12px; }
+  .rave-btn, .tilt-btn { padding: 0 6px; }
+  .xy__val { font-size: 10px; top: 6px; right: 8px; }
+}
+@media (max-width: 360px) and (orientation: portrait) {
+  .tools { gap: 3px; }
+  .tool--icon, .tool--lab { padding: 0 5px; }
+  .tool--lab small { display: none; }
+  .stepper button { min-width: 20px; }
+  .stepper span { min-width: 1.9em; }
+  .strip--bar { padding: 2px 18px; }
+  .strip--bar .strip__l, .strip--bar .strip__r { width: 17px; font-size: 10px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .st__l { font-size: 8px; letter-spacing: 0; padding: 0 2px 0 0; }
+  .st__l--note i:first-child, .st__l--note i:last-child { display: none; }
+  .tool--icon span { display: none; }
+  .tool--danger.is-armed span { display: inline; }
+  .tool--icon { padding: 0 7px; }
+  .stepper__v small, .tool--lab small { font-size: 7px; }
+  .rave-btn, .tilt-btn { flex-direction: column; justify-content: center; gap: 1px; }
+  .rave-btn span, .tilt-btn span { display: block; font-size: 8px; letter-spacing: .04em; }
+  .rave-btn .pix, .tilt-btn .pix { width: 16px; height: 16px; }
+  .strip--bar { flex-basis: 100px; padding: 1px 26px; }
+  .strip--bar .strip__l, .strip--bar .strip__r { width: 24px; font-size: 12px; }
+  .xy__val { font-size: 9px; top: 4px; right: 6px; }
+  /* (the steps are narrow here: the rows' names say what a cell is, the cell its colour; a rest its dashes) */
+  .st__t { font-size: 0; }
+  .st__pill { font-size: 10px; left: 2px; right: 2px; border-radius: 5px; }
+  .st:not(.is-on) .st__pill { font-size: 0; }
+}
+@media (max-height: 500px) and (orientation: landscape) and (max-width: 700px) {
+  .strip--bar { flex-basis: 80px; padding: 1px 20px; }
+  .strip--bar .strip__l, .strip--bar .strip__r { width: 18px; font-size: 11px; }
+}
+:root.fold-lr .bass { grid-template-columns: auto repeat(8, minmax(0, 1fr)); }
+:root.fold-lr .st--lab2 { display: grid; }
+/* (book: each page is a phone's width; its bar and tools as on a phone) */
+:root.fold-lr .strip--bar { flex: 1 1 0; min-width: 0; padding: 2px 26px; }
+:root.fold-lr .strip--bar .strip__l, :root.fold-lr .strip--bar .strip__r { width: 24px; font-size: 12px; }
+:root.fold-lr .rave-btn, :root.fold-lr .tilt-btn { flex-direction: column; justify-content: center; gap: 2px; padding: 0 8px; flex: 0 0 auto; }
+:root.fold-lr .rave-btn span, :root.fold-lr .tilt-btn span { display: block; font-size: 9px; letter-spacing: .06em; }
+:root.fold-lr .tools { flex-wrap: nowrap; gap: 4px; }
+:root.fold-lr .tool--icon span { display: none; }
+:root.fold-lr .tool--danger.is-armed span { display: inline; }
+:root.fold-lr .tool--icon { padding: 0 9px; }
+:root.fold-lr .tool--danger { margin-left: 0; }

@@ -222,5 +222,19 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
     ok(finite(r.L) && finite(r.R) && peak(r.L) <= 1, `all twelve held at once: finite, peak ${peak(r.L).toFixed(2)}`);
   }
 }
+{ // the power-on sounds (boot-sound.js): each part where the boot animation puts it, nothing clipped, then quiet
+  const ctx = vm.createContext({ Math, Float32Array, globalThis: {} });
+  ctx.globalThis = ctx;
+  vm.runInContext(fs.readFileSync(path.join(HERE, "boot-sound.js"), "utf8"), ctx);
+  const { bootSound, enterSound, READY } = ctx.AcidBootSound;
+  const t0 = process.hrtime.bigint(), [L, R] = bootSound(SR), ms = Number(process.hrtime.bigint() - t0) / 1e6;
+  const at = (a, b) => rms(L, Math.round(a * SR), Math.round(b * SR));
+  const parts = { before: at(0, 0.07), thump: at(0.08, 0.35), clicks: at(1.0, 2.0), whoosh: at(2.8, 3.6), ready: at(READY, READY + 0.4), end: at(5.2, 5.39) };
+  ok(finite(L) && finite(R) && peak(L) < 1 && peak(R) < 1 && ms < 1500, `boot sound: ${(L.length / SR).toFixed(1)} s made in ${ms.toFixed(0)} ms, peak ${peak(L).toFixed(2)}`);
+  ok(parts.before < 1e-4 && parts.thump > 0.05 && parts.clicks > 0.005 && parts.whoosh > 0.05 && parts.ready > 0.1 && parts.end < 0.01,
+     `boot sound: silence, then the thump ${parts.thump.toFixed(3)}, the BIOS's clicks ${parts.clicks.toFixed(3)}, the whoosh ${parts.whoosh.toFixed(3)}, the ready stab ${parts.ready.toFixed(3)}, fading to ${parts.end.toFixed(4)}`);
+  const [eL] = enterSound(SR);
+  ok(finite(eL) && peak(eL) < 1 && rms(eL, 0, eL.length) > 0.05, `enter sound: ${(eL.length / SR).toFixed(2)} s, rms ${rms(eL, 0, eL.length).toFixed(3)}`);
+}
 console.log(fails ? `FAIL (${fails})` : "PASS");
 process.exit(fails ? 1 : 0);

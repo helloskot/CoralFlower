@@ -84,6 +84,10 @@
 
 <div class="gate" id="gate">
   <canvas class="gate__boot" id="boot" width="240" height="150" aria-hidden="true"></canvas>
+  <button class="gate__power" id="power" type="button" aria-label="Power on">
+    <svg viewBox="0 0 14 14" width="84" height="84" shape-rendering="crispEdges" aria-hidden="true"><path fill="#B4FF2B" d="M6 1h2v6H6zM3 3h2v2H3zM9 3h2v2H9zM2 5h2v4H2zM10 5h2v4h-2zM3 9h2v2H3zM9 9h2v2H9zM5 11h4v2H5z"/></svg>
+    <span>Power on</span>
+  </button>
   <div class="gate__card">
     <h2 class="sr">Acid Flower</h2>
     <p class="sr">An acid house machine. Program a bass line and a beat, then play the filter with your fingers.</p>
@@ -125,6 +129,7 @@
   <form method="dialog"><button class="menu__close">Close</button></form>
 </dialog>
 
+<script src="boot-sound.js"></script>
 <script src="rave.js"></script>
 <script src="acid.js"></script>
 </body>

@@ -107,6 +107,7 @@
     start() { requestAnimationFrame(this.loop); }
     stop() { this.stopped = true; }
     skip() { if (this.bootT < 3.9) this.bootT = 3.9; }
+    power() { this.powered = true; this.bootT = 0; }
     next() { this.scene = (this.scene + 1) % SCENES.length; this.sceneLabel = 1.6; this.barOfScene = 0; this.prev.fill(0); }
     setPad(x, y) { this.pad = x == null ? null : [x, y]; }
 
@@ -677,6 +678,13 @@
       const dt = Math.min(0.1, this.tPrev ? (now - this.tPrev) / 1000 : 0.016);
       this.tPrev = now; this.dt = dt; this.t += dt;
       if (this.opts.boot) {                               // the power-on (the start screen's own copy)
+        if (!this.powered) {                              // off: a dark tube, a cursor, waiting for Power
+          this.fill(0, 4, 1);
+          if (Math.floor(this.t * 2) % 2) this.rect(W / 2 - 1, H / 2 - 3, 3, 5, [60, 255, 120]);
+          this.post();
+          requestAnimationFrame(this.loop);
+          return;
+        }
         this.bootT += dt;
         if (this.calm && this.bootT < 3.9) this.bootT = 3.9;
         this.bootScene();

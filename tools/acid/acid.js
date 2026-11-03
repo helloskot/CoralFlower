@@ -129,21 +129,45 @@
   const drawXY = () => {
     xy.style.setProperty("--x", S.params.cutoff * 100 + "%");
     xy.style.setProperty("--y", (1 - S.params.reso) * 100 + "%");
+    $("xyVal").textContent = "CUT " + Math.round(S.params.cutoff * 100) + "  RES " + Math.round(S.params.reso * 100);
   };
+  // a short trail behind the finger: where the filter has just been
+  const TRAIL = 10, trail = [], trailEls = [];
+  for (let i = 0; i < TRAIL; i++) { const d = document.createElement("i"); $("xyTrail").appendChild(d); trailEls.push(d); }
+  const drawTrail = () => trailEls.forEach((d, i) => {
+    const q = trail[trail.length - 1 - i];
+    d.style.opacity = q ? String(0.55 * (1 - i / TRAIL)) : "0";
+    if (q) { d.style.left = q[0] * 100 + "%"; d.style.top = (1 - q[1]) * 100 + "%"; }
+  });
+  const pushTrail = () => {
+    trail.push([S.params.cutoff, S.params.reso]); if (trail.length > TRAIL) trail.shift();
+    xy.classList.remove("is-trail-off"); drawTrail();
+  };
+  const endTrail = () => { xy.classList.add("is-trail-off"); trail.length = 0; trailEls.forEach((d) => (d.style.opacity = "0")); };   // (it fades: acid.css)
 
   // ------------------------------------------------------------------------------------------ the editor ---
   const bassEl = $("bass"), drumsEl = $("drums");
   const cols = [];
+  // the rows' names, once at the start of the row (a second time where a phone breaks the 16 steps into two rows of 8)
+  const label = (second) => {
+    const d = document.createElement("div");
+    d.className = "st st--lab" + (second ? " st--lab2" : "");
+    d.setAttribute("aria-hidden", "true");
+    d.innerHTML = `<b class="st__n">${second ? "9" : "1"}&#8594;</b><span class="st__l st__l--note"><i>Hi</i><i>Note</i><i>Lo</i></span>` +
+                  `<span class="st__l">Oct</span><span class="st__l">Acc</span><span class="st__l">Slide</span>`;
+    bassEl.appendChild(d);
+  };
   for (let i = 0; i < 16; i++) {
+    if (i === 0 || i === 8) label(i === 8);
     const c = document.createElement("div");
     c.className = "st";
     c.dataset.s = i;
-    c.innerHTML = `<b class="st__n">${i + 1}</b><div class="st__note" data-s="${i}"></div>` +
-                  `<button type="button" class="st__t" data-t="oct" data-s="${i}"></button>` +
-                  `<button type="button" class="st__t" data-t="acc" data-s="${i}">Acc</button>` +
-                  `<button type="button" class="st__t" data-t="slide" data-s="${i}">Slide</button>`;
+    c.innerHTML = `<b class="st__n">${i + 1}</b><div class="st__note" data-s="${i}"><i class="st__pill"></i></div>` +
+                  `<button type="button" class="st__t" data-t="oct" data-s="${i}" aria-label="Step ${i + 1} octave"></button>` +
+                  `<button type="button" class="st__t" data-t="acc" data-s="${i}" aria-label="Step ${i + 1} accent"></button>` +
+                  `<button type="button" class="st__t" data-t="slide" data-s="${i}" aria-label="Step ${i + 1} slide"></button>`;
     bassEl.appendChild(c);
-    cols.push({ el: c, note: c.querySelector(".st__note"), oct: c.querySelector('[data-t="oct"]'), acc: c.querySelector('[data-t="acc"]'), sld: c.querySelector('[data-t="slide"]') });
+    cols.push({ el: c, note: c.querySelector(".st__note"), pill: c.querySelector(".st__pill"), oct: c.querySelector('[data-t="oct"]'), acc: c.querySelector('[data-t="acc"]'), sld: c.querySelector('[data-t="slide"]') });
   }
   const cells = LANES.map(([name, col], l) => {
     const n = document.createElement("button");
@@ -163,12 +187,14 @@
       const s = p.bass[i];
       c.el.classList.toggle("is-on", s.on);
       c.el.classList.toggle("is-out", i >= p.len);
-      c.note.textContent = s.on ? NOTE[s.note] + (s.note === 12 ? "′" : "") : "·";
-      c.note.style.setProperty("--h", String(s.note / 12));
-      c.oct.textContent = s.oct > 0 ? "Up" : s.oct < 0 ? "Down" : "Oct";
+      c.pill.textContent = s.on ? NOTE[s.note] + (s.note === 12 ? "′" : "") : "rest";
+      c.note.style.setProperty("--h", String(s.on ? s.note / 12 : 0.5));
+      c.note.setAttribute("aria-label", "Step " + (i + 1) + ": " + (s.on ? NOTE[s.note] : "rest"));
+      c.oct.textContent = s.oct > 0 ? "Up" : s.oct < 0 ? "Down" : "";
       c.oct.classList.toggle("is-up", s.oct > 0); c.oct.classList.toggle("is-dn", s.oct < 0);
-      c.acc.classList.toggle("is-acc", s.acc);
-      c.sld.classList.toggle("is-sld", s.slide);
+      c.oct.setAttribute("aria-pressed", String(s.oct !== 0));
+      c.acc.textContent = s.acc ? "Acc" : ""; c.acc.classList.toggle("is-acc", s.acc); c.acc.setAttribute("aria-pressed", String(s.acc));
+      c.sld.textContent = s.slide ? "Slide" : ""; c.sld.classList.toggle("is-sld", s.slide); c.sld.setAttribute("aria-pressed", String(s.slide));
     });
   };
   const drawDrums = () => {
@@ -186,7 +212,7 @@
     drawBass(); drawDrums(); drawSlots(); drawXY(); strips.forEach(drawStrip);
     $("len").textContent = pat().len;
     $("tune").textContent = (S.params.tune > 0 ? "+" : "") + (S.params.tune ? S.params.tune : "C");
-    $("wave").textContent = S.params.wave ? "Square" : "Saw";
+    $("wave").querySelector("b").textContent = S.params.wave ? "Square" : "Saw";
   };
   for (let i = 0; i < 8; i++) {
     const e = document.createElement("button");
@@ -230,13 +256,22 @@
       drawDrums(); edited();
       if (v && !playing) post({ type: "hit", lane: l });
     } else if (t.classList.contains("st__note")) {
-      ptr.set(e.pointerId, { kind: "note", i: +t.dataset.s, y0: e.clientY, acc: 0, moved: false });
+      ptr.set(e.pointerId, { kind: "note", i: +t.dataset.s, y0: e.clientY, acc: 0, moved: false, px: Math.max(7, (t.clientHeight * 0.74) / 12) });
     } else if (t.classList.contains("xy")) {
       ptr.set(e.pointerId, { kind: "xy", el: t });
-      t.classList.add("is-on");
+      t.classList.add("is-on"); trail.length = 0;
       moveXY(t, e);
     } else {
-      ptr.set(e.pointerId, { kind: "strip", el: t, k: t.dataset.p, x0: e.clientX, y0: e.clientY, y: e.clientY, acc: 0, moved: false });
+      const p = { kind: "strip", el: t, k: t.dataset.p, x0: e.clientX, y0: e.clientY, y: e.clientY, acc: 0, moved: false, side: 0 };
+      if (t.classList.contains("strip--bar")) {           // tempo and swing: their ends are arrows; hold one to keep going
+        const r = t.getBoundingClientRect(), f = (e.clientX - r.left) / r.width;
+        p.side = f < 0.3 ? -1 : f > 0.7 ? 1 : 0;
+        if (p.side) {
+          p.arrow = t.querySelector(p.side < 0 ? ".strip__l" : ".strip__r"); p.arrow.classList.add("is-press");
+          p.hold = setTimeout(() => { p.rep = setInterval(() => { p.repeated = true; setParam(p.k, S.params[p.k] + p.side * spec(p.k).unit); drawStrip(t); }, 70); }, 380);
+        }
+      }
+      ptr.set(e.pointerId, p);
       t.classList.add("is-turn");
     }
     try { app.setPointerCapture(e.pointerId); } catch {}
@@ -245,7 +280,7 @@
     const r = t.getBoundingClientRect();
     S.params.cutoff = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
     S.params.reso = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
-    sendParams(); save(); drawXY();
+    sendParams(); save(); drawXY(); pushTrail();
   };
   app.addEventListener("pointermove", (e) => {
     const p = ptr.get(e.pointerId);
@@ -258,9 +293,9 @@
       const dy = p.y0 - e.clientY;
       if (Math.abs(dy) > 8) p.moved = true;
       if (!p.moved) return;
-      const steps = Math.trunc(dy / 14);
+      const steps = Math.trunc(dy / p.px);
       if (steps) {
-        p.y0 -= steps * 14;
+        p.y0 -= steps * p.px;
         const s = pat().bass[p.i];
         s.on = true;
         s.note = Math.max(0, Math.min(12, s.note + steps));
@@ -269,7 +304,7 @@
     } else if (p.kind === "strip") {
       const sp = spec(p.k), d = p.y - e.clientY;
       p.y = e.clientY;
-      if (Math.abs(e.clientY - p.y0) + Math.abs(e.clientX - p.x0) > 8) p.moved = true;
+      if (Math.abs(e.clientY - p.y0) + Math.abs(e.clientX - p.x0) > 8 && !p.repeated) { p.moved = true; clearTimeout(p.hold); }
       if (!p.moved) return;
       p.acc += d;
       const n = Math.trunc(p.acc / sp.px);
@@ -280,13 +315,12 @@
     const p = ptr.get(e.pointerId);
     if (!p) return;
     ptr.delete(e.pointerId);
-    if (p.kind === "xy") p.el.classList.remove("is-on");
+    if (p.kind === "xy") { p.el.classList.remove("is-on"); endTrail(); }
     if (p.kind === "strip") {
       p.el.classList.remove("is-turn");
-      if (!p.moved && e.type === "pointerup" && (p.k === "tempo" || p.k === "swing")) {   // the arrows step
-        const r = p.el.getBoundingClientRect(), f = (e.clientX - r.left) / r.width, sp = spec(p.k);
-        if (f < 0.3 || f > 0.7) { setParam(p.k, S.params[p.k] + (f < 0.3 ? -1 : 1) * sp.unit); drawStrip(p.el); }
-      }
+      clearTimeout(p.hold); clearInterval(p.rep);
+      if (p.arrow) p.arrow.classList.remove("is-press");
+      if (!p.moved && !p.repeated && e.type === "pointerup" && p.side) { setParam(p.k, S.params[p.k] + p.side * spec(p.k).unit); drawStrip(p.el); }   // the arrows step
     }
     if (p.kind === "note" && !p.moved && e.type === "pointerup") {   // a tap: rest, or back on
       const s = pat().bass[p.i];
@@ -369,7 +403,14 @@
     }
     edited(); drawAll();
   });
-  act("#clear", () => {
+  let clearT = 0;
+  act("#clear", (el) => {
+    if (!el.classList.contains("is-armed")) {           // the first tap asks; the second, within 2.5 s, clears
+      el.classList.add("is-armed"); el.querySelector("span").textContent = "Sure?";
+      clearTimeout(clearT); clearT = setTimeout(() => { el.classList.remove("is-armed"); el.querySelector("span").textContent = "Clear"; }, 2500);
+      return;
+    }
+    clearTimeout(clearT); el.classList.remove("is-armed"); el.querySelector("span").textContent = "Clear";
     if (tab() === "bass") pat().bass = ALL16.map(rest);
     else pat().drums = grid([]);
     edited(); drawAll();
@@ -449,11 +490,26 @@
     }
   };
   rave.start();
+  // the display fills its box: the picture is 150 pixels tall and as wide as the box asks (240 to 560), so a wide
+  // screen gets more rave instead of black bars; past that it is fitted, never cropped
+  const vizEl = $("viz");
+  const fitViz = () => {
+    vizEl.style.width = ""; vizEl.style.height = "";
+    const r = vizEl.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8) return;
+    rave.setWidth((150 * r.width) / r.height);
+    const k = Math.min(r.width / rave.W, r.height / 150);
+    vizEl.style.width = Math.floor(rave.W * k) + "px"; vizEl.style.height = Math.floor(150 * k) + "px";
+  };
+  if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fitViz)).observe(document.querySelector(".rave"));
+  addEventListener("resize", () => requestAnimationFrame(fitViz));
+  fitViz();
   // rave mode: the display fills the screen, and the whole of it is the squelch pad
   const setRave = (on) => {
     app.classList.toggle("is-rave", on);
     $("raveBtn").setAttribute("aria-pressed", String(on));
     rave.setPad(null);
+    requestAnimationFrame(fitViz);
   };
   const onPress = (el, f) => {   // (on the touch itself; a keyboard's click too)
     el.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); f(); });
@@ -463,7 +519,6 @@
   onPress($("raveExit"), () => setRave(false));
   onPress($("raveScene"), () => rave.next());
   onPress($("ravePlay"), () => setPlaying(!playing));
-  const vizEl = $("viz");
   vizEl.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     const raving = app.classList.contains("is-rave");
@@ -545,6 +600,9 @@
     filter: [["............", ".....C......", ".....C......", ".....C......", ".....C......", "CCCC.LL.CCCC", ".....LL.....", ".....C......", ".....C......", ".....C......", ".....C......", "............"], { C: "#2BF0FF", L: "#B4FF2B" }],
     punch: [["......PPPP..", ".....PPPP...", "....PPPP....", "...PPPP.....", "..PPPPPPPP..", ".....PPPP...", "....PPPP....", "...PPPP.....", "..PPP.......", "..PP........", ".P..........", "............"], { P: "#FF2FB4" }],
     rave: [["...YYYYYY...", "..YYYYYYYY..", ".YYYYYYYYYY.", "YYYKYYYYKYYY", "YYYKYYYYKYYY", "YYYYYYYYYYYY", "YYKYYYYYYKYY", "YYYKYYYYKYYY", ".YYYKKKKYYY.", "..YYYYYYYY..", "...YYYYYY...", "............"], { Y: "#FFE100", K: "#110A02" }],
+    random: [["............", ".WWWWWWWWW..", ".W.......WW.", ".W.P...P.WW.", ".W.......WW.", ".W...P...WW.", ".W.......WW.", ".W.P...P.WW.", ".W.......WW.", ".WWWWWWWWWW.", "..WWWWWWWWW.", "............"], { W: "#F4F1FF", P: "#FF2FB4" }],
+    mutate: [["............", ".....Y......", ".....Y......", "...Y.Y.Y....", "....YYY.....", "..YYYWYYY...", "....YYY.....", "...Y.Y.Y.L..", ".....Y...L..", ".....Y.LLLLL", ".........L..", ".........L.."], { Y: "#FFE100", W: "#FFFFFF", L: "#B4FF2B" }],
+    clear: [["............", ".PP......PP.", ".PPP....PPP.", "..PPP..PPP..", "...PPPPPP...", "....PPPP....", "....PPPP....", "...PPPPPP...", "..PPP..PPP..", ".PPP....PPP.", ".PP......PP.", "............"], { P: "#FF6FAE" }],
     tilt: [["..AAAAAA....", ".A......A...", "A........A.A", "A.........AA", "........AAA.", "............", ".CCCCCCCCCC.", ".C........C.", ".C.DDDDDD.CC", ".C........C.", ".CCCCCCCCCC.", "............"], { C: "#2BF0FF", A: "#9FF8FF", D: "#1A8F99" }],
   };
   const iconSvg = (name) => {
@@ -553,7 +611,7 @@
     g.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col[ch]}"/>`; }));
     return `<svg class="pix" viewBox="0 0 12 12" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
   };
-  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"]]) {
+  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"]]) {
     const el = document.querySelector(sel);
     el.innerHTML = iconSvg(name) + `<span>${el.textContent}</span>`;
   }

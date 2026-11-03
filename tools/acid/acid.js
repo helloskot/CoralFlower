@@ -644,5 +644,22 @@
   });
   let tiltListening = false;
 
-  window.acid = { state: () => S, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn };
+  // ------------------------------------------------------------------------------------------- the fold ---
+  // a foldable, half-folded: the Viewport Segments API says where its two screens are (acid.css measures them); a
+  // browser that only knows the Device Posture API ("folded") gets the halves of the screen: across when it is held
+  // wide (tabletop), down the middle when held tall (book)
+  const foldMQ = { tb: matchMedia("(vertical-viewport-segments: 2)"), lr: matchMedia("(horizontal-viewport-segments: 2)") };
+  const posture = () => (navigator.devicePosture && navigator.devicePosture.type) || "continuous";
+  const applyFold = () => {
+    let tb = foldMQ.tb.matches, lr = foldMQ.lr.matches;
+    if (!tb && !lr && posture() === "folded") { if (innerWidth >= innerHeight) tb = true; else lr = true; }
+    document.documentElement.classList.toggle("fold-tb", tb);
+    document.documentElement.classList.toggle("fold-lr", lr);
+  };
+  for (const m of Object.values(foldMQ)) (m.addEventListener ? m.addEventListener("change", applyFold) : m.addListener(applyFold));
+  if (navigator.devicePosture && navigator.devicePosture.addEventListener) navigator.devicePosture.addEventListener("change", applyFold);
+  addEventListener("resize", applyFold);
+  applyFold();
+
+  window.acid = { state: () => S, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
 })();

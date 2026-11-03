@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // CoralFlower for iPad, offline: network first (a new build is used as soon as it is online), the last copy when
 // there is no network. Everything the instrument needs is fetched once at install.
-const CACHE = "coralflower-ipad-v1";
+const CACHE = "coralflower-ipad-v2";
 const FILES = ["./", "app.js", "app.css", "manifest.webmanifest", "../play/keymap.js", "../play/worklet.js",
                "../play/coralflower.wasm", "../fonts/DepartureMono.woff", "../favicon.svg", "../apple-touch-icon.png"];
 

@@ -1,9 +1,9 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
 <!-- CoralFlower for iPad: the real firmware (../play/coralflower.wasm in ../play/worklet.js) as a full-screen touch
-     instrument, a Home Screen web app (manifest.webmanifest, sw.js: it works offline after the first visit). The pads
-     and knob strips show what the firmware itself draws on its screen's key caps and knob row (emu_web.c web_keycaps,
-     web_knobs). tools/make_site.sh puts it in ipad/. -->
+     instrument, a Home Screen web app (manifest.webmanifest, sw.js: it works offline after the first visit). The pads,
+     knob strips and dials show what the firmware itself draws and names (emu_web.c web_keycaps, web_knobs, web_info);
+     the screen is the firmware's own, pixel for pixel. tools/make_site.sh puts it in ipad/. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -35,33 +35,36 @@
     <button class="sbtn" data-b="7" type="button"><span>Save</span></button>
     <button class="sbtn" data-b="8" type="button"><span>Arp</span></button>
     <button class="sbtn" data-b="9" type="button"><span>Seq</span></button>
-    <button class="sbtn sbtn--menu" id="menuBtn" type="button" aria-label="Menu" aria-haspopup="dialog">&#8943;</button>
+    <i class="screens__gap"></i>
+    <button class="sbtn sbtn--tool" id="perfBtn" type="button" aria-pressed="false" title="Perform: bigger pads, the knobs put away"><span>Perform</span></button>
+    <button class="sbtn sbtn--tool sbtn--menu" id="menuBtn" type="button" aria-label="Menu" aria-haspopup="dialog">&#8943;</button>
   </nav>
 
-  <section class="dials" aria-label="Sounds and volume">
-    <div class="enc" data-e="2" role="slider" aria-label="Chord sound" tabindex="-1"><b>Chord sound</b><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
-    <div class="enc" data-e="0" role="slider" aria-label="Bass sound" tabindex="-1"><b>Bass sound</b><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
-    <div class="enc" data-e="1" role="slider" aria-label="Algorithm" tabindex="-1"><b>Algorithm</b><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
+  <section class="dials" id="dials" aria-label="Sounds, layout and volume">
+    <div class="enc" data-e="2" role="slider" aria-label="Chord sound" tabindex="-1"><b>Chord sound</b><em data-info="chord"></em><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
+    <div class="enc" data-e="0" role="slider" aria-label="Bass sound" tabindex="-1"><b>Bass sound</b><em data-info="bass"></em><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
+    <div class="enc" data-e="1" role="slider" aria-label="Layout" tabindex="-1"><b data-info="algoName">Layout</b><em data-info="algo"></em><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
     <div class="enc enc--vol" data-e="7" role="slider" aria-label="Volume" tabindex="-1"><b>Volume</b><span class="enc__fill" id="volFill"></span></div>
   </section>
 
-  <section class="screen" aria-label="The CoralFlower screen">
+  <section class="screen" id="screen" aria-label="The CoralFlower screen">
     <canvas id="lcd" width="240" height="240" aria-hidden="true"></canvas>
     <canvas id="view" width="240" height="157" role="img" aria-label="The CoralFlower screen (tap to see all of it)"></canvas>
   </section>
 
-  <section class="knobs" aria-label="Knobs 1 to 4">
+  <section class="knobs" id="knobs" aria-label="Knobs 1 to 4">
     <div class="enc enc--knob" data-e="3" role="slider" tabindex="-1"><b>K1</b><em></em><span class="enc__bar"></span><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
     <div class="enc enc--knob" data-e="4" role="slider" tabindex="-1"><b>K2</b><em></em><span class="enc__bar"></span><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
     <div class="enc enc--knob" data-e="5" role="slider" tabindex="-1"><b>K3</b><em></em><span class="enc__bar"></span><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
     <div class="enc enc--knob" data-e="6" role="slider" tabindex="-1"><b>K4</b><em></em><span class="enc__bar"></span><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
   </section>
 
-  <section class="pads" aria-label="Keys">
+  <section class="pads" id="pads" aria-label="Keys">
     <div class="row row--upper" id="upper">
       <button class="tbtn" data-b="12" type="button">Oct&minus;</button>
       <button class="tbtn" data-b="13" type="button">Oct+</button>
       <!-- the 11 upper keys go here (app.js) -->
+      <button class="tbtn tbtn--strum" id="strumBtn" type="button" aria-pressed="false" title="Strum: every chord is strummed; slide right to strum up, left to strum down">Strum</button>
       <button class="tbtn tbtn--play" data-b="10" type="button">Play</button>
       <button class="tbtn tbtn--rec" data-b="11" type="button">Rec</button>
     </div>
@@ -75,18 +78,52 @@
     <h1><span class="a">Coral</span><span class="b">Flower</span></h1>
     <p class="gate__status" id="status" role="status">Loading&hellip;</p>
     <button class="gate__go" id="start" type="button" disabled>Play</button>
-    <p class="gate__hint" id="a2hs" hidden>For a full-screen instrument with its own icon: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
+    <p class="gate__hint" id="a2hs" hidden>For a full-screen instrument with its own icon: tap <b>Share</b>, then <b>Add to Home Screen</b>. It also keeps your sounds safer there.</p>
+  </div>
+</div>
+
+<div class="tips" id="tips" hidden role="dialog" aria-modal="true" aria-labelledby="tipTitle">
+  <div class="tips__hole" id="tipHole"></div>
+  <div class="tips__card" id="tipCard">
+    <p class="tips__step" id="tipStep"></p>
+    <h2 id="tipTitle"></h2>
+    <p id="tipText"></p>
+    <div class="tips__row"><button type="button" id="tipSkip">Skip</button><button type="button" id="tipNext" class="is-main">Next</button></div>
   </div>
 </div>
 
 <dialog class="menu" id="menu" aria-labelledby="menuTitle">
   <h2 id="menuTitle"><span class="a">Coral</span><span class="b">Flower</span> <small id="ver"></small></h2>
-  <p>The upper pads choose the chord, the lower pads play it. Drag a knob strip up or down, or tap its arrows. Tap the screen to see all of it.</p>
-  <p>Your settings, sounds and patterns are saved on this iPad.</p>
+
+  <h3>Playing</h3>
+  <div class="opt"><span>Touch velocity<small>Touch a note pad higher to play softer, lower to play louder</small></span>
+    <div class="seg" data-pref="vel"><button type="button" data-v="1">On</button><button type="button" data-v="0">Off</button></div></div>
+  <div class="opt"><span>Strum speed<small>The time between a strummed chord’s notes, when you tap</small></span>
+    <div class="seg" data-pref="strumMs"><button type="button" data-v="25">Fast</button><button type="button" data-v="50">Medium</button><button type="button" data-v="100">Slow</button></div></div>
+
+  <h3>Layout</h3>
+  <div class="opt"><span>Pads</span>
+    <div class="seg" data-pref="pads"><button type="button" data-v="normal">Normal</button><button type="button" data-v="large">Large</button></div></div>
+  <div class="opt"><span>Knob strips</span>
+    <div class="seg" data-pref="hand"><button type="button" data-v="right">Right</button><button type="button" data-v="left">Left</button></div></div>
+  <div class="opt"><span>Screen</span>
+    <div class="seg" data-pref="full"><button type="button" data-v="0">Play area</button><button type="button" data-v="1">Whole screen</button></div></div>
+
+  <h3>Sound</h3>
+  <div class="opt"><span>Response<small>Smooth uses a bigger audio buffer: try it if you hear crackles. Applies the next time you open the app.</small></span>
+    <div class="seg" data-pref="latency"><button type="button" data-v="interactive">Fast</button><button type="button" data-v="playback">Smooth</button></div></div>
+
+  <h3>Your sounds and settings</h3>
+  <p>They are saved on this iPad. Keep a backup in Files: Safari can clear a website’s data, and it does not travel to another iPad.</p>
   <div class="menu__row">
-    <button type="button" id="fullView">Show the whole screen</button>
-    <button type="button" id="reset">Clear saved data</button>
+    <button type="button" id="backup">Save a backup</button>
+    <button type="button" id="restore">Restore a backup</button>
+    <button type="button" id="reset" class="is-bad">Clear saved data</button>
   </div>
+  <input type="file" id="restoreFile" accept=".cfbak,.bin,application/octet-stream" hidden>
+  <p class="menu__msg" id="dataMsg" role="status"></p>
+
+  <div class="menu__row"><button type="button" id="showTips">Show the tips again</button></div>
   <p class="menu__fine">Free software under the GPL-3.0. CoralFlower is firmware for the M-VAVE FM-1; <a href="../" target="_blank" rel="noopener">install it on yours</a>.</p>
   <form method="dialog"><button class="menu__close">Close</button></form>
 </dialog>

@@ -26,6 +26,7 @@ class FM1 extends AudioWorkletProcessor {
     this.caps = false;                               // the key caps and knobs (the iPad instrument asks for them)
     this.capsSent = null;
     this.knobsSent = null;
+    this.infoSent = null;
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
 
@@ -73,6 +74,7 @@ class FM1 extends AudioWorkletProcessor {
       case "tap": ex.web_keys_tap(m.keys >>> 0); ex.web_buttons_tap(m.buttons >>> 0); break;
       case "enc": ex.web_enc(m.role | 0, m.n | 0); break;
       case "master": ex.web_master(m.value | 0); break;
+      case "touch": if (ex.web_touch) ex.web_touch(m.vel | 0, m.strum | 0, m.ms | 0); break;   // (the iPad instrument)
       case "midi": for (const p of m.pkts) this.midiIn.push(p >>> 0); break;
     }
   }
@@ -96,6 +98,10 @@ class FM1 extends AudioWorkletProcessor {
       if (!same(caps, this.capsSent)) { this.capsSent = caps.slice(); msg.caps = this.capsSent.slice(); }
       const knobs = new Uint8Array(this.mem.buffer, ex.web_knobs(), 4 * 32);
       if (!same(knobs, this.knobsSent)) { this.knobsSent = knobs.slice(); msg.knobs = this.knobsSent.slice(); }
+      if (ex.web_info) {
+        const info = new Uint8Array(this.mem.buffer, ex.web_info(), 128);
+        if (!same(info, this.infoSent)) { this.infoSent = info.slice(); msg.info = this.infoSent.slice(); }
+      }
     }
     const d = ex.web_flash_dirty();                  // the flash: saved a second after the last erase / program
     if (d !== this.dirty) { this.dirty = d; this.dirtyAt = currentTime; }

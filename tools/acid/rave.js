@@ -777,7 +777,8 @@
       const v = this.v, p = this.hooks.pattern(), B = this.buf;
       for (let y = 0; y < 8; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] *= 0.35; B[i + 1] *= 0.35; B[i + 2] *= 0.35; }
       this.text3(Math.round(this.hooks.params().tempo) + " BPM", 2, 1, CYAN);
-      this.text3("P" + ((this.hooks.slot() | 0) + 1), W - 10, 1, YEL);
+      const nm = String((this.hooks.name && this.hooks.name()) || "").toUpperCase().slice(0, 10), lab = nm || "P" + ((this.hooks.slot() | 0) + 1);
+      this.text3(lab, W - 2 - lab.length * 4, 1, YEL);   // (the pattern's name, or its number)
       for (let s = 0; s < 16; s++) {
         const x = ((W - 112) >> 1) + s * 7, on = p.bass[s].on, now = s === v.step, c = now ? YEL : on ? (p.bass[s].acc ? PINK : LIME) : [70, 50, 90];
         if (s < p.len) { this.rect(x, 2, 5, 2, c); if (now) this.rect(x, 4, 5, 1, c); }

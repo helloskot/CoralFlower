@@ -108,6 +108,17 @@
     stop() { this.stopped = true; }
     skip() { if (this.bootT < 3.9) this.bootT = 3.9; }
     power() { this.powered = true; this.bootT = 0; }
+    // the ready screen is a toy: a drag spins the flower (and tilts the view), a tap rings out (a ripple, sparks, a
+    // glitch: acid.js plays a note), two fingers blow the flower apart; x, y are the screen's 0..1
+    spinBy(dx, dy) { this.spin = (this.spin || 0) + dx * 4; this.spinV = dx * 4 / Math.max(this.dt || 0.016, 0.008); this.look = clamp((this.look || 0) + dy * 1.5, -0.6, 0.6); }
+    release() { this.dragging = false; }
+    grab() { this.dragging = true; this.spinV = 0; }
+    tap(x, y) {
+      (this.ripples = this.ripples || []).push({ x: x * W, y: y * H, t: 0, c: [YEL, PINK, LIME, CYAN][(rnd() * 4) | 0] });
+      for (let i = 0; i < 18; i++) { const a = rnd() * TAU, s = 30 + rnd() * 80; this.parts.push({ k: 1, x: x * W, y: y * H, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.8, c: [YEL, PINK, LIME, CYAN][i % 4] }); }
+      this.glitch = 0.25;
+    }
+    burst() { this.scatter = 1; this.glitch = 0.4; this.flash = Math.max(this.flash, 0.3); }
     next() { this.scene = (this.scene + 1) % SCENES.length; this.sceneLabel = 1.6; this.barOfScene = 0; this.prev.fill(0); }
     setPad(x, y) { this.pad = x == null ? null : [x, y]; }
 
@@ -617,7 +628,7 @@
       this.fade(t < 2.4 ? 0 : 0.45);
       if (t < 2.4) this.fill(0, 6, 2);
       // the grid: a neon floor scrolling under it all, from the BIOS on
-      this.cam(0, 6, -40, Math.sin(t * 0.4) * 0.15 + this.tilt[0] * 0.3, -0.12 + this.tilt[1] * 0.1, 140);
+      this.cam(0, 6 + (this.look || 0) * 10, -40, Math.sin(t * 0.4) * 0.15 + this.tilt[0] * 0.3, -0.12 + this.tilt[1] * 0.1 - (this.look || 0) * 0.3, 140);
       const gz = (t * 14) % 6, ga = clamp((t - 1.2) / 1, 0, 0.55);
       if (ga > 0) {
         for (let k = 0; k < 16; k++) { const a = this.proj(-60, -6, k * 6 - gz), b = this.proj(60, -6, k * 6 - gz); if (a && b) this.line(a[0], a[1], b[0], b[1], [255, 47, 180], ga * 0.6); }
@@ -643,11 +654,16 @@
       if (t > 2.2) {
         // (spinning in as it forms, then turning to face you, swaying)
         const f = clamp((t - 2.2) / 1.3, 0, 1), e = 1 - Math.pow(1 - f, 3);
-        const a = (1 - e) * TAU * 1.5 + Math.sin(t * 1.1) * 0.35 * e + this.tilt[0] * 0.6, ca = Math.cos(a), sa = Math.sin(a);
+        // (and the finger's: a drag spins it, coasting on after; two fingers scatter it, and it comes back)
+        if (!this.dragging) { this.spin = (this.spin || 0) + (this.spinV || 0) * this.dt; this.spinV = (this.spinV || 0) * Math.pow(0.25, this.dt); }
+        this.scatter = (this.scatter || 0) * Math.pow(0.12, this.dt);
+        const sc2 = this.scatter;
+        const a = (1 - e) * TAU * 1.5 + Math.sin(t * 1.1) * 0.35 * e * (Math.abs(this.spinV || 0) < 0.3 ? 1 : 0.2) + this.tilt[0] * 0.6 + (this.spin || 0), ca = Math.cos(a), sa = Math.sin(a);
         VOX.forEach((q, i) => {
           const r0 = 55 + hash(i, 7) * 40, u = hash(i, 3) * TAU, w = (hash(i, 5) - 0.5) * Math.PI;
           const sx = Math.cos(w) * Math.cos(u) * r0, sy = Math.sin(w) * r0, sz = Math.cos(w) * Math.sin(u) * r0;
-          const x = sx + (q.x * 1.0 - sx) * e, y = sy + (q.y * 1.0 + 12 - sy) * e, z = sz + (q.z * 1.0 - sz) * e;
+          const ee = e * (1 - sc2 * 0.85);
+          const x = sx + (q.x * 1.0 - sx) * ee, y = sy + (q.y * 1.0 + 12 - sy) * ee, z = sz + (q.z * 1.0 - sz) * ee;
           const rx = x * ca - z * sa, rz = x * sa + z * ca, p = this.proj(rx, y, rz);
           if (!p) return;
           const c = e < 0.9 ? [60 + 195 * e, 255, 120 + 60 * (1 - e)] : q.c;
@@ -666,10 +682,20 @@
           this.text5(ch, x0 + i * 6 * k + dx, y0, k, i < 4 ? WHITE : YEL);
         }
         if (t > 3.8 && Math.floor(t * 2.5) % 2 === 0) this.text3("SYSTEM READY", W / 2 - 24, y0 + 19, [60, 255, 120]);
+        if (t > 5) { const a = clamp((t - 5) / 0.6, 0, 1) * 0.75; this.text3("DRAG TO SPIN", 4, H - 8, [140, 120, 200], a); this.text3("TAP TO PLAY", W - 4 - 11 * 4, H - 8, [140, 120, 200], a); }
         if (t > 3.8 && !this.ready) { this.ready = true; if (this.hooks.onReady) this.hooks.onReady(); }
       }
-      // glitch bands, now and then
-      if (!calm && rnd() < 0.08) { const y = (rnd() * H) | 0, h = 2 + ((rnd() * 6) | 0), dx = ((rnd() - 0.5) * 20) | 0; for (let yy = y; yy < Math.min(H, y + h); yy++) for (let x = 0; x < W; x++) { const xs = clamp(x - dx, 0, W - 1), i = (yy * W + x) * 3, j = (yy * W + xs) * 3; B[i] = B[j + 2]; B[i + 1] = B[j]; } }
+      // the taps: rings spreading across the floor's colours, and their sparks
+      for (const r of this.ripples || []) {
+        r.t += this.dt;
+        const rad = r.t * 120, al = Math.max(0, 1 - r.t / 0.9);
+        for (let k = 0; k < 64; k++) { const ang = (k / 64) * TAU; this.add(r.x + Math.cos(ang) * rad, r.y + Math.sin(ang) * rad * 0.55, r.c, al); this.add(r.x + Math.cos(ang) * rad * 0.6, r.y + Math.sin(ang) * rad * 0.33, r.c, al * 0.5); }
+      }
+      this.ripples = (this.ripples || []).filter((r) => r.t < 0.9);
+      this.particles(this.dt);
+      this.glitch = Math.max(0, (this.glitch || 0) - this.dt);
+      // glitch bands, now and then (a burst of them on a tap)
+      if (!calm && rnd() < 0.08 + (this.glitch || 0) * 2) { const y = (rnd() * H) | 0, h = 2 + ((rnd() * 6) | 0), dx = ((rnd() - 0.5) * 20) | 0; for (let yy = y; yy < Math.min(H, y + h); yy++) for (let x = 0; x < W; x++) { const xs = clamp(x - dx, 0, W - 1), i = (yy * W + x) * 3, j = (yy * W + xs) * 3; B[i] = B[j + 2]; B[i + 1] = B[j]; } }
     }
 
     // --------------------------------------------------------------------------------------------- a frame ---
@@ -686,6 +712,7 @@
           return;
         }
         this.bootT += dt;
+        this.flash *= Math.pow(0.0015, dt); this.accent *= Math.pow(0.05, dt); this.shake *= Math.pow(0.0005, dt);   // (the toy's flashes fade)
         if (this.calm && this.bootT < 3.9) this.bootT = 3.9;
         this.bootScene();
         this.post();

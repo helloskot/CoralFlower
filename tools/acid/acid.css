@@ -160,7 +160,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .tabs button, .rave-btn, .tilt-btn { display: inline-flex; align-items: center; gap: 8px; }
 /* the power-on: the boot's own pixel picture, the whole screen */
 .gate__boot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; }
-.gate { background: #000; }
+.gate { background: #000; touch-action: none; }
 .gate p { text-shadow: 0 1px 6px #000; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .tilt-btn { flex-basis: auto; padding: 0 14px; font-size: 14px; color: var(--cyan); letter-spacing: .06em; text-transform: uppercase; }

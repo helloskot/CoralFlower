@@ -559,10 +559,51 @@
     boot.power();
     bootSnd.play(boot.calm ? globalThis.AcidBootSound.READY - 0.02 : 0);
   });
+  // the start screen, booting: a tap skips to SYSTEM READY (its chord too); ready: a toy (rave.js) with notes from here
+  const gateTouch = new Map();
+  const gatePt = (e) => {                                 // a touch on the boot picture: 0..1 across it (it is fitted, not cropped)
+    const r = $("boot").getBoundingClientRect(), k = Math.min(r.width / 240, r.height / 150), w = 240 * k, h = 150 * k;
+    return [(e.clientX - r.left - (r.width - w) / 2) / w, (e.clientY - r.top - (r.height - h) / 2) / h];
+  };
+  const PENTA = [0, 3, 5, 7, 10];
+  const pluck = (x, y, low) => {                          // an acid pluck: a saw through a resonant filter that snaps shut
+    if (!ctx) return;
+    const now = ctx.currentTime, step = Math.round(Math.max(0, Math.min(1, x)) * 10), midi = (low ? 33 : 45) + PENTA[step % 5] + 12 * Math.floor(step / 5);
+    const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = "sawtooth"; o.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+    f.type = "lowpass"; f.Q.value = 14;
+    const top = 400 + (1 - Math.max(0, Math.min(1, y))) * 4600;
+    f.frequency.setValueAtTime(top, now); f.frequency.exponentialRampToValueAtTime(140, now + 0.32);
+    g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(low ? 0.4 : 0.22, now + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, now + (low ? 0.7 : 0.4));
+    o.connect(f); f.connect(g); g.connect(ctx.destination);
+    o.start(now); o.stop(now + 0.75);
+  };
   $("gate").addEventListener("pointerdown", (e) => {
-    if (e.target.closest("button") || !boot.powered || boot.ready) return;
-    boot.skip(); bootSnd.play(globalThis.AcidBootSound.READY - 0.02);   // (straight to SYSTEM READY, its chord too)
+    if (e.target.closest("button") || !boot.powered) return;
+    if (!boot.ready) { boot.skip(); bootSnd.play(globalThis.AcidBootSound.READY - 0.02); return; }   // (straight to SYSTEM READY)
+    e.preventDefault();
+    const [x, y] = gatePt(e);
+    gateTouch.set(e.pointerId, { x, y, x0: x, y0: y, moved: false });
+    try { $("gate").setPointerCapture(e.pointerId); } catch {}
+    if (gateTouch.size === 2) { boot.burst(); pluck(0.2, 0.9, true); pluck(0.6, 0.9, true); }
+    else boot.grab();
   });
+  $("gate").addEventListener("pointermove", (e) => {
+    const p = gateTouch.get(e.pointerId);
+    if (!p) return;
+    const [x, y] = gatePt(e);
+    if (Math.abs(x - p.x0) + Math.abs(y - p.y0) > 0.02) p.moved = true;
+    if (gateTouch.size === 1) boot.spinBy(x - p.x, y - p.y);
+    p.x = x; p.y = y;
+  });
+  const gateUp = (e) => {
+    const p = gateTouch.get(e.pointerId);
+    if (!p) return;
+    gateTouch.delete(e.pointerId);
+    if (!gateTouch.size) boot.release();
+    if (!p.moved && e.type === "pointerup" && gateTouch.size === 0) { boot.tap(p.x, p.y); pluck(p.x, p.y, false); }
+  };
+  $("gate").addEventListener("pointerup", gateUp); $("gate").addEventListener("pointercancel", gateUp);
 
   // ------------------------------------------------------------------------------------------- the tilt ---
   // lean the iPad to play the filter: left / right the cutoff, towards / away the resonance, about the way it was

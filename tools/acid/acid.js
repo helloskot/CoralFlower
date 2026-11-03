@@ -320,7 +320,13 @@
     bassEl.hidden = t.dataset.tab !== "bass";
     drumsEl.hidden = t.dataset.tab !== "drums";
     $("punch").hidden = t.dataset.tab !== "punch";
-    document.querySelector(".tools").style.visibility = t.dataset.tab === "punch" ? "hidden" : "";
+    app.classList.toggle("is-tab-filter", t.dataset.tab === "filter");   // (short phones: the filter has its own tab)
+    document.querySelector(".tools").style.visibility = t.dataset.tab === "punch" || t.dataset.tab === "filter" ? "hidden" : "";
+  });
+  // the Filter tab only shows on short phones: on a bigger screen (a turn, an unfold) it hands back to the bass line
+  addEventListener("resize", () => {
+    const f = document.querySelector('[data-tab="filter"]');
+    if (app.classList.contains("is-tab-filter") && !f.getClientRects().length) runAct(document.querySelector('[data-tab="bass"]'));
   });
   const tab = () => (!bassEl.hidden ? "bass" : "drums");
   act("#wave", () => { S.params.wave = S.params.wave ? 0 : 1; sendParams(); save(); drawAll(); });
@@ -431,6 +437,10 @@
     rave.event(m);
     if (m.step !== lastStep) {
       lastStep = m.step; markStep(m.step);
+      // the Play buttons pulse on the beat, harder on the bar's first
+      if (m.step >= 0 && m.step % 4 === 0) for (const b of [$("play"), $("ravePlay")]) {
+        b.classList.remove("beat", "down"); void b.offsetWidth; b.classList.add("beat"); if (m.step === 0) b.classList.add("down");
+      }
       if (m.step === 0 && nextSlot >= 0) { S.cur = nextSlot; nextSlot = -1; save(); drawAll(); }
     }
     for (let l = 0; l < LANES.length; l++) if (m.hits & (1 << l)) {
@@ -486,6 +496,7 @@
       x.setAttribute("aria-pressed", String(x.dataset.v === pref(s.dataset.pref, PREF_DEF[s.dataset.pref])))));
     rave.auto = pref("scenes", PREF_DEF.scenes) === "auto";
     rave.calm = pref("motion", PREF_DEF.motion) === "calm";
+    app.classList.toggle("is-calm", rave.calm);
   };
   document.querySelectorAll(".seg[data-pref]").forEach((s) => s.addEventListener("click", (e) => {
     const x = e.target.closest("button");
@@ -531,6 +542,7 @@
   const ICONS = {
     bass: [["............", "............", "....L.....L.", "...LL....LL.", "..L.L...L.L.", ".L..L..L..L.", "L...L.L...L.", "....GG....GG", "....G.....G.", "............", "............", "............"], { L: "#B4FF2B", G: "#5FA81A" }],
     drums: [["S.........S.", ".S.......S..", "..S.....S...", "...S...S....", "..RRRRRRRR..", ".RWWWWWWWWR.", ".RRRRRRRRRR.", ".YYOYYOYYOY.", ".YOYYOYYOYY.", ".YYOYYOYYOY.", ".RRRRRRRRRR.", "............"], { S: "#E8D6B0", R: "#FF8A1F", W: "#FFFFFF", Y: "#FFE100", O: "#FF8A1F" }],
+    filter: [["............", ".....C......", ".....C......", ".....C......", ".....C......", "CCCC.LL.CCCC", ".....LL.....", ".....C......", ".....C......", ".....C......", ".....C......", "............"], { C: "#2BF0FF", L: "#B4FF2B" }],
     punch: [["......PPPP..", ".....PPPP...", "....PPPP....", "...PPPP.....", "..PPPPPPPP..", ".....PPPP...", "....PPPP....", "...PPPP.....", "..PPP.......", "..PP........", ".P..........", "............"], { P: "#FF2FB4" }],
     rave: [["...YYYYYY...", "..YYYYYYYY..", ".YYYYYYYYYY.", "YYYKYYYYKYYY", "YYYKYYYYKYYY", "YYYYYYYYYYYY", "YYKYYYYYYKYY", "YYYKYYYYKYYY", ".YYYKKKKYYY.", "..YYYYYYYY..", "...YYYYYY...", "............"], { Y: "#FFE100", K: "#110A02" }],
     tilt: [["..AAAAAA....", ".A......A...", "A........A.A", "A.........AA", "........AAA.", "............", ".CCCCCCCCCC.", ".C........C.", ".C.DDDDDD.CC", ".C........C.", ".CCCCCCCCCC.", "............"], { C: "#2BF0FF", A: "#9FF8FF", D: "#1A8F99" }],
@@ -541,7 +553,7 @@
     g.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col[ch]}"/>`; }));
     return `<svg class="pix" viewBox="0 0 12 12" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
   };
-  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"]]) {
+  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"]]) {
     const el = document.querySelector(sel);
     el.innerHTML = iconSvg(name) + `<span>${el.textContent}</span>`;
   }

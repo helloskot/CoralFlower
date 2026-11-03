@@ -332,3 +332,65 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 :root.fold-lr .gate__boot { width: var(--seg-left-w); right: auto; }
 :root.fold-lr .gate__power { left: calc(var(--seg-left-w) / 2); }
 :root.fold-lr .gate__card { margin-left: calc(var(--seg-left-w) + var(--hinge-w)); }
+
+/* -- the Play button pulses: breathing while stopped (tap me), and on the beat while it plays (the bar's first
+ * harder); not in Calm, nor with reduced motion -- */
+.play:not([aria-pressed="true"]) { animation: invite 1.8s ease-in-out infinite; }
+@keyframes invite { 0%, 100% { box-shadow: 0 0 0 0 rgba(180, 255, 43, 0); transform: scale(1); }
+                    50% { box-shadow: 0 0 22px 5px rgba(180, 255, 43, .6); transform: scale(1.045); } }
+.play.beat, .rave__b.beat { animation: beat .26s ease-out; }
+.play.beat.down, .rave__b.beat.down { animation: downbeat .36s ease-out; }
+@keyframes beat { from { box-shadow: 0 0 20px 4px rgba(255, 47, 180, .75); transform: scale(1.06); filter: brightness(1.2); } to { box-shadow: 0 0 0 0 rgba(255, 47, 180, 0); transform: scale(1); filter: none; } }
+@keyframes downbeat { from { box-shadow: 0 0 34px 10px rgba(255, 225, 0, .85); transform: scale(1.1); filter: brightness(1.35); } to { box-shadow: 0 0 0 0 rgba(255, 225, 0, 0); transform: scale(1); filter: none; } }
+.app.is-calm .play, .app.is-calm .rave__b { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .play, .rave__b { animation: none !important; } }
+
+/* -- the Filter tab: only on short phones (below) -- */
+.tab-filter { display: none !important; }
+
+/* -- short phones, portrait (iPhone SE, 8): the rave and the pattern; the filter (pad and strips) its own tab -- */
+@media (max-width: 600px) and (orientation: portrait) and (max-height: 760px) {
+  .app { grid-template-rows: auto minmax(90px, .55fr) minmax(0, 1.6fr); grid-template-areas: "bar" "rave" "edit"; }
+  .perf { display: none; }
+  .tab-filter { display: inline-flex !important; }
+  .tabs { flex-wrap: nowrap; gap: 4px; }
+  .tabs button { padding: 0 7px; }
+  .tabs button span { font-size: 12px; }
+  .app.is-tab-filter .perf { display: grid; grid-area: edit; margin-top: 44px; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .app.is-tab-filter .strips { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .bass { row-gap: 6px; }
+  .st { grid-template-rows: auto minmax(26px, 1fr) repeat(3, minmax(20px, .5fr)); }
+}
+@media (max-width: 360px) and (orientation: portrait) {
+  .tabs button span { display: none; }
+  .strip--bar { padding: 2px 20px; } .strip--bar b { font-size: 9px; }
+}
+
+/* -- narrow phones, landscape (iPhone SE, 8): more room for the pattern, icon tabs, a slimmer bar -- */
+@media (max-height: 500px) and (orientation: landscape) and (max-width: 700px) {
+  .app { grid-template-columns: minmax(0, .62fr) minmax(0, 1.38fr); }
+  .logo { display: none; }
+  .play { padding: 0 9px; }
+  .strip--bar { flex-basis: 70px; padding: 1px 18px; }
+  .strip--bar .strip__l, .strip--bar .strip__r { width: 16px; }
+  .slots { gap: 3px; } .slot { font-size: 12px; }
+  .tabs button span { display: none; }
+  .tabs button { padding: 0 8px; }
+  .tools { flex-wrap: wrap; gap: 4px; }
+  .tool, .stepper { font-size: 11px; padding: 0 6px; }
+  .strips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* -- the smallest phones, portrait (the first iPhone SE): everything a little tighter -- */
+@media (max-width: 600px) and (orientation: portrait) and (max-height: 600px) {
+  .app { grid-template-rows: auto minmax(70px, .4fr) minmax(0, 1.7fr); }
+  .play, .slot { min-height: 34px; }
+  .st { grid-template-rows: auto minmax(22px, 1fr) repeat(3, minmax(17px, .45fr)); gap: 2px; }
+  .st__n { font-size: 9px; }
+  .bass { row-gap: 4px; }
+  .edit__head .tabs button { min-height: 32px; }
+}
+@media (max-width: 360px) and (orientation: portrait) {
+  .play span { display: none; }            /* (Play as its icon alone: the bar on one line at 320 px) */
+  .play { padding: 0 12px; }
+  .bar { gap: 4px; }
+}

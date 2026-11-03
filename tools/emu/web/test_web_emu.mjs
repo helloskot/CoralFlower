@@ -189,6 +189,15 @@ console.log(`  version: ${(() => { const m = new Uint8Array(ex.memory.buffer, ex
 const w0 = ex.web_lcd_writes();
 ex.web_boot();
 ok(ex.web_lcd_writes() > w0, "boot: the LCD was written");
+{ // the key caps and knobs the iPad instrument shows (web_keycaps, web_knobs): Top + Lock's buttons and roots, HOME's knobs
+  const cs = (u8, o, n) => { let s = ""; for (let i = o; i < o + n && u8[i]; i++) s += u8[i] >= 0x10 && u8[i] <= 0x19 ? "^" + (u8[i] - 0x10) : String.fromCharCode(u8[i]); return s; };
+  ex.web_step(30);
+  const c = new Uint8Array(ex.memory.buffer, ex.web_keycaps(), 27 * 20).slice(), k = new Uint8Array(ex.memory.buffer, ex.web_knobs(), 128).slice();
+  const cap = (i) => cs(c, 20 * i, 8), knob = (i) => cs(k, 32 * i, 12) + "=" + cs(k, 32 * i + 12, 14);
+  ok(cap(25) === "HOLD" && c[20 * 25 + 17] === 1 && cap(7) === "C" && cs(c, 20 * 7 + 8, 8) === "1" && cap(22) === "m" && c[20 * 7 + 17] === 0,
+     `web_keycaps: ${[1, 3, 13, 20, 22, 25].map(cap).join(" ")} on the chord keys, ${[0, 2, 7].map(cap).join(" ")} on the roots`);
+  ok(knob(0) === "QUANTIZE=Basic" && knob(3).startsWith("GLIDE="), `web_knobs: ${[0, 1, 2, 3].map(knob).join(", ")}`);
+}
 const log = [];
 const t0 = performance.now();
 const run = runScript(ex, SCRIPT, log);

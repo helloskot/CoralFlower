@@ -1,0 +1,97 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- CoralFlower for iPad: the real firmware (../play/coralflower.wasm in ../play/worklet.js) as a full-screen touch
+     instrument, a Home Screen web app (manifest.webmanifest, sw.js: it works offline after the first visit). The pads
+     and knob strips show what the firmware itself draws on its screen's key caps and knob row (emu_web.c web_keycaps,
+     web_knobs). tools/make_site.sh puts it in ipad/. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>CoralFlower</title>
+<meta name="description" content="CoralFlower, the chord instrument, for iPad: the real CoralFlower firmware, played with your fingers.">
+<meta name="theme-color" content="#110A02">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CoralFlower">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="preload" href="../fonts/DepartureMono.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main class="app" id="app" aria-label="CoralFlower">
+  <nav class="screens" aria-label="Screens">
+    <button class="sbtn" data-b="0" type="button"><span>Effects</span></button>
+    <button class="sbtn" data-b="1" type="button"><span>Chord</span></button>
+    <button class="sbtn" data-b="2" type="button"><span>Envelope</span></button>
+    <button class="sbtn" data-b="3" type="button"><span>Bass</span></button>
+    <button class="sbtn" data-b="4" type="button"><span>Sound</span></button>
+    <button class="sbtn" data-b="5" type="button"><span>Global</span></button>
+    <i class="screens__gap"></i>
+    <button class="sbtn sbtn--home" data-b="6" type="button"><span>Home</span></button>
+    <button class="sbtn" data-b="7" type="button"><span>Save</span></button>
+    <button class="sbtn" data-b="8" type="button"><span>Arp</span></button>
+    <button class="sbtn" data-b="9" type="button"><span>Seq</span></button>
+    <button class="sbtn sbtn--menu" id="menuBtn" type="button" aria-label="Menu" aria-haspopup="dialog">&#8943;</button>
+  </nav>
+
+  <section class="dials" aria-label="Sounds and volume">
+    <div class="enc" data-e="2" role="slider" aria-label="Chord sound" tabindex="-1"><b>Chord sound</b><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
+    <div class="enc" data-e="0" role="slider" aria-label="Bass sound" tabindex="-1"><b>Bass sound</b><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
+    <div class="enc" data-e="1" role="slider" aria-label="Algorithm" tabindex="-1"><b>Algorithm</b><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
+    <div class="enc enc--vol" data-e="7" role="slider" aria-label="Volume" tabindex="-1"><b>Volume</b><span class="enc__fill" id="volFill"></span></div>
+  </section>
+
+  <section class="screen" aria-label="The CoralFlower screen">
+    <canvas id="lcd" width="240" height="240" aria-hidden="true"></canvas>
+    <canvas id="view" width="240" height="157" role="img" aria-label="The CoralFlower screen (tap to see all of it)"></canvas>
+  </section>
+
+  <section class="knobs" aria-label="Knobs 1 to 4">
+    <div class="enc enc--knob" data-e="3" role="slider" tabindex="-1"><b>K1</b><em></em><span class="enc__bar"></span><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
+    <div class="enc enc--knob" data-e="4" role="slider" tabindex="-1"><b>K2</b><em></em><span class="enc__bar"></span><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
+    <div class="enc enc--knob" data-e="5" role="slider" tabindex="-1"><b>K3</b><em></em><span class="enc__bar"></span><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
+    <div class="enc enc--knob" data-e="6" role="slider" tabindex="-1"><b>K4</b><em></em><span class="enc__bar"></span><i class="enc__l">&#9664;</i><i class="enc__r">&#9654;</i></div>
+  </section>
+
+  <section class="pads" aria-label="Keys">
+    <div class="row row--upper" id="upper">
+      <button class="tbtn" data-b="12" type="button">Oct&minus;</button>
+      <button class="tbtn" data-b="13" type="button">Oct+</button>
+      <!-- the 11 upper keys go here (app.js) -->
+      <button class="tbtn tbtn--play" data-b="10" type="button">Play</button>
+      <button class="tbtn tbtn--rec" data-b="11" type="button">Rec</button>
+    </div>
+    <div class="row row--lower" id="lower"></div>
+  </section>
+</main>
+
+<div class="gate" id="gate">
+  <div class="gate__card">
+    <img src="../favicon.svg" width="72" height="72" alt="">
+    <h1><span class="a">Coral</span><span class="b">Flower</span></h1>
+    <p class="gate__status" id="status" role="status">Loading&hellip;</p>
+    <button class="gate__go" id="start" type="button" disabled>Play</button>
+    <p class="gate__hint" id="a2hs" hidden>For a full-screen instrument with its own icon: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
+  </div>
+</div>
+
+<dialog class="menu" id="menu" aria-labelledby="menuTitle">
+  <h2 id="menuTitle"><span class="a">Coral</span><span class="b">Flower</span> <small id="ver"></small></h2>
+  <p>The upper pads choose the chord, the lower pads play it. Drag a knob strip up or down, or tap its arrows. Tap the screen to see all of it.</p>
+  <p>Your settings, sounds and patterns are saved on this iPad.</p>
+  <div class="menu__row">
+    <button type="button" id="fullView">Show the whole screen</button>
+    <button type="button" id="reset">Clear saved data</button>
+  </div>
+  <p class="menu__fine">Free software under the GPL-3.0. CoralFlower is firmware for the M-VAVE FM-1; <a href="../" target="_blank" rel="noopener">install it on yours</a>.</p>
+  <form method="dialog"><button class="menu__close">Close</button></form>
+</dialog>
+
+<script src="../play/keymap.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

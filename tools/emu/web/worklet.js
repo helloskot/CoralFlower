@@ -5,6 +5,11 @@
 // LCD when it was written) go out; MIDI out packets go out as they come; the flash goes out a second after it
 // last changed (the page keeps it in IndexedDB).
 
+const same = (a, b) => {
+  if (!b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+};
 const clock = globalThis.performance ? () => globalThis.performance.now() : () => Date.now();
 
 class FM1 extends AudioWorkletProcessor {
@@ -18,6 +23,9 @@ class FM1 extends AudioWorkletProcessor {
     this.midiIn = [];
     this.dirty = 0;
     this.dirtyAt = -1;
+    this.caps = false;                               // the key caps and knobs (the iPad instrument asks for them)
+    this.capsSent = null;
+    this.knobsSent = null;
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
 
@@ -46,6 +54,7 @@ class FM1 extends AudioWorkletProcessor {
           ex.web_flash_stage_len(m.flash.byteLength);
         }
         if (m.master != null) ex.web_master(m.master | 0);
+        this.caps = !!m.caps && typeof ex.web_keycaps === "function";
         ex.web_boot();
         this.dirty = ex.web_flash_dirty();
         const v = new Uint8Array(this.mem.buffer, ex.web_version(), 64);
@@ -81,6 +90,12 @@ class FM1 extends AudioWorkletProcessor {
       this.sentWrites = writes;
       msg.fb = new Uint16Array(this.mem.buffer, ex.web_fb(), 240 * 240).slice();
       transfer.push(msg.fb.buffer);
+    }
+    if (this.caps) {                                 // the key caps and the knobs, when they changed
+      const caps = new Uint8Array(this.mem.buffer, ex.web_keycaps(), 27 * 20);
+      if (!same(caps, this.capsSent)) { this.capsSent = caps.slice(); msg.caps = this.capsSent.slice(); }
+      const knobs = new Uint8Array(this.mem.buffer, ex.web_knobs(), 4 * 32);
+      if (!same(knobs, this.knobsSent)) { this.knobsSent = knobs.slice(); msg.knobs = this.knobsSent.slice(); }
     }
     const d = ex.web_flash_dirty();                  // the flash: saved a second after the last erase / program
     if (d !== this.dirty) { this.dirty = d; this.dirtyAt = currentTime; }

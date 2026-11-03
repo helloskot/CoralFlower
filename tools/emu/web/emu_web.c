@@ -271,6 +271,57 @@ WEB_EXPORT uint8_t *web_leds(void)
     return leds;
 }
 
+/* the key caps and the four knobs as the screen draws them (cf_draw.c, from cf_ui.c's ui_keycap / ui_knob_info), for
+ * a page that shows them on its own controls (the iPad instrument, tools/emu/ipad):
+ *   web_keycaps: 27 x 20 bytes, key 0..26: top[8] bot[8] (NUL-ended; bytes 0x10..0x19 are the small raised digits
+ *                0..9), style (KC_ROOT BTN ON DOWN OFF SOUNDING SCALE), btn (a chord button), icon (a drum, 1 + lane), 0
+ *   web_knobs:   4 x 32 bytes, K1..K4: name[12] val[14], bar (int16 little-endian, 0..255, -1 none), dis, sel, 0, 0 */
+static uint8_t caps_out[EMU_NKEY * 20];
+WEB_EXPORT uint8_t *web_keycaps(void)
+{
+    int k;
+    memset(caps_out, 0, sizeof caps_out);
+    if (!booted)
+        return caps_out;
+    for (k = 0; k < EMU_NKEY; k++) {
+        cf_keycap_t c;
+        uint8_t *o = caps_out + 20 * k;
+        memset(&c, 0, sizeof c);
+        c.style = KC_ROOT;
+        ui_keycap(k, &c);
+        c.top[7] = c.bot[7] = 0;
+        memcpy(o, c.top, 8);
+        memcpy(o + 8, c.bot, 8);
+        o[16] = c.style;
+        o[17] = c.btn;
+        o[18] = c.icon;
+    }
+    return caps_out;
+}
+static uint8_t knobs_out[4 * 32];
+WEB_EXPORT uint8_t *web_knobs(void)
+{
+    int k;
+    memset(knobs_out, 0, sizeof knobs_out);
+    if (!booted)
+        return knobs_out;
+    for (k = 0; k < 4; k++) {
+        cf_knob_t o;
+        uint8_t *p = knobs_out + 32 * k;
+        memset(&o, 0, sizeof o);
+        o.bar = -1;
+        ui_knob_info(k, &o);
+        o.name[11] = o.val[13] = 0;
+        memcpy(p, o.name, 12);
+        memcpy(p + 12, o.val, 14);
+        p[26] = (uint8_t)(o.bar & 0xff);
+        p[27] = (uint8_t)((o.bar >> 8) & 0xff);
+        p[28] = o.dis;
+        p[29] = o.sel;
+    }
+    return knobs_out;
+}
+
 /* MIDI: USB-MIDI event packets (byte 0 = cable << 4 | CIN in bits 0..7, then status, data1, data2) */
 WEB_EXPORT uint32_t web_midi_out_take(void)
 {

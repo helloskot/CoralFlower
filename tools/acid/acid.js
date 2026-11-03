@@ -66,6 +66,7 @@
       sendPattern();
       await ctx.resume();
       $("gate").hidden = true;
+      boot.stop();
     } catch (err) {
       $("start").textContent = "Couldn’t start: " + err.message;
     }
@@ -296,8 +297,10 @@
     document.querySelectorAll("[data-tab]").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
     bassEl.hidden = t.dataset.tab !== "bass";
     drumsEl.hidden = t.dataset.tab !== "drums";
+    $("punch").hidden = t.dataset.tab !== "punch";
+    document.querySelector(".tools").style.visibility = t.dataset.tab === "punch" ? "hidden" : "";
   });
-  const tab = () => (bassEl.hidden ? "drums" : "bass");
+  const tab = () => (!bassEl.hidden ? "bass" : "drums");
   act("#wave", () => { S.params.wave = S.params.wave ? 0 : 1; sendParams(); save(); drawAll(); });
   act("[data-tune]", (x) => { S.params.tune = Math.max(-12, Math.min(12, S.params.tune + +x.dataset.tune)); sendParams(); save(); drawAll(); });
   act("[data-len]", (x) => { pat().len = Math.max(1, Math.min(16, pat().len + +x.dataset.len)); edited(); drawAll(); });
@@ -343,6 +346,54 @@
     else pat().drums = grid([]);
     edited(); drawAll();
   });
+
+  // ------------------------------------------------------------------------------------------ the punch-ins ---
+  // twelve effects on the whole mix, each on while a finger (or a key) holds it; a finger can slide from pad to pad
+  const FXS = [["Repeat", "1/8", "#FFE100"], ["Repeat", "1/16", "#FFE100"], ["Roll", "1/32", "#FFE100"], ["Reverse", "back", "#2BF0FF"],
+               ["Tape", "stop", "#2BF0FF"], ["Lowpass", "sweep", "#FF2FB4"], ["Highpass", "sweep", "#FF2FB4"], ["Crush", "bits", "#FF8A1F"],
+               ["Gate", "1/16", "#FF8A1F"], ["Echo", "throw", "#B4FF2B"], ["Bass", "out", "#B4FF2B"], ["Drums", "out", "#B4FF2B"]];
+  const FXKEYS = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9", "Digit0", "Minus", "Equal"];
+  const fxSrc = FXS.map(() => new Set()), fxEls = FXS.map(() => []);
+  let fxSent = -1;
+  const fxPublish = () => {
+    let m = 0;
+    fxSrc.forEach((s, i) => s.size && (m |= 1 << i));
+    if (m !== fxSent) { fxSent = m; post({ type: "fx", mask: m }); }
+    fxEls.forEach((list, i) => list.forEach((e) => e.classList.toggle("is-on", fxSrc[i].size > 0)));
+  };
+  const fxHold = (i, src, down) => { if (!fxSrc[i]) return; down ? fxSrc[i].add(src) : fxSrc[i].delete(src); fxPublish(); };
+  for (const box of [$("punch"), $("ravePunch")]) {
+    FXS.forEach(([a, b2, c], i) => {
+      const d = document.createElement("div");
+      d.className = "fxp"; d.dataset.fx = i; d.style.setProperty("--c", c); d.setAttribute("role", "button"); d.setAttribute("aria-label", a + " " + b2);
+      d.innerHTML = `<kbd>${["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="][i]}</kbd><b>${a}</b><small>${b2}</small>`;
+      box.appendChild(d); fxEls[i].push(d);
+    });
+    const held = new Map();
+    box.addEventListener("pointerdown", (e) => {
+      const d = e.target.closest(".fxp");
+      if (!d) return;
+      e.preventDefault(); e.stopPropagation();
+      held.set(e.pointerId, +d.dataset.fx); fxHold(+d.dataset.fx, "p" + e.pointerId, true);
+      try { box.setPointerCapture(e.pointerId); } catch {}
+    });
+    box.addEventListener("pointermove", (e) => {
+      if (!held.has(e.pointerId)) return;
+      const el = document.elementFromPoint(e.clientX, e.clientY), d = el && el.closest && el.closest(".fxp");
+      if (!d || !box.contains(d) || +d.dataset.fx === held.get(e.pointerId)) return;
+      fxHold(held.get(e.pointerId), "p" + e.pointerId, false); held.set(e.pointerId, +d.dataset.fx); fxHold(+d.dataset.fx, "p" + e.pointerId, true);
+    });
+    const end = (e) => { if (!held.has(e.pointerId)) return; fxHold(held.get(e.pointerId), "p" + e.pointerId, false); held.delete(e.pointerId); };
+    box.addEventListener("pointerup", end); box.addEventListener("pointercancel", end);
+  }
+  addEventListener("keydown", (e) => {
+    const i = FXKEYS.indexOf(e.code);
+    if (i < 0 || e.repeat || e.metaKey || e.ctrlKey || $("menu").open) return;
+    e.preventDefault(); fxHold(i, "k", true);
+  });
+  addEventListener("keyup", (e) => { const i = FXKEYS.indexOf(e.code); if (i >= 0) fxHold(i, "k", false); });
+  addEventListener("blur", () => { fxSrc.forEach((s) => s.clear()); fxPublish(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { fxSrc.forEach((s) => s.clear()); fxPublish(); } });
 
   // ------------------------------------------------------------------------------------------ the display ---
   // the pixel rave is rave.js; here: the playhead on the editor, the queued pattern taking over at the bar, the drums'
@@ -452,5 +503,52 @@
   if (!standalone && navigator.maxTouchPoints > 0) $("a2hs").hidden = false;
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   drawAll();
-  window.acid = { state: () => S, playing: () => playing, viz: () => viz, rave };
+  // ------------------------------------------------------------------------------------------- the boot ---
+  // the start screen: the machine powering on (rave.js bootScene), then its button; a tap skips ahead
+  const boot = new globalThis.AcidRave($("boot"), { pattern: () => pat(), params: () => S.params, slot: () => S.cur, playing: () => false,
+                                                    onReady: () => $("gate").classList.add("is-ready") }, { boot: true });
+  boot.calm = rave.calm;
+  boot.start();
+  $("gate").addEventListener("pointerdown", (e) => { if (!e.target.closest("button")) boot.skip(); });
+
+  // ------------------------------------------------------------------------------------------- the tilt ---
+  // lean the iPad to play the filter: left / right the cutoff, towards / away the resonance, about the way it was
+  // held when Tilt went on; the picture leans with it. (iPadOS asks first: from the tap itself, a click.)
+  let tiltOn = false, tiltZero = null, tiltS = [0, 0];
+  const tiltAxes = (e) => {
+    const ang = (screen.orientation && screen.orientation.angle != null ? screen.orientation.angle : window.orientation || 0) | 0;
+    const b = e.beta || 0, g = e.gamma || 0;
+    return ang === 90 ? [b, -g] : ang === -90 || ang === 270 ? [-b, g] : ang === 180 ? [-g, -b] : [g, b];
+  };
+  const onTilt = (e) => {
+    if (!tiltOn || e.beta == null) return;
+    const [x, y] = tiltAxes(e);
+    if (!tiltZero) tiltZero = [x, y];
+    const dx = clamp1((x - tiltZero[0]) / 28), dy = clamp1((y - tiltZero[1]) / 28);
+    tiltS[0] += (dx - tiltS[0]) * 0.35; tiltS[1] += (dy - tiltS[1]) * 0.35;
+    S.params.cutoff = clamp01(tiltBase[0] + tiltS[0] * 0.5); S.params.reso = clamp01(tiltBase[1] - tiltS[1] * 0.5);
+    rave.tilt = [tiltS[0], tiltS[1]];
+    sendParams(); save(); drawXY();
+  };
+  const clamp1 = (v) => (v < -1 ? -1 : v > 1 ? 1 : v);
+  let tiltBase = [0.5, 0.5];
+  const setTilt = (on) => {
+    tiltOn = on; tiltZero = null; tiltS = [0, 0]; rave.tilt = [0, 0];
+    tiltBase = [S.params.cutoff, S.params.reso];
+    $("tiltBtn").setAttribute("aria-pressed", String(on));
+  };
+  $("tiltBtn").addEventListener("click", async () => {
+    if (tiltOn) return setTilt(false);
+    try {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function") {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== "granted") { alert("Tilt needs motion access: allow it when asked (or in Settings, Safari, Motion & Orientation Access)."); return; }
+      } else if (!("DeviceOrientationEvent" in window)) { alert("This device has no tilt sensor."); return; }
+    } catch (err) { alert("Tilt isn\u2019t available here: " + err.message); return; }
+    if (!tiltListening) { addEventListener("deviceorientation", onTilt); tiltListening = true; }
+    setTilt(true);
+  });
+  let tiltListening = false;
+
+  window.acid = { state: () => S, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn };
 })();

@@ -16,7 +16,7 @@ function load() {
   const posted = [];
   class AudioWorkletProcessor { constructor() { this.port = { postMessage: (m) => posted.push(m), onmessage: null }; } }
   const ctx = vm.createContext({ AudioWorkletProcessor, registerProcessor: (n, c) => { Proc = c; }, sampleRate: SR, Math, Float32Array,
-                                 Float64Array, Array, Object, Infinity, console });
+                                 Float64Array, Array, Object, Infinity, console, Number });
   vm.runInContext(fs.readFileSync(path.join(HERE, "acid-worklet.js"), "utf8"), ctx);
   const p = new Proc();
   const send = (m) => p.onMessage(m);
@@ -139,6 +139,88 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
   ok(v.length > 300 && v.some((m) => m.accHit) && v.some((m) => m.hits & 1) && v.every((m) => m.wave.length === 64),
      `display: ${v.length} messages in 10 s, with accents, kicks and the waveform`);
   ok(ms < 2500, `speed: 10 s rendered in ${ms.toFixed(0)} ms (${(10000 / ms).toFixed(0)}x real time)`);
+}
+{ // the punch-ins, held over a playing pattern
+  const S = sps(120), F = { REP8: 0, REP16: 1, ROLL: 2, REV: 3, TAPE: 4, LP: 5, HP: 6, CRUSH: 7, GATE: 8, ECHO: 9, BASSOUT: 10, DRUMSOUT: 11 };
+  const busy = () => {                                 // a different note on every step, hats, a kick on the beat
+    const pat = empty();
+    for (let s = 0; s < 16; s++) { pat.bass[s] = { on: true, note: (s * 7) % 12, oct: s % 3 === 0 ? 1 : 0, acc: s % 4 === 0, slide: false }; pat.drums[3][s] = true; }
+    for (const s of [0, 4, 8, 12]) pat.drums[0][s] = true;
+    return pat;
+  };
+  const run = (pat, mask, at, hold, total, params = {}) => {
+    const a = load();
+    a.send({ type: "params", params: { tempo: 120, swing: 0.5, delay: 0, ...params } });
+    a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
+    const pre = a.render(at);
+    a.send({ type: "fx", mask: mask ? 1 << mask[0] : 0 });
+    const held = a.render(hold);
+    a.send({ type: "fx", mask: 0 });
+    const after = a.render(total);
+    return { pre: pre.L, held: held.L, after: after.L };
+  };
+  const corr = (x, i0, y, j0, n, dir = 1) => { let sxy = 0, sxx = 0, syy = 0; for (let k = 0; k < n; k++) { const u = x[i0 + k], v = y[j0 + dir * k]; sxy += u * v; sxx += u * u; syy += v * v; } return sxy / Math.sqrt(sxx * syy + 1e-12); };
+  // REPEAT 1/16 and ROLL 1/32: the held sound repeats at a 16th / a 32nd
+  for (const [name, bit, len] of [["REPEAT 1/16", F.REP16, Math.round(S)], ["ROLL 1/32", F.ROLL, Math.round(S / 2)], ["REPEAT 1/8", F.REP8, Math.round(2 * S)]]) {
+    const r = run(busy(), [bit], 0.57, 1.2, 0.1);
+    const c = corr(r.held, Math.round(0.5 * SR), r.held, Math.round(0.5 * SR) + len, Math.round(len * 0.8));
+    const live = corr(r.pre, Math.round(0.1 * SR), r.pre, Math.round(0.1 * SR) + len, Math.round(len * 0.8));
+    ok(c > 0.97 && finite(r.held), `${name}: the held sound repeats every ${len} samples (correlation ${c.toFixed(3)}; live ${live.toFixed(2)})`);
+  }
+  { // REVERSE: what was just played, backwards
+    const r = run(busy(), [F.REV], 0.8, 0.5, 0.1), n = Math.round(0.25 * SR), off = 400;
+    const c = corr(r.held, off, r.pre, r.pre.length - 1 - off, n, -1);
+    ok(c > 0.9, `REVERSE: the last quarter second played backwards (correlation ${c.toFixed(3)})`);
+  }
+  { // TAPE STOP: slows down, then silence
+    const r = run(busy(), [F.TAPE], 0.6, 1.2, 0.1);
+    const zc = (a, i0, n) => { let z = 0; for (let k = i0 + 1; k < i0 + n; k++) z += (a[k - 1] < 0) !== (a[k] < 0); return z; };
+    const z0 = zc(r.held, 0, 4000), z1 = zc(r.held, Math.round(0.45 * SR), 4000), end = rms(r.held, Math.round(0.95 * SR), Math.round(1.15 * SR));
+    ok(z1 < z0 * 0.7 && end < 0.005, `TAPE STOP: it slows (${z0} then ${z1} zero crossings) and stops (rms ${end.toFixed(4)})`);
+  }
+  { // LOWPASS and HIGHPASS sweeps
+    const hf = (a, i0, n) => { let s2 = 0; for (let k = i0 + 1; k < i0 + n; k++) s2 += (a[k] - a[k - 1]) ** 2; return Math.sqrt(s2 / n); };
+    const lfE = (a, i0, n) => { let m = 0, s2 = 0; for (let k = i0; k < i0 + n; k++) { m += (a[k] - m) * 0.01; s2 += m * m; } return Math.sqrt(s2 / n); };
+    const r = run(busy(), [F.LP], 0.5, 1.8, 0.4), h = run(busy(), [F.HP], 0.5, 1.8, 0.4), N2 = Math.round(0.5 * SR);
+    const before = hf(r.pre, 0, Math.round(0.45 * SR)), closed = hf(r.held, Math.round(1.25 * SR), N2), back = hf(r.after, Math.round(0.15 * SR), Math.round(0.25 * SR));
+    ok(closed < before * 0.2 && back > before * 0.6, `LOWPASS: the highs swept away (${before.toFixed(3)} to ${closed.toFixed(3)}) and back after (${back.toFixed(3)})`);
+    const lb = lfE(h.pre, 0, Math.round(0.45 * SR)), lo = lfE(h.held, Math.round(1.25 * SR), N2);
+    ok(lo < lb * 0.35, `HIGHPASS: the lows swept away (${lb.toFixed(3)} to ${lo.toFixed(3)})`);
+  }
+  { // CRUSH: held steps of six samples
+    const r = run(busy(), [F.CRUSH], 0.4, 0.4, 0.05);
+    let same = 0, n = 0; for (let k = 2000; k < 12000; k++) { n++; same += r.held[k] === r.held[k - 1]; }
+    ok(same / n > 0.75, `CRUSH: the sample rate cut (${Math.round((100 * same) / n)}% of samples repeat the last)`);
+  }
+  { // GATE: silent in the second half of each 16th
+    const r = run(busy(), [F.GATE], 0.5, 1.0, 0.05), T = Math.round(0.5 * SR);   // (the held part starts at sample T of the clock)
+    let a1 = 0, a2 = 0;
+    for (let k = Math.ceil(T / S) + 1; k < Math.ceil(T / S) + 5; k++) {
+      const b0 = Math.round(k * S) - T;
+      a1 += rms(r.held, b0 + 300, b0 + Math.round(S * 0.45)); a2 += rms(r.held, b0 + Math.round(S * 0.6), b0 + Math.round(S * 0.95));
+    }
+    ok(a2 < a1 * 0.08, `GATE: each 16th on then off (${(a1 / 4).toFixed(3)} against ${(a2 / 4).toFixed(4)})`);
+  }
+  { // ECHO: a throw that rings on after the release
+    const one = empty(); one.drums[1][0] = true;                    // one snare, then nothing
+    const r = run(one, [F.ECHO], 0.02, 0.15, 1.5), d = run(one, null, 0.02, 0.15, 1.5);
+    const tail = rms(r.after, Math.round(0.4 * SR), Math.round(1.2 * SR)), dry = rms(d.after, Math.round(0.4 * SR), Math.round(1.2 * SR));
+    ok(tail > 0.01 && tail > dry * 8, `ECHO: its repeats ring on after the release (${tail.toFixed(3)} against ${dry.toFixed(4)} without)`);
+  }
+  { // BASS OUT and DRUMS OUT
+    const bassOnly = busy(); bassOnly.drums = bassOnly.drums.map((r) => r.map(() => false));
+    const drumsOnly = busy(); drumsOnly.bass = drumsOnly.bass.map(() => ({ on: false, note: 0, oct: 0, acc: false, slide: false }));
+    const b = run(bassOnly, [F.BASSOUT], 0.3, 0.6, 0.05), d = run(drumsOnly, [F.DRUMSOUT], 0.3, 0.6, 0.05);
+    const gone = rms(b.held, Math.round(0.3 * SR), b.held.length);   // (after the delay's last repeats)
+    ok(gone < 0.002 && rms(b.pre, 2000, b.pre.length) > 0.05, `BASS OUT: the bass gone (${gone.toFixed(4)})`);
+    ok(rms(d.held, 2000, d.held.length) < 0.002 && rms(d.pre, 2000, d.pre.length) > 0.02, `DRUMS OUT: the drums gone (${rms(d.held, 2000, d.held.length).toFixed(4)})`);
+  }
+  { // everything at once: still finite and limited
+    const a = load();
+    a.send({ type: "pattern", pattern: busy() }); a.send({ type: "play" }); a.render(0.4);
+    a.send({ type: "fx", mask: 0xfff }); const r = a.render(2);
+    ok(finite(r.L) && finite(r.R) && peak(r.L) <= 1, `all twelve held at once: finite, peak ${peak(r.L).toFixed(2)}`);
+  }
 }
 console.log(fails ? `FAIL (${fails})` : "PASS");
 process.exit(fails ? 1 : 0);

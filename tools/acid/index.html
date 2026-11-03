@@ -31,11 +31,13 @@
     <div class="strip strip--bar" data-p="swing" role="slider" aria-label="Swing"><b>Swing</b><em></em><i class="strip__l">&#9664;</i><i class="strip__r">&#9654;</i></div>
     <nav class="slots" id="slots" aria-label="Patterns"></nav>
     <button class="menu-btn rave-btn" id="raveBtn" type="button" aria-pressed="false" title="Rave mode: the display fills the screen, and you play the filter on it">Rave</button>
+    <button class="menu-btn tilt-btn" id="tiltBtn" type="button" aria-pressed="false" title="Tilt: lean the iPad to play the filter (left and right: cutoff; towards and away: resonance)">Tilt</button>
     <button class="menu-btn" id="menuBtn" type="button" aria-label="Menu" aria-haspopup="dialog">&#8943;</button>
   </header>
 
   <section class="rave" aria-label="The display">
     <canvas id="viz" width="240" height="150" role="img" aria-label="A pixel rave that moves with the music: tap it for the next scene"></canvas>
+    <div class="rave__fx fxpads" id="ravePunch" aria-label="Punch-in effects"></div>
     <div class="rave__bar">
       <button type="button" id="ravePlay" class="rave__b">Play / Stop</button>
       <button type="button" id="raveScene" class="rave__b">Next scene</button>
@@ -63,6 +65,7 @@
       <div class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="bass" aria-selected="true">Bass line</button>
         <button type="button" role="tab" data-tab="drums" aria-selected="false">Drums</button>
+        <button type="button" role="tab" data-tab="punch" aria-selected="false">Punch</button>
       </div>
       <div class="tools">
         <button type="button" id="wave" class="tool" title="The bass's waveform">Saw</button>
@@ -75,14 +78,15 @@
     </div>
     <div class="bass" id="bass" role="tabpanel" aria-label="Bass line: drag a note up or down to change it, tap it to rest"></div>
     <div class="drums" id="drums" role="tabpanel" aria-label="Drums" hidden></div>
+    <div class="punch fxpads" id="punch" role="tabpanel" aria-label="Punch-in effects: hold a pad, let go to drop out; hold several at once" hidden></div>
   </section>
 </main>
 
 <div class="gate" id="gate">
+  <canvas class="gate__boot" id="boot" width="240" height="150" aria-hidden="true"></canvas>
   <div class="gate__card">
-    <img src="icon.svg" width="96" height="96" alt="">
-    <h2>ACID<b>FLOWER</b></h2>
-    <p>An acid house machine. Program a bass line and a beat, then play the filter with your fingers.</p>
+    <h2 class="sr">Acid Flower</h2>
+    <p class="sr">An acid house machine. Program a bass line and a beat, then play the filter with your fingers.</p>
     <button class="gate__go" id="start" type="button">Start the machine</button>
     <p class="gate__hint" id="a2hs" hidden>For a full-screen machine with its own icon: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
   </div>
@@ -95,11 +99,13 @@
     <li><b>Bass line:</b> drag a note up or down to change it; tap it to rest it. <b>Oct</b> drops or lifts it an octave, <b>Acc</b> accents it (louder, a sharper squelch), <b>Slide</b> glides it into the next note.</li>
     <li><b>Drums:</b> tap a step to set or clear it, or drag across steps to paint. Tap a drum’s name to hear it.</li>
     <li><b>Squelch pad:</b> cutoff left to right, resonance bottom to top. The strips do the rest: drag up or down.</li>
+    <li><b>Punch:</b> hold a pad for an effect on the whole mix, let go to drop out; hold several at once. Repeats start on the beat. In rave mode they run along the bottom; on a keyboard, 1 to 0, - and =.</li>
+    <li><b>Tilt:</b> lean the iPad to play the filter: left and right for the cutoff, towards you and away for the resonance. It takes the way you hold it when you turn it on as the middle; turn it off and on again to re-centre. The picture leans with it.</li>
     <li><b>Patterns:</b> 1 to 8 along the top. While it plays, the next one starts at the end of the bar.</li>
     <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter.</li>
   </ul>
   <h3>The rave</h3>
-  <div class="opt"><span>Scenes<small>Warehouse, Tunnel, Plasma, Garden, Feedback</small></span>
+  <div class="opt"><span>Scenes<small>Warehouse, Cyberspace, Tunnel, Voxel, Plasma, Mainframe, Garden, Feedback</small></span>
     <div class="seg" data-pref="scenes"><button type="button" data-v="auto">Every 8 bars</button><button type="button" data-v="hold">Stay</button></div></div>
   <div class="opt"><span>Motion<small>Calm: no strobe, no shaking, no flashing words</small></span>
     <div class="seg" data-pref="motion"><button type="button" data-v="full">Full</button><button type="button" data-v="calm">Calm</button></div></div>

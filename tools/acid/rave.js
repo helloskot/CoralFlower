@@ -38,19 +38,45 @@
     U: "101101101101111", V: "101101101101010", W: "101101111111101", X: "101101010101101", Y: "101101010010010",
     Z: "111001010100111", 0: "111101101101111", 1: "010110010010111", 2: "111001111100111", 3: "111001111001111",
     4: "101101111001001", 5: "111100111001111", 6: "111100111101111", 7: "111001010010010", 8: "111101111101111",
-    9: "111101111001111", " ": "000000000000000", "%": "101001010100101", "!": "010010010000010" };
+    9: "111101111001111", " ": "000000000000000", "%": "101001010100101", "!": "010010010000010", ">": "100010001010100",
+    ":": "000010000010000", ".": "000000000000010", "-": "000000111000000", "/": "001001010100100", "#": "101111101111101",
+    "=": "000111000111000", "_": "000000000000111" };
   const F5 = { A: "01110100011000111111100011000110001", C: "01111100001000010000100001000001111", D: "11110100011000110001100011000111110",
     E: "11111100001000011110100001000011111", F: "11111100001000011110100001000010000", H: "10001100011000111111100011000110001",
     I: "11111001000010000100001000010011111", J: "00111000100001000010000101001001100", K: "10001100101010011000101001001010001",
     L: "10000100001000010000100001000011111", O: "01110100011000110001100011000101110", R: "11110100011000111110101001001010001",
     S: "01111100001000001110000010000111110", U: "10001100011000110001100011000101110", V: "10001100011000110001100010101000100",
-    W: "10001100011000110101101011010101010", "!": "00100001000010000100001000000000100", " ": "00000000000000000000000000000000000" };
+    W: "10001100011000110101101011010101010", "!": "00100001000010000100001000000000100", " ": "00000000000000000000000000000000000",
+    T: "11111001000010000100001000010000100", N: "10001110011010110011100011000110001", M: "10001110111010110101100011000110001",
+    P: "11110100011000111110100001000010000", Y: "10001100010101000100001000010000100", G: "01111100001000010011100011000101111",
+    B: "11110100011000111110100011000111110", X: "10001100010101000100010101000110001", 0: "01110100011001110101110011000101110" };
   const WORDS = ["ACID", "FLOWER", "RAVE", "JACK", "LOVE", "HOUSE", "ACID!"];
-  const SCENES = ["WAREHOUSE", "TUNNEL", "PLASMA", "GARDEN", "FEEDBACK"];
+  const HACKWORDS = ["ROOT", "ACCESS", "OVERRIDE", "SYSTEM", "0XACID", "BYPASS"];
+  const SCENES = ["WAREHOUSE", "CYBERSPACE", "TUNNEL", "VOXEL", "PLASMA", "MAINFRAME", "GARDEN", "FEEDBACK"];
+  const HACKER = { 1: true, 5: true };                  // (the scenes the terminal types over)
+  const FXNAME = ["REPEAT 1/8", "REPEAT 1/16", "ROLL 1/32", "REVERSE", "TAPE STOP", "LOWPASS", "HIGHPASS", "CRUSH", "GATE", "ECHO", "BASS OUT", "DRUMS OUT"];
+  const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const hex2 = (n) => ((n & 255) + 256).toString(16).slice(1).toUpperCase();
+  // the voxel flower: the app's icon (20 x 20) made solid, two voxels deep, the petals pushed out in front
+  const ICON = [".........##.........", "........#PP#........", "....####PPPP####....", "...#LLL#PPPP#LLL#...", "..#LLLL######LLLL#..",
+    "..#LL###YYYY###LL#..", "..#LL#YWWYYYYY#LL#..", "..####YYYYYYYY####..", ".#PP#YYYKYYKYYY#PP#.", "#PPP#YYYKYYKYYY#PPP#",
+    "#PPP#YYYYYYYYYY#PPP#", ".#PP#YYKYYYYKYY#PP#.", "..####YYKKKKYY####..", "..#LL#YYYYYYYY#LL#..", "..#LL###YYYY###LL#..",
+    "..#LLLL######LLLL#..", "...#LLL#PPPP#LLL#...", "....####PPPP####....", "........#PP#........", ".........##........."];
+  const VCOL = { Y: [255, 225, 0], K: [30, 18, 6], "#": [30, 18, 6], P: [255, 47, 180], L: [180, 255, 43], W: [255, 252, 220] };
+  const VOX = [];
+  ICON.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (!VCOL[ch]) return;
+    const depth = ch === "P" || ch === "L" ? [-1, 0] : ch === "#" ? [-1, 0, 1] : [0, 1];
+    for (const z of depth) VOX.push({ x: x - 9.5, y: 9.5 - y, z: z * 1 - (ch === "K" ? 0.6 : 0), c: VCOL[ch] });
+  }));
+  // a tower's height in the data city: the same at the same place, every time
+  const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
   class Rave {
-    constructor(canvas, hooks) {
-      this.cv = canvas; this.g = canvas.getContext("2d"); this.hooks = hooks;
+    constructor(canvas, hooks, opts = {}) {
+      this.cv = canvas; this.g = canvas.getContext("2d"); this.hooks = hooks; this.opts = opts;
+      this.tilt = [0, 0];                                  // the iPad's tilt (-1..1 each way), when Tilt is on
+      this.bootT = 0; this.ready = false; this.stopped = false;
       canvas.width = W; canvas.height = H;
       this.img = this.g.createImageData(W, H);
       this.buf = new Float32Array(N * 3); this.prev = new Float32Array(N * 3);
@@ -70,15 +96,28 @@
         this.vig[y * W + x] = clamp(1.15 - 0.45 * d * d, 0.35, 1);
         this.dist[y * W + x] = Math.sqrt((x - W / 2) ** 2 + (y - H / 2) ** 2);
       }
+      // the punch-ins (what the sound is doing to the picture), the hacker terminal, the mainframe's flying text
+      this.fx = 0; this.tape = 1; this.fxSince = new Float32Array(12); this.freeze = null; this.lastOut = new Float32Array(N * 3);
+      this.rowOff = new Int16Array(H); this.repIdx = -1;
+      this.term = ["> CONNECT 0XACID", "> HANDSHAKE OK"]; this.termT = 0;
+      this.flyers = [];
+      this.terrain = Array.from({ length: 12 }, () => new Float32Array(16));
       this.loop = this.loop.bind(this);
     }
     start() { requestAnimationFrame(this.loop); }
+    stop() { this.stopped = true; }
+    skip() { if (this.bootT < 3.9) this.bootT = 3.9; }
     next() { this.scene = (this.scene + 1) % SCENES.length; this.sceneLabel = 1.6; this.barOfScene = 0; this.prev.fill(0); }
     setPad(x, y) { this.pad = x == null ? null : [x, y]; }
 
     // ------------------------------------------------------------------------------------- the sound's news ---
     event(m) {
       this.v = m;
+      const fx = m.fx | 0;
+      for (let b = 0; b < 12; b++) if ((fx >> b) & 1 && !((this.fx >> b) & 1)) this.fxSince[b] = this.t;
+      if ((fx & 7) && !(this.fx & 7)) this.freeze = null;
+      this.fx = fx; this.tape = m.tape == null ? 1 : m.tape;
+      if (m.step >= 0 && m.step !== this.lastStep) this.typeStep(m);
       if (m.step >= 0 && m.step !== this.lastStep) {
         if (m.step < this.lastStep || this.lastStep < 0) {   // a new bar
           this.bar++; this.barOfScene++;
@@ -94,7 +133,8 @@
       if (m.accHit) {
         this.accent = 1; this.flash = Math.max(this.flash, 0.22);
         this.sparks(10);
-        if (rnd() < 0.35 && !this.word) this.word = { s: WORDS[(rnd() * WORDS.length) | 0], life: 1 };
+        const ws = HACKER[this.scene] ? HACKWORDS : WORDS;
+        if (rnd() < 0.35 && !this.word) this.word = { s: ws[(rnd() * ws.length) | 0], life: 1 };
       }
       if (m.note >= 0) this.grow(m.note, m.accHit);
     }
@@ -233,7 +273,7 @@
       const beams = 4 + Math.round(cut * 6) + (this.accent > 0.3 ? 4 : 0), inten = 0.2 + 0.35 * env + 0.45 * this.accent + 0.2 * cut;
       for (let k = 0; k < beams; k++) {
         const ox = [6, W - 7, W / 2, W / 4, (3 * W) / 4][k % 5], col = [LIME, CYAN, PINK, LIME, YEL][k % 5];
-        const a = Math.PI / 2 + Math.sin(this.t * (0.7 + 0.25 * k) + k * 1.7 + this.scroll * 0.5) * (0.55 + 0.35 * reso) + [-0.4, 0.4, 0, -0.2, 0.2][k % 5];
+        const a = Math.PI / 2 + Math.sin(this.t * (0.7 + 0.25 * k) + k * 1.7 + this.scroll * 0.5) * (0.55 + 0.35 * reso) + [-0.4, 0.4, 0, -0.2, 0.2][k % 5] - this.tilt[0] * 0.5;
         this.line(ox, 0, ox + Math.cos(a) * 220, Math.sin(a) * 220, this.accent > 0.6 ? WHITE : col, inten, true);
       }
       // fog: slow bands, lit by the kick
@@ -273,7 +313,7 @@
     tunnel() {
       const v = this.v, sh = this.slotShift(), reso = v.reso, env = v.env || 0;
       this.fade(0.55);
-      const rings = 16, rot = Math.sin(this.t * 0.35) * 0.6 + reso * 0.3 * Math.sin(this.t);
+      const rings = 16, rot = Math.sin(this.t * 0.35) * 0.6 + reso * 0.3 * Math.sin(this.t) + this.tilt[0] * 0.8;
       for (let i = rings; i >= 1; i--) {
         let z = (i - ((this.scroll * 2) % 1)) / rings;
         const s = 6 / (z * z + 0.02), half = s * (1 + this.kick * 0.08), a = rot + z * 1.2 * reso;
@@ -365,17 +405,293 @@
       if (this.accent > 0.5) this.flower(W / 2, H / 2, 9);
     }
 
+    // ------------------------------------------------------------------------------------- the terminal ---
+    // a line for every step (what the bass plays), others for the accents and the punch-ins; and, for the
+    // mainframe, every note flies past as text
+    typeStep(m) {
+      const p = this.hooks.pattern(), b = p.bass[m.step], tune = this.hooks.params().tune | 0;
+      let line;
+      if (b && b.on) {
+        const n = 36 + tune + b.note + 12 * b.oct, name = NOTES[((n % 12) + 12) % 12] + (Math.floor(n / 12) - 1);
+        line = `> ${hex2(m.step * 16 + n)} ${name}${b.acc ? " ACC" : ""}${b.slide ? " SLD" : ""}`;
+        this.flyers.push({ s: name, x: (rnd() - 0.5) * 40, y: (rnd() - 0.5) * 24, z: 60, c: b.acc ? PINK : LIME });
+      } else line = `> ${hex2(m.step * 16)} ----`;
+      if (m.accHit && rnd() < 0.5) line = ["> ROOT ACCESS", "> SQUELCH 99%", "> OVERRIDE OK", "> INJECT ACID"][(rnd() * 4) | 0];
+      if (this.fx && this.fx !== this.termFx) { const b2 = 31 - Math.clz32(this.fx); line = "> FX " + FXNAME[b2]; }   // (once a press)
+      this.termFx = this.fx;
+      this.term.push(line);
+      if (this.term.length > 7) this.term.shift();
+      if (rnd() < 0.15) this.flyers.push({ s: "0X" + hex2((rnd() * 256) | 0) + hex2((rnd() * 256) | 0), x: (rnd() - 0.5) * 50, y: (rnd() - 0.5) * 30, z: 60, c: CYAN });
+    }
+    terminal() {
+      const x = 4, y0 = H - 9 - this.term.length * 7;
+      this.rect(x - 2, y0 - 2, 82, this.term.length * 7 + 3, [0, 8, 0], 0.55);
+      this.term.forEach((l, i) => this.text3(l.slice(0, 20), x, y0 + i * 7, i === this.term.length - 1 ? [160, 255, 160] : [40, 200, 80]));
+      if (Math.floor(this.t * 3) % 2) this.rect(x + Math.min(20, this.term[this.term.length - 1].length) * 4, y0 + (this.term.length - 1) * 7, 3, 5, [160, 255, 160]);
+    }
+
+    // ------------------------------------------------------------------------------------------ pixel 3D ---
+    // a camera (position, yaw, pitch), a projection, a filled polygon, a box with its faces lit and its edges glowing
+    cam(x, y, z, yaw, pitch, f = 150) { this.c3 = { x, y, z, cy: Math.cos(yaw), sy: Math.sin(yaw), cp: Math.cos(pitch), sp: Math.sin(pitch), f }; }
+    proj(x, y, z) {
+      const c = this.c3;
+      let dx = x - c.x, dy = y - c.y, dz = z - c.z;
+      const rx = dx * c.cy - dz * c.sy, rz = dx * c.sy + dz * c.cy;
+      const ry = dy * c.cp - rz * c.sp, rz2 = dy * c.sp + rz * c.cp;
+      if (rz2 < 0.3) return null;
+      return [W / 2 + (rx * c.f) / rz2, H / 2 - (ry * c.f) / rz2, rz2];
+    }
+    poly(pts, c, a = 1) {
+      let y0 = H, y1 = -1;
+      for (const p of pts) { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+      y0 = Math.max(0, Math.ceil(y0)); y1 = Math.min(H - 1, Math.floor(y1));
+      const n = pts.length;
+      for (let y = y0; y <= y1; y++) {
+        let xa = 1e9, xb = -1e9;
+        for (let i = 0; i < n; i++) {
+          const p = pts[i], q = pts[(i + 1) % n];
+          if ((p[1] <= y && q[1] > y) || (q[1] <= y && p[1] > y)) { const x = p[0] + ((y - p[1]) * (q[0] - p[0])) / (q[1] - p[1]); xa = Math.min(xa, x); xb = Math.max(xb, x); }
+        }
+        if (xa > xb) continue;
+        for (let x = Math.max(0, Math.ceil(xa)); x <= Math.min(W - 1, Math.floor(xb)); x++) this.set(x, y, c, a);
+      }
+    }
+    // an axis-aligned box: fills (top, front, sides shaded from c), then glowing edges in e (null: none)
+    box(x0, y0, z0, x1, y1, z1, c, e, ea = 0.9) {
+      const P = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]].map((q) => this.proj(q[0], q[1], q[2]));
+      if (P.some((q) => !q)) return;
+      const C = this.c3, F = [[[3, 2, 6, 7], 0, 1, 0, 1.0], [[0, 1, 2, 3], 0, 0, -1, 0.7], [[4, 5, 6, 7], 0, 0, 1, 0.7], [[0, 3, 7, 4], -1, 0, 0, 0.5], [[1, 2, 6, 5], 1, 0, 0, 0.5]];
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, cz = (z0 + z1) / 2;
+      for (const [ix, nx, ny, nz, sh] of F) {
+        const fx = cx + (nx * (x1 - x0)) / 2, fy = cy + (ny * (y1 - y0)) / 2, fz = cz + (nz * (z1 - z0)) / 2;
+        if (nx * (C.x - fx) + ny * (C.y - fy) + nz * (C.z - fz) <= 0) continue;   // (facing away)
+        const pts = ix.map((k) => P[k]);
+        this.poly(pts, [c[0] * sh, c[1] * sh, c[2] * sh]);
+        if (e) for (let k = 0; k < 4; k++) { const a = pts[k], b = pts[(k + 1) % 4]; this.line(a[0], a[1], b[0], b[1], e, ea); }
+      }
+    }
+    // a cube turned by the rotation R (3 x 3, rows) about the model's centre, at T: the voxels
+    voxel(px, py, pz, s, R, T, c) {
+      const C = this.c3, w = (x, y, z) => [R[0] * x + R[1] * y + R[2] * z + T[0], R[3] * x + R[4] * y + R[5] * z + T[1], R[6] * x + R[7] * y + R[8] * z + T[2]];
+      const h = s / 2, Q = [];
+      for (const [dx, dy, dz] of [[-h, -h, -h], [h, -h, -h], [h, h, -h], [-h, h, -h], [-h, -h, h], [h, -h, h], [h, h, h], [-h, h, h]]) {
+        const q = w(px + dx, py + dy, pz + dz), pr = this.proj(q[0], q[1], q[2]);
+        if (!pr) return; Q.push(pr);
+      }
+      const ctr = w(px, py, pz);
+      for (const [ix, nx, ny, nz, sh] of [[[3, 2, 6, 7], 0, 1, 0, 1.0], [[0, 1, 5, 4], 0, -1, 0, 0.35], [[0, 1, 2, 3], 0, 0, -1, 0.8], [[4, 5, 6, 7], 0, 0, 1, 0.8], [[0, 3, 7, 4], -1, 0, 0, 0.6], [[1, 2, 6, 5], 1, 0, 0, 0.6]]) {
+        const n = [R[0] * nx + R[1] * ny + R[2] * nz, R[3] * nx + R[4] * ny + R[5] * nz, R[6] * nx + R[7] * ny + R[8] * nz];
+        if (n[0] * (C.x - ctr[0]) + n[1] * (C.y - ctr[1]) + n[2] * (C.z - ctr[2]) <= 0) continue;
+        const lit = sh * (0.75 + 0.25 * n[1]);
+        this.poly(ix.map((k) => Q[k]), [c[0] * lit, c[1] * lit, c[2] * lit]);
+      }
+    }
+
+    // CYBERSPACE: a flight through a neon data city: towers on a grid, their heights the same each pass, their
+    // windows flickering data, the flight banking with the filter, the towers jumping on the kick
+    cyberspace() {
+      const v = this.v, sh = this.slotShift(), B = this.buf;
+      for (let y = 0; y < H; y++) { const t = y / H, r = 4 + 30 * Math.max(0, 0.55 - Math.abs(t - 0.45)), b = 12 + 60 * Math.max(0, 0.55 - Math.abs(t - 0.45)); for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = r; B[i + 1] = 2; B[i + 2] = b; } }
+      const speed = this.scroll * 6, camZ = speed, bank = Math.sin(this.t * 0.4) * 0.25 + (v.cut - 0.5) * 0.4;
+      this.cam(Math.sin(this.t * 0.3) * 3 + this.tilt[0] * 4, 7 + Math.sin(this.t * 0.5) * 1.5 - this.kick * 0.6, camZ, bank + this.tilt[0] * 0.35, -0.18 + (v.reso - 0.5) * 0.1 + this.tilt[1] * 0.15, 130);
+      // the floor: a neon grid running under the city
+      const gz0 = Math.floor(camZ / 4) * 4;
+      for (let k = 0; k < 18; k++) { const z = gz0 + k * 4; const a = this.proj(-60, 0, z), b = this.proj(60, 0, z); if (a && b) this.line(a[0], a[1], b[0], b[1], pal(sh + 200), 0.25); }
+      for (let x = -60; x <= 60; x += 6) { const a = this.proj(x, 0, camZ + 1), b = this.proj(x, 0, camZ + 70); if (a && b) this.line(a[0], a[1], b[0], b[1], pal(sh + 200), 0.2); }
+      // the towers, far to near
+      const cell = 6, z0 = Math.floor(camZ / cell);
+      const cols = [[-4, -3, -2, 2, 3, 4], [-5, -4, -3, -2, 2, 3, 4, 5]];
+      for (let gz = z0 + 14; gz >= z0 + 1; gz--) {
+        for (const gx of cols[gz & 1]) {
+          const hgt = 3 + hash(gx, gz) * 16 + (hash(gx, gz) > 0.8 ? 8 : 0), bump = 1 + this.kick * 0.12 * hash(gz, gx);
+          const x0 = gx * cell - 2, z = gz * cell, top = hgt * bump;
+          const e = [CYAN, PINK, LIME, pal(sh + 90)][(hash(gz, gx * 3) * 4) | 0], near = clamp(1.3 - (z - camZ) / 80, 0.2, 1);
+          this.box(x0, 0, z, x0 + 4, top, z + 4, [6, 4, 18], e, near * (0.55 + 0.4 * this.accent));
+          // windows: rows of data, blinking at the step
+          const f = this.proj(x0 + 2, top * 0.5, z);
+          if (f && f[2] < 40) for (let wy = 1; wy < top - 0.5; wy += 1.4) for (let wx = 0.6; wx < 4; wx += 1.1) {
+            if (hash(gx * 17 + ((wy * 7) | 0), gz * 13 + ((wx * 5) | 0) + (this.v.step | 0)) > 0.62) { const q = this.proj(x0 + wx, wy, z); if (q) this.set(q[0], q[1], e, 0.8); }
+          }
+        }
+      }
+      if (this.kick > 0.6) for (let x = 0; x < W; x += 2) this.add(x, H * 0.45, pal(sh + 120), this.kick * 0.5);   // (the horizon pulses)
+    }
+
+    // MAINFRAME: a rotating core (a sphere of wire, pulsing on the kick), rings of data packets orbiting it, every note
+    // flying past as text, a grid floor
+    mainframe() {
+      const v = this.v, sh = this.slotShift();
+      this.fade(0.35);
+      this.cam(this.tilt[0] * 8, 2 - this.tilt[1] * 5, -34, Math.sin(this.t * 0.2) * 0.2 + this.tilt[0] * 0.25, -0.05 + this.tilt[1] * 0.15, 140);
+      for (let x = -40; x <= 40; x += 5) { const a = this.proj(x, -12, -10), b = this.proj(x, -12, 60); if (a && b) this.line(a[0], a[1], b[0], b[1], [0, 160, 60], 0.35); }
+      for (let z = -10; z <= 60; z += 5) { const zz = z - ((this.scroll * 5) % 5); const a = this.proj(-40, -12, zz), b = this.proj(40, -12, zz); if (a && b) this.line(a[0], a[1], b[0], b[1], [0, 160, 60], 0.35); }
+      // the core: a wire sphere turning, its radius beating
+      const r = 9 + this.kick * 1.8 + (v.env || 0) * 1.5, ry = this.t * 0.6, rx = this.t * 0.37, cr = Math.cos(ry), sr = Math.sin(ry), cx2 = Math.cos(rx), sx2 = Math.sin(rx);
+      const P = (u, w) => { let x = r * Math.cos(w) * Math.cos(u), y = r * Math.sin(w), z = r * Math.cos(w) * Math.sin(u); const x2 = x * cr - z * sr, z2 = x * sr + z * cr; const y2 = y * cx2 - z2 * sx2, z3 = y * sx2 + z2 * cx2; return this.proj(x2, y2 + 2, z3 + 6); };
+      const col = pal(sh + 160 + this.t * 30);
+      for (let i = 0; i < 12; i++) for (let j = -5; j <= 5; j++) {
+        const u = (i / 12) * TAU, w = (j / 6) * (Math.PI / 2), u2 = ((i + 1) / 12) * TAU, w2 = ((j + 1) / 6) * (Math.PI / 2);
+        const a = P(u, w), b = P(u2, w), c = j < 5 ? P(u, w2) : null;
+        if (a && b) this.line(a[0], a[1], b[0], b[1], col, 0.7, true);
+        if (a && c) this.line(a[0], a[1], c[0], c[1], col, 0.5);
+      }
+      // the rings: three tilted orbits, data packets running round them (faster with the hats)
+      for (let k = 0; k < 3; k++) {
+        const tilt = 0.5 + k * 0.7, rr = 16 + k * 5, spin = this.t * (0.5 + k * 0.3), ct = Math.cos(tilt), st = Math.sin(tilt);
+        let prev = null;
+        for (let i = 0; i <= 40; i++) {
+          const a = (i / 40) * TAU, x = Math.cos(a) * rr, y0 = Math.sin(a) * rr, y = y0 * ct, z = y0 * st;
+          const x2 = x * Math.cos(k) - z * Math.sin(k), z2 = x * Math.sin(k) + z * Math.cos(k), q = this.proj(x2, y + 2, z2 + 6);
+          if (q && prev) this.line(prev[0], prev[1], q[0], q[1], [0, 200, 90], 0.3);
+          prev = q;
+        }
+        for (let j = 0; j < 5; j++) {
+          const a = spin * (1 + this.hat * 0.5) + (j / 5) * TAU, x = Math.cos(a) * rr, y0 = Math.sin(a) * rr;
+          const x2 = x * Math.cos(k) - y0 * st * Math.sin(k), z2 = x * Math.sin(k) + y0 * st * Math.cos(k), q = this.proj(x2, y0 * ct + 2, z2 + 6);
+          if (q) this.disc(q[0], q[1], 1.2 + 4 / q[2], j === 0 ? WHITE : [120, 255, 160], 0.9);
+        }
+      }
+      // the notes and the hex flying at you
+      for (const f of this.flyers) {
+        f.z -= this.dt * (24 + this.kick * 30);
+        const q = this.proj(f.x, f.y + 2, f.z);
+        if (!q) continue;
+        const k = clamp(Math.round(34 / q[2]), 1, 3), a = clamp((60 - f.z) / 20, 0, 1) * clamp((f.z + 18) / 20, 0, 1) * 0.85;
+        for (let ci = 0; ci < f.s.length; ci++) {
+          const g = F3[f.s[ci]] || F3[" "];
+          for (let i = 0; i < 15; i++) if (g[i] === "1") this.rect(q[0] + (ci * 4 + (i % 3)) * k - f.s.length * 2 * k, q[1] + ((i / 3) | 0) * k, k, k, f.c, a);
+        }
+      }
+      this.flyers = this.flyers.filter((f) => f.z > -30);
+      if (this.flyers.length > 18) this.flyers.splice(0, this.flyers.length - 18);
+    }
+
+    // VOXEL: the app's icon as a solid voxel flower, turning and bouncing over a landscape of voxel columns: each row
+    // a step of the music (the bass's level, the kick, the hats), the rows rolling towards you
+    voxelScene() {
+      const v = this.v, sh = this.slotShift(), B = this.buf;
+      for (let y = 0; y < H; y++) { const t = y / H, c = pal(sh + 20 + t * 40); for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = c[0] * 0.18; B[i + 1] = c[1] * 0.12; B[i + 2] = c[2] * 0.3; } }
+      const yaw = Math.sin(this.t * 0.25) * 0.5 + this.tilt[0] * 0.6;
+      this.cam(Math.sin(yaw) * -46, 16, -Math.cos(yaw) * 46 + 4, yaw, -0.32, 150);
+      // the landscape: on each new step a new row from the sound
+      if (v.step >= 0 && v.step !== this.tStep) {
+        this.tStep = v.step;
+        const w = v.wave || [], row = new Float32Array(16);
+        for (let i = 0; i < 16; i++) row[i] = Math.abs(w[i * 4] || 0) * 9 + this.kick * 3 * (i > 5 && i < 10) + this.hat * 2 * hash(i, v.step) + 0.4;
+        this.terrain.unshift(row); this.terrain.length = 12;
+      }
+      for (let r = this.terrain.length - 1; r >= 0; r--) for (let i = 0; i < 16; i++) {
+        const h = Math.max(0.3, this.terrain[r][i]), x = (i - 8) * 3, z = 40 - r * 3 + ((this.scroll * 4) % 1) * 3;
+        this.box(x, -10, z, x + 2.6, -10 + h, z + 2.6, pal(sh + 100 + h * 18), null);
+      }
+      // the flower: the icon's voxels, turned and bounced, drawn far to near
+      const a = this.t * 0.9 + (v.env || 0) * 0.5, b = Math.sin(this.t * 0.7) * 0.35, ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+      const R = [ca, 0, sa, sa * sb, cb, -ca * sb, -sa * cb, sb, ca * cb], T = [0, 9 + this.kick * 3 + Math.sin(this.scroll * Math.PI) * 1.2, 2];
+      const C = this.c3, sc = 1.15 + this.kick * 0.08;
+      const vs = VOX.map((q) => { const x = q.x * sc, y = q.y * sc, z = q.z * sc; const wx = R[0] * x + R[1] * y + R[2] * z + T[0], wy = R[3] * x + R[4] * y + R[5] * z + T[1], wz = R[6] * x + R[7] * y + R[8] * z + T[2]; return { q, x, y, z, d: (wx - C.x) ** 2 + (wy - C.y) ** 2 + (wz - C.z) ** 2 }; });
+      vs.sort((p1, p2) => p2.d - p1.d);
+      for (const o of vs) this.voxel(o.x, o.y, o.z, sc * 1.02, R, T, this.accent > 0.4 && o.q.c === VCOL.Y ? WHITE : o.q.c);
+    }
+
+    // ---------------------------------------------------------------------------------------- the boot ---
+    // the machine powering on: a CRT's line opening into static; a BIOS typing its checks; a cloud of points flying
+    // together into the flower over a neon grid; the name glitching in; SYSTEM READY (the page shows its button then)
+    bootScene() {
+      const t = this.bootT, B = this.buf, calm = this.calm;
+      const BIOS = [["ACIDFLOWER BIOS 1.0", ""], ["CORE: SQUELCH UNIT X1", "OK"], ["MEMORY 4096K", "OK"], ["OSCILLATORS SAW SQR", "OK"],
+                    ["LADDER FILTER 24DB", "OK"], ["RESONANCE CALIBRATE", "OK"], ["SEQUENCER 16 STEPS", "OK"], ["DRUM BANK 5 VOICES", "OK"],
+                    ["PUNCH-IN FX 12", "OK"], ["MOUNT /DEV/RAVE", "OK"], ["LOADING ACID.SYS", ""]];
+      if (t < 0.9) {                                      // the tube: a line, opening, then static
+        this.fill(0, 0, 0);
+        if (t > 0.08) {
+          const w = Math.min(1, (t - 0.08) / 0.25) * W, h = t < 0.38 ? 1 : Math.min(H, 1 + ((t - 0.38) / 0.3) * H), y0 = (H - h) / 2;
+          const bright = t < 0.7 ? 255 : 255 * (1 - (t - 0.7) / 0.2);
+          for (let y = Math.floor(y0); y < y0 + h; y++) for (let x = ((W - w) / 2) | 0; x < (W + w) / 2; x++) {
+            const n = h > 4 ? rnd() * 0.6 + 0.4 : 1;
+            this.set(x, y, [bright * n * 0.7, bright * n, bright * n * 0.8]);
+          }
+        }
+        return;
+      }
+      this.fade(t < 2.4 ? 0 : 0.45);
+      if (t < 2.4) this.fill(0, 6, 2);
+      // the grid: a neon floor scrolling under it all, from the BIOS on
+      this.cam(0, 6, -40, Math.sin(t * 0.4) * 0.15 + this.tilt[0] * 0.3, -0.12 + this.tilt[1] * 0.1, 140);
+      const gz = (t * 14) % 6, ga = clamp((t - 1.2) / 1, 0, 0.55);
+      if (ga > 0) {
+        for (let k = 0; k < 16; k++) { const a = this.proj(-60, -6, k * 6 - gz), b = this.proj(60, -6, k * 6 - gz); if (a && b) this.line(a[0], a[1], b[0], b[1], [255, 47, 180], ga * 0.6); }
+        for (let x = -60; x <= 60; x += 8) { const a = this.proj(x, -6, -20), b = this.proj(x, -6, 90); if (a && b) this.line(a[0], a[1], b[0], b[1], [43, 240, 255], ga * 0.45); }
+      }
+      // the BIOS: lines typed fast, their OKs a beat later, a progress bar for the last
+      if (t < 3.3) {
+        const up = t > 2.5 ? (t - 2.5) * 200 : 0;
+        BIOS.forEach(([l, ok], i) => {
+          const t0 = 0.95 + i * 0.12, n = Math.floor((t - t0) * 60);
+          if (n <= 0) return;
+          const y = 6 + i * 8 - up;
+          this.text3(l.slice(0, n), 6, y, i === 0 ? YEL : [60, 255, 120]);
+          if (ok && t > t0 + 0.12) this.text3(ok, 6 + 22 * 4, y, CYAN);
+          if (i === BIOS.length - 1 && n >= l.length) {
+            const f = clamp((t - t0 - 0.25) / 0.45, 0, 1);
+            this.rect(6, y + 7, 90, 5, [0, 40, 10]); this.rect(7, y + 8, 88 * f, 3, [60, 255, 120]);
+          }
+        });
+        if (Math.floor(t * 4) % 2 && t < 2.3) this.rect(6, 6 + BIOS.length * 8, 3, 5, [60, 255, 120]);
+      }
+      // the flower: points from everywhere flying together, turning
+      if (t > 2.2) {
+        // (spinning in as it forms, then turning to face you, swaying)
+        const f = clamp((t - 2.2) / 1.3, 0, 1), e = 1 - Math.pow(1 - f, 3);
+        const a = (1 - e) * TAU * 1.5 + Math.sin(t * 1.1) * 0.35 * e + this.tilt[0] * 0.6, ca = Math.cos(a), sa = Math.sin(a);
+        VOX.forEach((q, i) => {
+          const r0 = 55 + hash(i, 7) * 40, u = hash(i, 3) * TAU, w = (hash(i, 5) - 0.5) * Math.PI;
+          const sx = Math.cos(w) * Math.cos(u) * r0, sy = Math.sin(w) * r0, sz = Math.cos(w) * Math.sin(u) * r0;
+          const x = sx + (q.x * 1.0 - sx) * e, y = sy + (q.y * 1.0 + 12 - sy) * e, z = sz + (q.z * 1.0 - sz) * e;
+          const rx = x * ca - z * sa, rz = x * sa + z * ca, p = this.proj(rx, y, rz);
+          if (!p) return;
+          const c = e < 0.9 ? [60 + 195 * e, 255, 120 + 60 * (1 - e)] : q.c;
+          if (e < 0.9) this.add(p[0], p[1], c, 0.9);
+          else { const k = 1 + (p[2] < 52 ? 1 : 0); this.rect(p[0] | 0, p[1] | 0, k + 1, k, c); }   // (landed: solid, a block a voxel)
+        });
+      }
+      // the name: letters glitching in, then SYSTEM READY
+      if (t > 3.3) {
+        const word = "ACID FLOWER", k = 2, w = word.length * 6 * k, x0 = ((W - w) / 2) | 0, y0 = 86;
+        const shown = Math.min(word.length, Math.floor((t - 3.3) * 22));
+        const jit = !calm && t < 4.1 ? 1 : 0;
+        for (let i = 0; i < shown; i++) {
+          const ch = word[i], dx = jit && rnd() < 0.3 ? ((rnd() - 0.5) * 6) | 0 : 0;
+          if (jit) { this.text5(ch, x0 + i * 6 * k + dx - 1, y0, k, [255, 0, 80]); this.text5(ch, x0 + i * 6 * k + dx + 1, y0, k, [0, 220, 255]); }
+          this.text5(ch, x0 + i * 6 * k + dx, y0, k, i < 4 ? WHITE : YEL);
+        }
+        if (t > 3.8 && Math.floor(t * 2.5) % 2 === 0) this.text3("SYSTEM READY", W / 2 - 24, y0 + 19, [60, 255, 120]);
+        if (t > 3.8 && !this.ready) { this.ready = true; if (this.hooks.onReady) this.hooks.onReady(); }
+      }
+      // glitch bands, now and then
+      if (!calm && rnd() < 0.08) { const y = (rnd() * H) | 0, h = 2 + ((rnd() * 6) | 0), dx = ((rnd() - 0.5) * 20) | 0; for (let yy = y; yy < Math.min(H, y + h); yy++) for (let x = 0; x < W; x++) { const xs = clamp(x - dx, 0, W - 1), i = (yy * W + x) * 3, j = (yy * W + xs) * 3; B[i] = B[j + 2]; B[i + 1] = B[j]; } }
+    }
+
     // --------------------------------------------------------------------------------------------- a frame ---
     loop(now) {
+      if (this.stopped) return;
       const dt = Math.min(0.1, this.tPrev ? (now - this.tPrev) / 1000 : 0.016);
       this.tPrev = now; this.dt = dt; this.t += dt;
+      if (this.opts.boot) {                               // the power-on (the start screen's own copy)
+        this.bootT += dt;
+        if (this.calm && this.bootT < 3.9) this.bootT = 3.9;
+        this.bootScene();
+        this.post();
+        requestAnimationFrame(this.loop);
+        return;
+      }
       const playing = this.hooks.playing(), bpm = this.hooks.params().tempo;
       this.scroll += playing ? dt * (bpm / 60) : dt * 0.12;
       const d = (k) => Math.pow(k, dt);
       this.kick *= d(0.004); this.snare *= d(0.01); this.clap *= d(0.01); this.hat *= d(0.002); this.accent *= d(0.05);
       this.flash *= d(0.0015); this.shake *= d(0.0005); this.sceneLabel -= dt;
       if (!playing) { this.v = { ...this.v, cut: this.hooks.params().cutoff, reso: this.hooks.params().reso }; }
-      [this.warehouse, this.tunnel, this.plasma, this.garden, this.feedback][this.scene].call(this);
+      [this.warehouse, this.cyberspace, this.tunnel, this.voxelScene, this.plasma, this.mainframe, this.garden, this.feedback][this.scene].call(this);
+      if (HACKER[this.scene]) this.terminal();
       this.particles(dt);
       this.words(dt);
       this.hud(playing);
@@ -409,6 +725,10 @@
         const x = 64 + s * 7, on = p.bass[s].on, now = s === v.step, c = now ? YEL : on ? (p.bass[s].acc ? PINK : LIME) : [70, 50, 90];
         if (s < p.len) { this.rect(x, 2, 5, 2, c); if (now) this.rect(x, 4, 5, 1, c); }
       }
+      if (this.fx) {                                     // the punch-ins held, named
+        const names = FXNAME.filter((_, b) => (this.fx >> b) & 1).join(" + "), s = names.length > 58 ? names.slice(0, 58) : names;
+        this.rect(W / 2 - s.length * 2 - 3, 11, s.length * 4 + 5, 9, INK, 0.75); this.text3(s, W / 2 - s.length * 2, 13, Math.floor(this.t * 8) % 2 ? YEL : WHITE);
+      }
       if (this.sceneLabel > 0) { const s = SCENES[this.scene], a = Math.min(1, this.sceneLabel * 2); this.rect(W / 2 - s.length * 2 - 3, H - 12, s.length * 4 + 5, 9, INK, 0.7 * a); this.text3(s, W / 2 - s.length * 2, H - 10, YEL, a); }
       else if (!playing && Math.floor(this.t * 2) % 2 === 0) this.text3("PRESS PLAY", W / 2 - 20, H - 10, YEL);
       if (this.pad) {                                    // the rave mode's squelch pad: where the finger is
@@ -418,18 +738,48 @@
         this.text3("CUT " + Math.round(px * 100), 2, H - 16, LIME); this.text3("RES " + Math.round((1 - py) * 100), 2, H - 9, LIME);
       }
     }
+    // the picture goes through what the sound goes through: REPEAT / ROLL freeze it and tear it in time; REVERSE turns
+    // it negative; TAPE STOP darkens and sags it, then a CRT's power-off line; LOWPASS dims it blue, HIGHPASS bleaches
+    // it; CRUSH makes big pixels in few colours; GATE blacks it out in time; ECHO leaves ghosts
     post() {
-      const B = this.buf, D = this.img.data, V = this.vig;
-      const calm = this.calm, sx = calm ? 0 : Math.round((rnd() - 0.5) * 3 * this.shake), sy = calm ? 0 : Math.round((rnd() - 0.5) * 3 * this.shake);
+      const D = this.img.data, V = this.vig, fx = this.fx, calm = this.calm, t = this.t;
+      const has = (b) => (fx >> b) & 1, held = (b) => (has(b) ? Math.min(1, (t - this.fxSince[b]) / 1.4) : 0);
+      let B = this.buf;
+      if (fx & 7) {                                      // a repeat: the frame from the press, torn at the repeat's rate
+        if (!this.freeze) this.freeze = Float32Array.from(B);
+        const div = has(2) ? 0.5 : has(1) ? 1 : 2, per = (60 / this.hooks.params().tempo / 4) * div, idx = Math.floor(t / per);
+        if (idx !== this.repIdx) { this.repIdx = idx; for (let y = 0; y < H; y++) this.rowOff[y] = rnd() < 0.18 ? ((rnd() - 0.5) * 30) | 0 : 0; for (let y = 1; y < H; y++) if (this.rowOff[y - 1] && rnd() < 0.8) this.rowOff[y] = this.rowOff[y - 1]; }
+        const live = 0.25;
+        for (let i = 0; i < N * 3; i++) this.freeze[i] = this.freeze[i] * (1 - live * 0.1) + B[i] * live * 0.1;
+        B = this.freeze;
+      } else { this.rowOff.fill(0); this.repIdx = -1; }
+      const sx = calm ? 0 : Math.round((rnd() - 0.5) * 3 * this.shake), sy = calm ? 0 : Math.round((rnd() - 0.5) * 3 * this.shake);
       const fr = !calm && this.accent > 0.3 ? 1 + (this.accent > 0.7 ? 1 : 0) : 0, fl = calm ? 0 : this.flash * 0.65;
+      const inv = has(3) ? 0.9 : 0, tape = has(4) ? this.tape : 1, lp = held(5), hp = held(6), crush = has(7), echo = has(9);
+      const gate = has(8) ? ((this.scroll * 4) % 1 < 0.5 ? 1 : (calm ? 0.35 : 0.04)) : 1;
+      const sag = (1 - tape) * 14, blk = crush ? 4 : 1, L = this.lastOut;
       for (let y = 0; y < H; y++) {
-        const yy = clamp(y - sy, 0, H - 1), scan = y & 1 ? 0.86 : 1;
+        const scan = y & 1 ? 0.86 : 1, ys = crush ? y - (y % blk) : y;
+        let yy = clamp(Math.round(ys - sy - sag * (y / H)), 0, H - 1);
+        const ro = this.rowOff[y];
         for (let x = 0; x < W; x++) {
-          const xx = clamp(x - sx, 0, W - 1), p = yy * W + xx, o = (y * W + x) * 4, v = V[y * W + x] * scan;
+          const xs = crush ? x - (x % blk) : x, xx = clamp(xs - sx + ro, 0, W - 1), p = yy * W + xx, o = (y * W + x) * 4, q = (y * W + x) * 3;
           let r = B[(yy * W + clamp(xx + fr, 0, W - 1)) * 3], g = B[p * 3 + 1], b = B[(yy * W + clamp(xx - fr, 0, W - 1)) * 3 + 2];
+          if (inv) { r += (255 - r * 1.1 - r) * inv; g += (255 - g * 1.1 - g) * inv; b += (255 - b * 1.1 - b) * inv; }
+          if (tape < 1) { const m = (r + g + b) / 3; r = (r + (m - r) * (1 - tape)) * tape; g = (g + (m - g) * (1 - tape)) * tape; b = (b + (m - b) * (1 - tape)) * tape; }
+          if (lp) { r *= 1 - lp * 0.6; g *= 1 - lp * 0.5; b = b * (1 - lp * 0.2) + 30 * lp; }
+          if (hp) { r += (255 - r) * hp * 0.35; g += (255 - g) * hp * 0.45; b += (255 - b) * hp * 0.5; }
+          if (crush) { r = Math.round(r / 85) * 85; g = Math.round(g / 85) * 85; b = Math.round(b / 85) * 85; }
+          const v = V[y * W + x] * scan * gate;
           r = r * v + (255 - r * v) * fl; g = g * v + (255 - g * v) * fl; b = b * v + (255 - b * v) * fl;
+          if (echo) { r = Math.max(r, L[q] * 0.82); g = Math.max(g, L[q + 1] * 0.82); b = Math.max(b, L[q + 2] * 0.82); }
+          L[q] = r; L[q + 1] = g; L[q + 2] = b;
           D[o] = r; D[o + 1] = g; D[o + 2] = b; D[o + 3] = 255;
         }
+      }
+      if (tape < 0.2) {                                  // the tube switching off: a bright line, shrinking
+        const w = Math.round(W * tape * 5), y = (H / 2) | 0;
+        for (let x = (W - w) >> 1; x < (W + w) >> 1; x++) for (const yy of [y - 1, y, y + 1]) { const o = (yy * W + x) * 4; D[o] = D[o + 1] = D[o + 2] = 255; }
       }
       this.g.putImageData(this.img, 0, 0);
     }

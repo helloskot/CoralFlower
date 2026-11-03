@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Acid Flower, offline: network first (a new build is used as soon as it is online), the last copy when there is no
 // network. Everything the machine needs is fetched once at install.
-const CACHE = "acid-flower-v2";
+const CACHE = "acid-flower-v4";
 const FILES = ["./", "acid.js", "rave.js", "acid.css", "acid-worklet.js", "manifest.webmanifest", "icon.svg", "icon-180.png",
                "icon-512.png", "favicon-40.png", "../fonts/DepartureMono.woff"];
 

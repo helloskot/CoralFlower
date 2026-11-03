@@ -41,7 +41,9 @@
   const used = (p) => p.bass.some((s) => s.on) || p.drums.some((r, l) => r.some(Boolean) && !(l === 0 && r.filter(Boolean).length === 4 && [0, 4, 8, 12].every((i) => r[i])) );
 
   // --------------------------------------------------------------------------------------------- the sound ---
-  let ctx = null, node = null, playing = false, nextSlot = -1;
+  let ctx = null, node = null, playing = false, nextSlot = -1, nextAuto = false;
+  const playHooks = [];                                   // (things that follow Play: the screen staying awake)
+  const buzz = (ms = 8) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch {} };   // (a tick, where the device has one)
   const post = (m) => node && node.port.postMessage(m);
   const sendParams = () => post({ type: "params", params: S.params });
   const sendPattern = (atBar = false) => post({ type: "pattern", pattern: pat(), atBar });
@@ -89,6 +91,8 @@
       await ctx.resume();
       $("gate").hidden = true;
       boot.stop();
+      fromLink();
+      try { if (!localStorage.getItem("acid-flower-tour")) setTimeout(() => tour(0), 700); } catch {}
     } catch (err) {
       $("start").textContent = "Couldn’t start: " + err.message;
     }
@@ -99,8 +103,12 @@
     $("play").setAttribute("aria-pressed", String(on));
     $("play").querySelector("span").textContent = on ? "Stop" : "Play";
     post({ type: on ? "play" : "stop" });
-    if (!on && nextSlot >= 0) { S.cur = nextSlot; nextSlot = -1; drawAll(); sendPattern(); }
+    if (!on && nextSlot >= 0) {
+      if (nextAuto) { nextSlot = -1; nextAuto = false; sendPattern(); drawSlots(); }   // (a chain's next: stopping stays put)
+      else { S.cur = nextSlot; nextSlot = -1; drawAll(); sendPattern(); }
+    }
     if (!on) markStep(-1);
+    playHooks.forEach((f) => f(on));
   };
 
   // ------------------------------------------------------------------------------------------ the strips ---
@@ -206,6 +214,9 @@
       e.classList.toggle("is-cur", i === S.cur);
       e.classList.toggle("is-next", i === nextSlot);
       e.classList.toggle("is-used", used(S.slots[i]));
+      const p = S.slots[i], nx = p.next == null ? -1 : p.next;
+      e.dataset.next = nx >= 0 && nx !== i ? "\u2192" + (nx + 1) : "";
+      e.title = (p.name ? p.name + ": " : "") + "pattern " + (i + 1) + (nx >= 0 && nx !== i ? ", then " + (nx + 1) : "") + " (hold for more)";
     });
   };
   const drawAll = () => {
@@ -219,7 +230,7 @@
     e.type = "button"; e.className = "slot"; e.textContent = i + 1; e.dataset.slot = i;
     $("slots").appendChild(e);
   }
-  const edited = () => { sendPattern(); save(); drawSlots(); };
+  const edited = () => { commit(); sendPattern(); save(); drawSlots(); };
   const audition = (i) => {
     if (playing) return;
     const s = pat().bass[i];
@@ -233,14 +244,16 @@
     if (!t) return;
     e.preventDefault();
     if (t.id === "play") return setPlaying(!playing);
-    if (t.classList.contains("slot")) {
+    if (t.classList.contains("slot")) {                // a tap picks it; a hold opens its menu
       const i = +t.dataset.slot;
-      if (playing && i !== S.cur) { nextSlot = i; post({ type: "pattern", pattern: S.slots[i], atBar: true }); }
-      else { S.cur = i; nextSlot = -1; sendPattern(); }
-      save(); drawAll();
+      pickSlot(i); buzz();
+      ptr.set(e.pointerId, { kind: "slot", hold: setTimeout(() => { ptr.delete(e.pointerId); buzz(15); openSlot(i); }, 480) });
+      try { app.setPointerCapture(e.pointerId); } catch {}
       return;
     }
+    if (t.classList.contains("st__t") || t.classList.contains("dr") || t.classList.contains("st__note")) begin();   // (one gesture, one undo)
     if (t.classList.contains("st__t")) {
+      buzz();
       const s = pat().bass[+t.dataset.s];
       if (t.dataset.t === "oct") s.oct = s.oct === 0 ? 1 : s.oct === 1 ? -1 : 0;
       else s[t.dataset.t] = !s[t.dataset.t];
@@ -251,18 +264,18 @@
     if (t.classList.contains("dr__name")) { post({ type: "hit", lane: +t.dataset.lane }); return; }
     if (t.classList.contains("dr")) {
       const l = +t.dataset.lane, s = +t.dataset.s, v = !pat().drums[l][s];
-      pat().drums[l][s] = v;
+      pat().drums[l][s] = v; buzz();
       ptr.set(e.pointerId, { kind: "dr", v, last: t });
       drawDrums(); edited();
       if (v && !playing) post({ type: "hit", lane: l });
     } else if (t.classList.contains("st__note")) {
       ptr.set(e.pointerId, { kind: "note", i: +t.dataset.s, y0: e.clientY, acc: 0, moved: false, px: Math.max(7, (t.clientHeight * 0.74) / 12) });
     } else if (t.classList.contains("xy")) {
-      ptr.set(e.pointerId, { kind: "xy", el: t });
+      ptr.set(e.pointerId, { kind: "xy", el: t, x0: e.clientX, y0: e.clientY, moved: false });
       t.classList.add("is-on"); trail.length = 0;
       moveXY(t, e);
     } else {
-      const p = { kind: "strip", el: t, k: t.dataset.p, x0: e.clientX, y0: e.clientY, y: e.clientY, acc: 0, moved: false, side: 0 };
+      const p = { kind: "strip", el: t, k: t.dataset.p, x0: e.clientX, y0: e.clientY, y: e.clientY, acc: 0, moved: false, side: 0, t0: performance.now() };
       if (t.classList.contains("strip--bar")) {           // tempo and swing: their ends are arrows; hold one to keep going
         const r = t.getBoundingClientRect(), f = (e.clientX - r.left) / r.width;
         p.side = f < 0.3 ? -1 : f > 0.7 ? 1 : 0;
@@ -285,7 +298,7 @@
   app.addEventListener("pointermove", (e) => {
     const p = ptr.get(e.pointerId);
     if (!p) return;
-    if (p.kind === "xy") moveXY(p.el, e);
+    if (p.kind === "xy") { if (Math.abs(e.clientX - p.x0) + Math.abs(e.clientY - p.y0) > 10) p.moved = true; moveXY(p.el, e); }
     else if (p.kind === "dr") {                         // painting across the steps
       const el = document.elementFromPoint(e.clientX, e.clientY), d = el && el.closest && el.closest(".dr");
       if (d && d !== p.last) { p.last = d; pat().drums[+d.dataset.lane][+d.dataset.s] = p.v; drawDrums(); edited(); }
@@ -315,12 +328,21 @@
     const p = ptr.get(e.pointerId);
     if (!p) return;
     ptr.delete(e.pointerId);
-    if (p.kind === "xy") { p.el.classList.remove("is-on"); endTrail(); }
+    if (p.kind === "slot") clearTimeout(p.hold);
+    if (p.kind === "xy") {
+      p.el.classList.remove("is-on"); endTrail();
+      if (!p.moved && e.type === "pointerup") {          // a double tap: the filter back where it started
+        const now = performance.now();
+        if (now - lastPadTap < 350) { S.params.cutoff = DEF_PARAMS.cutoff; S.params.reso = DEF_PARAMS.reso; sendParams(); save(); drawXY(); toast("Filter back to the start"); lastPadTap = 0; }
+        else lastPadTap = now;
+      }
+    }
     if (p.kind === "strip") {
       p.el.classList.remove("is-turn");
       clearTimeout(p.hold); clearInterval(p.rep);
       if (p.arrow) p.arrow.classList.remove("is-press");
       if (!p.moved && !p.repeated && e.type === "pointerup" && p.side) { setParam(p.k, S.params[p.k] + p.side * spec(p.k).unit); drawStrip(p.el); }   // the arrows step
+      else if (!p.moved && e.type === "pointerup" && p.k === "tempo" && !p.side) tapTempo(p.t0, p.el);   // the middle: tap tempo
     }
     if (p.kind === "note" && !p.moved && e.type === "pointerup") {   // a tap: rest, or back on
       const s = pat().bass[p.i];
@@ -329,10 +351,26 @@
     }
   };
   for (const t of ["pointerup", "pointercancel"]) app.addEventListener(t, up);
-  app.addEventListener("contextmenu", (e) => e.preventDefault());
+  app.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    const sl = e.target.closest && e.target.closest(".slot");
+    if (sl && e.pointerType !== "touch") openSlot(+sl.dataset.slot);   // (a right-click is a hold)
+  });
   for (const t of ["gesturestart", "gesturechange", "dblclick"]) document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
+  // a keyboard: Space plays, 1 to 8 pick a pattern, the arrows the tempo, R the rave, Cmd/Ctrl Z undo (Shift: redo);
+  // the punch-ins are Shift with the number row (below)
   addEventListener("keydown", (e) => {
-    if (e.code === "Space" && !$("menu").open && $("gate").hidden) { e.preventDefault(); setPlaying(!playing); }
+    if ($("menu").open || $("slotMenu").open || !$("gate").hidden) return;
+    if (e.target && e.target.closest && e.target.closest("input, textarea")) return;
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.code === "KeyZ") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+    if (mod || e.altKey) return;
+    if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
+    else if (!e.shiftKey && /^Digit[1-8]$/.test(e.code)) { e.preventDefault(); pickSlot(+e.code.slice(5) - 1); }
+    else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+      e.preventDefault(); setParam("tempo", S.params.tempo + (e.code === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 5 : 1)); strips.forEach(drawStrip);
+    } else if (e.code === "KeyR" && !e.repeat) setRave(!app.classList.contains("is-rave"));
+    else if (e.code === "Escape" && app.classList.contains("is-rave")) setRave(false);
   });
   document.addEventListener("visibilitychange", () => { ptr.clear(); });
 
@@ -354,6 +392,7 @@
     bassEl.hidden = t.dataset.tab !== "bass";
     drumsEl.hidden = t.dataset.tab !== "drums";
     $("punch").hidden = t.dataset.tab !== "punch";
+    $("latch").hidden = t.dataset.tab !== "punch";
     app.classList.toggle("is-tab-filter", t.dataset.tab === "filter");   // (short phones: the filter has its own tab)
     document.querySelector(".tools").style.visibility = t.dataset.tab === "punch" || t.dataset.tab === "filter" ? "hidden" : "";
   });
@@ -363,9 +402,12 @@
     if (app.classList.contains("is-tab-filter") && !f.getClientRects().length) runAct(document.querySelector('[data-tab="bass"]'));
   });
   const tab = () => (!bassEl.hidden ? "bass" : "drums");
-  act("#wave", () => { S.params.wave = S.params.wave ? 0 : 1; sendParams(); save(); drawAll(); });
-  act("[data-tune]", (x) => { S.params.tune = Math.max(-12, Math.min(12, S.params.tune + +x.dataset.tune)); sendParams(); save(); drawAll(); });
-  act("[data-len]", (x) => { pat().len = Math.max(1, Math.min(16, pat().len + +x.dataset.len)); edited(); drawAll(); });
+  act("#wave", () => { begin(); S.params.wave = S.params.wave ? 0 : 1; commit(); sendParams(); save(); drawAll(); });
+  act("[data-tune]", (x) => { begin(); S.params.tune = Math.max(-12, Math.min(12, S.params.tune + +x.dataset.tune)); commit(); sendParams(); save(); drawAll(); });
+  act("[data-len]", (x) => { begin(); pat().len = Math.max(1, Math.min(16, pat().len + +x.dataset.len)); edited(); drawAll(); });
+  act("#undo", () => undo());
+  act("#redo", () => redo());
+  act("#latch", () => setLatch(!latch));
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
   const SCALES = [[0, 3, 5, 7, 10, 12], [0, 1, 3, 5, 7, 8, 10, 12], [0, 2, 3, 5, 7, 10, 12], [0, 3, 7, 10, 12]];
   const randStep = (scale) => {
@@ -383,14 +425,16 @@
     return grid([kick, snare, clap, hat, open]);
   };
   act("#random", () => {
+    begin();
     if (tab() === "bass") {
       const sc = pick(SCALES);
       pat().bass = ALL16.map(() => randStep(sc));
       pat().bass[0] = { on: true, note: 0, oct: 0, acc: true, slide: false };
     } else pat().drums = randomDrums();
-    edited(); drawAll();
+    edited(); drawAll(); toast("A new " + (tab() === "bass" ? "bass line" : "beat"), "Undo", undo);
   });
   act("#mutate", () => {
+    begin();
     if (tab() === "bass") {
       const sc = pick(SCALES);
       for (let n = 0; n < 3; n++) {
@@ -411,9 +455,10 @@
       return;
     }
     clearTimeout(clearT); el.classList.remove("is-armed"); el.querySelector("span").textContent = "Clear";
+    begin();
     if (tab() === "bass") pat().bass = ALL16.map(rest);
     else pat().drums = grid([]);
-    edited(); drawAll();
+    edited(); drawAll(); toast("Cleared", "Undo", undo);
   });
 
   // ------------------------------------------------------------------------------------------ the punch-ins ---
@@ -435,14 +480,15 @@
     FXS.forEach(([a, b2, c], i) => {
       const d = document.createElement("div");
       d.className = "fxp"; d.dataset.fx = i; d.style.setProperty("--c", c); d.setAttribute("role", "button"); d.setAttribute("aria-label", a + " " + b2);
-      d.innerHTML = `<kbd>${["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="][i]}</kbd><b>${a}</b><small>${b2}</small>`;
+      d.innerHTML = `<kbd>\u21e7${["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="][i]}</kbd><b>${a}</b><small>${b2}</small>`;
       box.appendChild(d); fxEls[i].push(d);
     });
     const held = new Map();
     box.addEventListener("pointerdown", (e) => {
       const d = e.target.closest(".fxp");
       if (!d) return;
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault(); e.stopPropagation(); buzz();
+      if (latch) { const i = +d.dataset.fx; if (fxSrc[i].has("L")) fxSrc[i].delete("L"); else fxSrc[i].add("L"); fxPublish(); return; }   // (latched: a tap on, a tap off)
       held.set(e.pointerId, +d.dataset.fx); fxHold(+d.dataset.fx, "p" + e.pointerId, true);
       try { box.setPointerCapture(e.pointerId); } catch {}
     });
@@ -457,8 +503,10 @@
   }
   addEventListener("keydown", (e) => {
     const i = FXKEYS.indexOf(e.code);
-    if (i < 0 || e.repeat || e.metaKey || e.ctrlKey || $("menu").open) return;
-    e.preventDefault(); fxHold(i, "k", true);
+    if (i < 0 || e.repeat || !e.shiftKey || e.metaKey || e.ctrlKey || $("menu").open || $("slotMenu").open) return;
+    e.preventDefault();
+    if (latch) { if (fxSrc[i].has("L")) fxSrc[i].delete("L"); else fxSrc[i].add("L"); fxPublish(); }
+    else fxHold(i, "k", true);
   });
   addEventListener("keyup", (e) => { const i = FXKEYS.indexOf(e.code); if (i >= 0) fxHold(i, "k", false); });
   addEventListener("blur", () => { fxSrc.forEach((s) => s.clear()); fxPublish(); });
@@ -472,7 +520,7 @@
     cells.forEach((row) => row.forEach((d, i) => d.classList.toggle("is-now", i === s)));
   };
   let viz = { step: -1 }, lastStep = -2;
-  const rave = new globalThis.AcidRave($("viz"), { pattern: () => pat(), params: () => S.params, slot: () => S.cur, playing: () => playing });
+  const rave = new globalThis.AcidRave($("viz"), { pattern: () => pat(), params: () => S.params, slot: () => S.cur, playing: () => playing, name: () => pat().name || "" });
   const onViz = (m) => {
     viz = m;
     rave.event(m);
@@ -482,7 +530,8 @@
       if (m.step >= 0 && m.step % 4 === 0) for (const b of [$("play"), $("ravePlay")]) {
         b.classList.remove("beat", "down"); void b.offsetWidth; b.classList.add("beat"); if (m.step === 0) b.classList.add("down");
       }
-      if (m.step === 0 && nextSlot >= 0) { S.cur = nextSlot; nextSlot = -1; save(); drawAll(); }
+      if (m.step === 0 && nextSlot >= 0) { S.cur = nextSlot; nextSlot = -1; nextAuto = false; save(); drawAll(); }
+      if (m.step === 0) queueFollow();
     }
     for (let l = 0; l < LANES.length; l++) if (m.hits & (1 << l)) {
       const n = drumsEl.querySelector(`.dr__name[data-lane="${l}"]`);
@@ -558,17 +607,22 @@
     if (x) { try { localStorage.setItem("acid-flower-" + s.dataset.pref, x.dataset.v); } catch {} applyPrefs(); }
   }));
   applyPrefs();
-  $("export").onclick = async () => {
-    const d = new Date(), name = `acid-flower-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.json`;
-    const file = new File([JSON.stringify({ app: "acid-flower", version: 1, ...S }, null, 1)], name, { type: "application/json" });
+  const stamp = () => { const d = new Date(), z = (v) => String(v).padStart(2, "0"); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`; };
+  // a file to keep: the share sheet where there is one (Save to Files, AirDrop, Messages...), else a download
+  const saveFile = async (file, title) => {
     try {
-      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Acid Flower patterns" }); return msg("Saved: " + name); }
-    } catch (err) { if (err && err.name === "AbortError") return; }
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title }); return true; }
+    } catch (err) { if (err && err.name === "AbortError") return false; }
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(file); a.download = name;
+    a.href = URL.createObjectURL(file); a.download = file.name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    msg("Saved: " + name);
+    return true;
+  };
+  $("export").onclick = async () => {
+    const name = `acid-flower-${stamp()}.json`;
+    const file = new File([JSON.stringify({ app: "acid-flower", version: 1, ...S }, null, 1)], name, { type: "application/json" });
+    if (await saveFile(file, "Acid Flower patterns")) msg("Saved: " + name);
   };
   $("import").onclick = () => $("importFile").click();
   $("importFile").onchange = async (e) => {
@@ -579,12 +633,13 @@
     try { d = JSON.parse(await f.text()); } catch { d = null; }
     if (!valid(d)) return msg("That file isn’t a set of Acid Flower patterns.");
     if (!confirm("Replace your 8 patterns and knobs with “" + f.name + "”?")) return;
+    begin();
     S = { slots: d.slots, cur: Math.max(0, Math.min(7, d.cur | 0)), params: { ...DEF_PARAMS, ...d.params } };
-    save(); sendParams(); sendPattern(); drawAll(); msg("Loaded " + f.name);
+    commit(); save(); sendParams(); sendPattern(); drawAll(); msg("Loaded " + f.name);
   };
   $("reset").onclick = () => {
     if (!confirm("Go back to the starter patterns and knobs? Your own patterns will be gone (save them first if you want them).")) return;
-    S = fresh(); save(); sendParams(); sendPattern(); drawAll(); msg("Back to the starter patterns.");
+    begin(); S = fresh(); commit(); save(); sendParams(); sendPattern(); drawAll(); msg("Back to the starter patterns.");
   };
 
   const standalone = navigator.standalone || matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches;
@@ -603,6 +658,8 @@
     random: [["............", ".WWWWWWWWW..", ".W.......WW.", ".W.P...P.WW.", ".W.......WW.", ".W...P...WW.", ".W.......WW.", ".W.P...P.WW.", ".W.......WW.", ".WWWWWWWWWW.", "..WWWWWWWWW.", "............"], { W: "#F4F1FF", P: "#FF2FB4" }],
     mutate: [["............", ".....Y......", ".....Y......", "...Y.Y.Y....", "....YYY.....", "..YYYWYYY...", "....YYY.....", "...Y.Y.Y.L..", ".....Y...L..", ".....Y.LLLLL", ".........L..", ".........L.."], { Y: "#FFE100", W: "#FFFFFF", L: "#B4FF2B" }],
     clear: [["............", ".PP......PP.", ".PPP....PPP.", "..PPP..PPP..", "...PPPPPP...", "....PPPP....", "....PPPP....", "...PPPPPP...", "..PPP..PPP..", ".PPP....PPP.", ".PP......PP.", "............"], { P: "#FF6FAE" }],
+    undo: [["............", "...C........", "..CC........", ".CCCCCCCC...", "..CC.....C..", "...C......C.", "..........C.", "..........C.", ".........C..", "....CCCCC...", "............", "............"], { C: "#2BF0FF" }],
+    redo: [["............", "........C...", "........CC..", "...CCCCCCCC.", "..C.....CC..", ".C......C...", ".C..........", ".C..........", "..C.........", "...CCCCC....", "............", "............"], { C: "#2BF0FF" }],
     tilt: [["..AAAAAA....", ".A......A...", "A........A.A", "A.........AA", "........AAA.", "............", ".CCCCCCCCCC.", ".C........C.", ".C.DDDDDD.CC", ".C........C.", ".CCCCCCCCCC.", "............"], { C: "#2BF0FF", A: "#9FF8FF", D: "#1A8F99" }],
   };
   const iconSvg = (name) => {
@@ -611,7 +668,7 @@
     g.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col[ch]}"/>`; }));
     return `<svg class="pix" viewBox="0 0 12 12" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
   };
-  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"]]) {
+  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"]]) {
     const el = document.querySelector(sel);
     el.innerHTML = iconSvg(name) + `<span>${el.textContent}</span>`;
   }
@@ -731,5 +788,259 @@
   addEventListener("resize", applyFold);
   applyFold();
 
-  window.acid = { state: () => S, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
+
+  // =============================================================================================== comforts ===
+  // ------------------------------------------------------------------------------------------- the toast ---
+  let toastT = 0;
+  const hideToast = () => { $("toast").hidden = true; };
+  const toast = (text, label, f, ms) => {
+    $("toastMsg").textContent = text;
+    const b = $("toastBtn");
+    b.hidden = !label;
+    if (label) { b.textContent = label; b.onclick = () => { hideToast(); f(); }; }
+    $("toast").hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(hideToast, ms || (label ? 4500 : 2200));
+  };
+
+  // -------------------------------------------------------------------------------------------- undo ---
+  // every change to the patterns (and the key and the wave) can be undone: a gesture or a button is one step
+  const hist = { undo: [], redo: [] };
+  let pend = null;
+  const snap = () => JSON.stringify({ slots: S.slots, tune: S.params.tune, wave: S.params.wave });
+  function begin() { pend = snap(); }
+  function commit() {
+    if (pend == null) return;
+    if (pend !== snap()) { hist.undo.push(pend); if (hist.undo.length > 100) hist.undo.shift(); hist.redo.length = 0; }
+    pend = null; drawHist();
+  }
+  const restore = (j) => { const d = JSON.parse(j); S.slots = d.slots; S.params.tune = d.tune; S.params.wave = d.wave; sendParams(); sendPattern(); save(); drawAll(); };
+  function undo() { if (!hist.undo.length) return; hist.redo.push(snap()); restore(hist.undo.pop()); drawHist(); toast("Undone", "Redo", redo); }
+  function redo() { if (!hist.redo.length) return; hist.undo.push(snap()); restore(hist.redo.pop()); drawHist(); toast("Redone", "Undo", undo); }
+  function drawHist() { $("undo").disabled = !hist.undo.length; $("redo").disabled = !hist.redo.length; }
+  drawHist();
+
+  // ------------------------------------------------------------------------------------- the patterns ---
+  // a tap picks one (while it plays: at the bar's end); a hold opens its menu: a name, Then play (a chain: a song),
+  // Copy to, Share as a link, Clear
+  function pickSlot(i) {
+    if (playing && i !== S.cur) { nextSlot = i; nextAuto = false; post({ type: "pattern", pattern: S.slots[i], atBar: true }); }
+    else if (playing && nextSlot >= 0) { nextSlot = -1; nextAuto = false; post({ type: "pattern", pattern: pat(), atBar: true }); }   // (the current one again: stay)
+    else { S.cur = i; nextSlot = -1; sendPattern(); }
+    save(); drawAll();
+  }
+  function queueFollow() {                                // a bar begins: a chained pattern lines up its next
+    const nx = pat().next;
+    if (!playing || nextSlot >= 0 || nx == null || nx < 0 || nx > 7 || nx === S.cur) return;
+    nextSlot = nx; nextAuto = true;
+    post({ type: "pattern", pattern: S.slots[nx], atBar: true });
+    drawSlots();
+  }
+  let sheetSlot = 0;
+  const NUMS = [...Array(8).keys()];
+  function openSlot(i) {
+    sheetSlot = i;
+    const p = S.slots[i];
+    $("slotTitle").textContent = "Pattern " + (i + 1);
+    $("slotName").value = p.name || ""; $("slotName").placeholder = "P" + (i + 1);
+    drawSheet();
+    const m = $("slotMenu");
+    if (m.showModal) m.showModal(); else m.setAttribute("open", "");
+  }
+  const drawSheet = () => {
+    const p = S.slots[sheetSlot], nx = p.next == null || p.next === sheetSlot ? -1 : p.next;
+    $("slotNext").innerHTML = `<button type="button" data-next="-1" aria-pressed="${nx < 0}">Repeat</button>` +
+      NUMS.filter((k) => k !== sheetSlot).map((k) => `<button type="button" data-next="${k}" aria-pressed="${nx === k}" class="${used(S.slots[k]) ? "is-used" : ""}">${k + 1}</button>`).join("");
+    $("slotCopy").innerHTML = NUMS.filter((k) => k !== sheetSlot).map((k) => `<button type="button" data-copy="${k}" class="${used(S.slots[k]) ? "is-used" : ""}">${k + 1}</button>`).join("");
+  };
+  $("slotMenu").addEventListener("click", (e) => { if (e.target === $("slotMenu")) $("slotMenu").close(); });
+  $("slotName").addEventListener("input", () => {
+    S.slots[sheetSlot].name = $("slotName").value.replace(/\s+/g, " ").slice(0, 10);
+    save(); drawSlots();
+  });
+  $("slotName").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("slotMenu").close(); } });
+  $("slotNext").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    begin(); S.slots[sheetSlot].next = +b.dataset.next; commit(); save(); drawSheet(); drawSlots();
+  });
+  $("slotCopy").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    const k = +b.dataset.copy;
+    begin(); S.slots[k] = clone(S.slots[sheetSlot]); delete S.slots[k].next; commit();
+    if (k === S.cur) sendPattern();
+    save(); drawAll(); drawSheet(); buzz();
+    toast("Pattern " + (sheetSlot + 1) + " copied to " + (k + 1), "Undo", undo);
+  });
+  $("slotClear").addEventListener("click", () => {
+    const i = sheetSlot;
+    begin(); S.slots[i] = { len: 16, bass: ALL16.map(rest), drums: grid([]), name: S.slots[i].name }; commit();
+    if (i === S.cur) sendPattern();
+    save(); drawAll(); $("slotMenu").close();
+    toast("Pattern " + (i + 1) + " cleared", "Undo", undo);
+  });
+
+  // ---------------------------------------------------------------------------------------- share links ---
+  // a pattern and the sound it was made with, in the link itself: #p=1.<bass>.<drums>.<len>.<tempo>.<swing>.<key>.
+  // <wave>.<cutoff>.<reso>.<env>.<decay>.<accent>.<drive>.<delay>.<name>; opening it puts it in a free slot
+  const KN = ["cutoff", "reso", "env", "decay", "accent", "drive", "delay"];
+  const encode = (p) => {
+    const P = S.params, h2 = (v) => v.toString(16).padStart(2, "0"), pc = (v) => Math.round(v * 100);
+    const bass = p.bass.map((s) => h2(s.on ? 1 + s.note + 13 * (s.oct + 1) + (s.acc ? 40 : 0) + (s.slide ? 80 : 0) : 0)).join("");
+    const drums = p.drums.map((r) => r.reduce((a, v, i) => a | (v ? 1 << i : 0), 0).toString(16).padStart(4, "0")).join("");
+    return ["1", bass, drums, p.len, Math.round(P.tempo), pc(P.swing), P.tune, P.wave, ...KN.map((k) => pc(P[k])), encodeURIComponent(p.name || "")].join(".");
+  };
+  const decode = (c) => {
+    const f = c.split(".");
+    if (f[0] !== "1" || f.length < 15 || !/^[0-9a-f]{32}$/i.test(f[1]) || !/^[0-9a-f]{20}$/i.test(f[2])) return null;
+    const bass = [];
+    for (let i = 0; i < 16; i++) {
+      let v = parseInt(f[1].substr(i * 2, 2), 16);
+      if (!v) { bass.push(rest()); continue; }
+      if (v > 159) return null;
+      const slide = v >= 80; if (slide) v -= 80;
+      const acc = v >= 40; if (acc) v -= 40;
+      v -= 1;
+      if (v < 0 || v > 38) return null;
+      bass.push({ on: true, note: v % 13, oct: Math.floor(v / 13) - 1, acc, slide });
+    }
+    const drums = LANES.map((_, l) => { const m = parseInt(f[2].substr(l * 4, 4), 16); return ALL16.map((i) => !!(m & (1 << i))); });
+    const n = (i, d, lo, hi) => { const v = Number(f[i]); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; };
+    const params = { tempo: n(4, 124, 60, 180), swing: n(5, 54, 50, 75) / 100, tune: n(6, 0, -12, 12) | 0, wave: n(7, 0, 0, 1) | 0 };
+    KN.forEach((k, j) => { params[k] = n(8 + j, DEF_PARAMS[k] * 100, 0, 100) / 100; });
+    let name = "";
+    try { name = decodeURIComponent(f.slice(15).join(".")).slice(0, 10); } catch {}
+    return { pattern: { len: n(3, 16, 1, 16) | 0, bass, drums, name }, params };
+  };
+  function fromLink() {
+    const m = location.hash.match(/^#p=(.+)$/);
+    if (!m) return;
+    let d = null;
+    try { d = decode(m[1]); } catch { d = null; }
+    try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+    if (!d) { toast("That link isn’t an Acid Flower pattern."); return; }
+    begin();
+    let i = S.slots.findIndex((p) => !used(p));
+    if (i < 0) i = S.cur;
+    S.slots[i] = d.pattern; S.cur = i; nextSlot = -1;
+    Object.assign(S.params, d.params);
+    commit(); sendParams(); sendPattern(); save(); drawAll();
+    toast("A shared pattern" + (d.pattern.name ? " (" + d.pattern.name + ")" : "") + " is in slot " + (i + 1) + ": press Play", "Undo", undo, 7000);
+  }
+  addEventListener("hashchange", () => { if ($("gate").hidden) fromLink(); });
+  $("slotShare").addEventListener("click", async () => {
+    const p = S.slots[sheetSlot], url = location.origin + location.pathname + "#p=" + encode(p);
+    const title = "Acid Flower: " + (p.name || "pattern " + (sheetSlot + 1));
+    try { if (navigator.share) { await navigator.share({ title, text: "An acid line I made in Acid Flower:", url }); return; } }
+    catch (err) { if (err && err.name === "AbortError") return; }
+    try { await navigator.clipboard.writeText(url); toast("Link copied"); } catch { window.prompt("Copy this link:", url); }
+  });
+
+  // ---------------------------------------------------------------------------------------- recording ---
+  // Rec: everything the machine plays (effects and all) into a file; when it stops, Save hands it to the share sheet
+  let rec = null, recDest = null, recT = 0, recStart = 0;
+  const recMime = () => ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"].find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+  const clock = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+  const drawRec = () => {
+    const on = !!(rec && rec.state === "recording"), t = on ? clock((performance.now() - recStart) / 1000) : "Rec";
+    for (const id of ["rec", "raveRec"]) { const b = $(id); b.setAttribute("aria-pressed", String(on)); (b.querySelector("span") || b).textContent = t; }
+  };
+  const setRec = (on) => {
+    if (on) {
+      if (!node || !window.MediaRecorder) { toast("This browser can’t record. Try Safari 14.5 or later, or Chrome."); return; }
+      if (!recDest) { recDest = ctx.createMediaStreamDestination(); node.connect(recDest); }
+      const type = recMime(), chunks = [];
+      let r;
+      try { r = new MediaRecorder(recDest.stream, type ? { mimeType: type } : undefined); } catch (err) { toast("Can’t record: " + err.message); return; }
+      r.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+      r.onstop = () => {
+        const secs = (performance.now() - recStart) / 1000, t = r.mimeType || type || "audio/webm";
+        const ext = /mp4|aac|m4a/.test(t) ? "m4a" : /ogg/.test(t) ? "ogg" : "webm";
+        const file = new File([new Blob(chunks, { type: t })], `acid-flower-${stamp()}-${String(Date.now()).slice(-4)}.${ext}`, { type: t.split(";")[0] });
+        drawRec();
+        toast("Recorded " + clock(secs), "Save", () => saveFile(file, "Acid Flower recording"), 15000);
+      };
+      rec = r; r.start(1000); recStart = performance.now();
+      if (!playing) setPlaying(true);
+      clearInterval(recT); recT = setInterval(drawRec, 250);
+    } else {
+      if (rec && rec.state !== "inactive") rec.stop();
+      clearInterval(recT);
+    }
+    drawRec(); buzz(12);
+  };
+  for (const id of ["rec", "raveRec"]) onPress($(id), () => setRec(!(rec && rec.state === "recording")));
+
+  // ---------------------------------------------------------------------------------- latch, tap tempo ---
+  let latch = false;
+  function setLatch(on) {
+    latch = on;
+    for (const id of ["latch", "raveLatch"]) $(id).setAttribute("aria-pressed", String(on));
+    if (!on) { fxSrc.forEach((s2) => s2.delete("L")); fxPublish(); }
+  }
+  onPress($("raveLatch"), () => setLatch(!latch));
+  let taps = [], lastPadTap = 0;
+  function tapTempo(t, el) {
+    if (taps.length && t - taps[taps.length - 1] > 2000) taps = [];
+    taps.push(t); if (taps.length > 5) taps.shift();
+    el.classList.remove("is-tap"); void el.offsetWidth; el.classList.add("is-tap");
+    if (taps.length < 2) return;
+    setParam("tempo", Math.round(60000 / ((taps[taps.length - 1] - taps[0]) / (taps.length - 1))));
+    drawStrip(el);
+  }
+
+  // ------------------------------------------------------------------------------ the screen stays on ---
+  let lock = null;
+  const keepAwake = async () => {
+    try {
+      if (playing && !lock && navigator.wakeLock && !document.hidden) { lock = await navigator.wakeLock.request("screen"); lock.addEventListener("release", () => { lock = null; }); }
+      else if (!playing && lock) { const l = lock; lock = null; await l.release(); }
+    } catch { lock = null; }
+  };
+  playHooks.push(keepAwake);
+  document.addEventListener("visibilitychange", keepAwake);
+
+  // --------------------------------------------------------------------------------------- the tour ---
+  // the first time: four or five hints, each pointing at what it is about (anything not on this screen is skipped)
+  const TOUR = [
+    ['.st__note[data-s="0"]', "Drag a note up or down to change it. Tap it to rest it."],
+    ['[data-tab="punch"]', "Punch: hold a pad to glitch the whole mix, let go to drop back in."],
+    ["#xy", "The squelch pad: cutoff left to right, resonance bottom to top. Double-tap it to start over."],
+    ["#tiltBtn", "Tilt: lean the device to bend the filter."],
+    ['.slot[data-slot="0"]', "Hold a pattern number to name it, copy it, share it, or chain it into a song."],
+    ["#rec", "Rec records what you play, to save or send. Have fun!"],
+  ];
+  let tourI = -1, tourEl = null;
+  const endTour = () => {
+    tourI = -1; $("tour").hidden = true;
+    if (tourEl) tourEl.classList.remove("is-tour");
+    tourEl = null;
+    try { localStorage.setItem("acid-flower-tour", "1"); } catch {}
+  };
+  function tour(i) {
+    if (tourEl) tourEl.classList.remove("is-tour");
+    while (i < TOUR.length) {
+      const el = document.querySelector(TOUR[i][0]);
+      if (el && el.getClientRects().length && !app.classList.contains("is-rave")) break;
+      i++;
+    }
+    if (i >= TOUR.length) return endTour();
+    tourI = i; tourEl = document.querySelector(TOUR[i][0]); tourEl.classList.add("is-tour");
+    $("tourMsg").textContent = TOUR[i][1];
+    const left = TOUR.slice(i + 1).some(([sel]) => { const el = document.querySelector(sel); return el && el.getClientRects().length; });
+    $("tourNext").textContent = left ? "Next" : "Got it";
+    $("tourSkip").hidden = !left;
+    const b = $("tour"); b.hidden = false;
+    const r = tourEl.getBoundingClientRect(), w = Math.min(300, innerWidth - 24), h = b.offsetHeight;
+    const below = r.bottom + h + 16 < innerHeight || r.top < h + 16;
+    const x = Math.max(12, Math.min(innerWidth - w - 12, r.left + r.width / 2 - w / 2));
+    b.style.width = w + "px"; b.style.left = x + "px";
+    b.style.top = (below ? Math.min(innerHeight - h - 8, r.bottom + 12) : Math.max(8, r.top - h - 12)) + "px";
+    b.classList.toggle("is-above", !below);
+    $("tourArrow").style.left = Math.max(14, Math.min(w - 14, r.left + r.width / 2 - x)) + "px";
+  }
+  $("tourNext").addEventListener("click", () => tour(tourI + 1));
+  $("tourSkip").addEventListener("click", endTour);
+  $("tourAgain").addEventListener("click", () => { menu.close(); setTimeout(() => tour(0), 200); });
+  addEventListener("resize", () => { if (tourI >= 0) tour(tourI); });
+
+  window.acid = { state: () => S, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
 })();

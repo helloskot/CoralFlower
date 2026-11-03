@@ -41,6 +41,7 @@
   <header class="bar">
     <h1 class="logo"><img src="icon.svg" width="28" height="28" alt=""><span>ACID<b>FLOWER</b></span></h1>
     <button class="play" id="play" type="button" aria-pressed="false"><i aria-hidden="true"></i><span>Play</span></button>
+    <button class="rec" id="rec" type="button" aria-pressed="false" title="Record what you play: the sound, effects and all, to a file"><i aria-hidden="true"></i><span>Rec</span></button>
     <div class="strip strip--bar" data-p="tempo" role="slider" aria-label="Tempo"><b>Tempo</b><em></em><i class="strip__l">&#9664;</i><i class="strip__r">&#9654;</i></div>
     <div class="strip strip--bar" data-p="swing" role="slider" aria-label="Swing"><b>Swing</b><em></em><i class="strip__l">&#9664;</i><i class="strip__r">&#9654;</i></div>
     <nav class="slots" id="slots" aria-label="Patterns"></nav>
@@ -54,6 +55,8 @@
     <div class="rave__fx fxpads" id="ravePunch" aria-label="Punch-in effects"></div>
     <div class="rave__bar">
       <button type="button" id="ravePlay" class="rave__b">Play / Stop</button>
+      <button type="button" id="raveRec" class="rave__b rave__rec" aria-pressed="false">Rec</button>
+      <button type="button" id="raveLatch" class="rave__b" aria-pressed="false" title="Latch: a tap turns an effect on, another turns it off">Latch</button>
       <button type="button" id="raveScene" class="rave__b">Next scene</button>
       <button type="button" id="raveExit" class="rave__b">Done</button>
     </div>
@@ -84,6 +87,11 @@
         <button type="button" role="tab" data-tab="punch" aria-selected="false">Punch</button>
         <button type="button" role="tab" data-tab="filter" aria-selected="false" class="tab-filter">Filter</button>
       </div>
+      <div class="hist">
+        <button type="button" class="tool tool--icon" id="undo" aria-label="Undo" title="Undo (⌘Z)" disabled>Undo</button>
+        <button type="button" class="tool tool--icon" id="redo" aria-label="Redo" title="Redo (⇧⌘Z)" disabled>Redo</button>
+      </div>
+      <button type="button" class="tool latch" id="latch" aria-pressed="false" title="Latch: a tap turns an effect on, another turns it off" hidden>Latch</button>
       <div class="tools">
         <button type="button" id="wave" class="tool tool--lab" title="The bass's waveform"><small>Wave</small><b>Saw</b></button>
         <div class="stepper" aria-label="Key (transpose)"><button type="button" data-tune="-1" aria-label="Key down">&minus;</button><span class="stepper__v"><small>Key</small><b id="tune">C</b></span><button type="button" data-tune="1" aria-label="Key up">+</button></div>
@@ -113,6 +121,24 @@
   </div>
 </div>
 
+<dialog class="menu sheet" id="slotMenu" aria-labelledby="slotTitle">
+  <h2 id="slotTitle">Pattern 1</h2>
+  <label class="sheet__name"><span>Name</span><input id="slotName" maxlength="10" autocomplete="off" spellcheck="false" placeholder="P1"></label>
+  <h3>Then play</h3>
+  <p class="sheet__hint">When this pattern ends, go on to another: chain them into a song.</p>
+  <div class="sheet__nums" id="slotNext"></div>
+  <h3>Copy it to</h3>
+  <div class="sheet__nums" id="slotCopy"></div>
+  <div class="menu__row">
+    <button type="button" id="slotShare">Share as a link</button>
+    <button type="button" id="slotClear" class="is-bad">Clear this pattern</button>
+  </div>
+  <form method="dialog"><button class="menu__close">Done</button></form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastMsg"></span><button type="button" id="toastBtn" hidden></button></div>
+<div class="tour" id="tour" role="dialog" aria-live="polite" hidden><p id="tourMsg"></p><div class="tour__row"><span id="tourStep"></span><button type="button" id="tourSkip">Skip</button><button type="button" id="tourNext">Next</button></div><i class="tour__arrow" id="tourArrow"></i></div>
+
 <dialog class="menu" id="menu" aria-labelledby="menuTitle">
   <h2 id="menuTitle">ACID<b>FLOWER</b></h2>
   <h3>How it plays</h3>
@@ -121,10 +147,14 @@
     <li><b>Tools:</b> <b>Key</b> transposes the bass, <b>Len</b> sets the pattern’s length. <b>Clear</b> asks for a second tap.</li>
     <li><b>Drums:</b> tap a step to set or clear it, or drag across steps to paint. Tap a drum’s name to hear it.</li>
     <li><b>Squelch pad:</b> cutoff left to right, resonance bottom to top. The strips do the rest: drag up or down.</li>
-    <li><b>Punch:</b> hold a pad for an effect on the whole mix, let go to drop out; hold several at once. Repeats start on the beat. In rave mode they run along the bottom; on a keyboard, 1 to 0, - and =.</li>
+    <li><b>Punch:</b> hold a pad for an effect on the whole mix, let go to drop out; hold several at once. Repeats start on the beat. <b>Latch</b> makes a tap turn an effect on and another turn it off. In rave mode they run along the bottom.</li>
     <li><b>Tilt:</b> lean the iPad to play the filter: left and right for the cutoff, towards you and away for the resonance. It takes the way you hold it when you turn it on as the middle; turn it off and on again to re-centre. The picture leans with it.</li>
-    <li><b>Tempo and swing:</b> drag up or down, or tap the arrows; hold an arrow to keep going.</li>
-    <li><b>Patterns:</b> 1 to 8 along the top; a dot marks the ones with something in them. While it plays, the next one blinks until the bar ends, then takes over.</li>
+    <li><b>Tempo and swing:</b> drag up or down, or tap the arrows; hold an arrow to keep going. Tap the middle of Tempo in time with the music to set it.</li>
+    <li><b>Patterns:</b> 1 to 8 along the top; a dot marks the ones with something in them. While it plays, the next one blinks until the bar ends, then takes over. <b>Hold</b> a number to name the pattern, copy it, share it as a link, or chain it to another (<b>Then play</b>) to make a song.</li>
+    <li><b>Undo:</b> the arrows beside the tabs undo and redo any change to a pattern.</li>
+    <li><b>Rec:</b> records everything you hear, effects and all; when you stop, save it or send it.</li>
+    <li><b>The squelch pad</b> stays where you leave it; double-tap it to go back to the start.</li>
+    <li><b>On a keyboard:</b> Space plays, 1 to 8 pick a pattern, ← and → the tempo (with Shift, by 5), R the rave, ⌘Z undo; the punch-ins are Shift with 1 to 0, - and =.</li>
     <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter.</li>
   </ul>
   <h3>The rave</h3>
@@ -140,6 +170,7 @@
   <div class="menu__row">
     <button type="button" id="export">Save patterns</button>
     <button type="button" id="import">Load patterns</button>
+    <button type="button" id="tourAgain">Show the tour again</button>
     <button type="button" id="reset" class="is-bad">Start over</button>
   </div>
   <input type="file" id="importFile" accept=".json,application/json" hidden>

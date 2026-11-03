@@ -6,6 +6,10 @@
 // closed and open hat (the closed one chokes the open one). Drive, a tempo-locked delay, a soft limiter.
 // The 16-step clock runs here, sample-accurate, with swing; the page sends the pattern, the knobs and play / stop,
 // and gets the step, the filter's motion, the drums' hits and a scrap of the waveform back for its pixel display.
+// Punch-in effects, held from the page (a bit mask, FX below), work on the whole mix: the last 4 s of it are kept,
+// so REPEAT 1/8, 1/16 and ROLL 1/32 loop from the last 16th's start, REVERSE plays backwards from the touch, TAPE STOP
+// slows to a halt; LOWPASS and HIGHPASS sweep while held and snap back; CRUSH, a tempo-synced GATE, an ECHO throw
+// (its tail rings on after the release), and BASS OUT / DRUMS OUT for the drops.
 "use strict";
 
 const TAU = 2 * Math.PI;
@@ -44,6 +48,21 @@ class Biquad {                                         // RBJ cookbook, direct f
 const DEFAULT_PARAMS = { cutoff: 0.35, reso: 0.7, env: 0.55, decay: 0.45, accent: 0.6, drive: 0.25, delay: 0.2,
                          volume: 0.8, drums: 0.8, wave: 0, tempo: 124, swing: 0.54, tune: 0 };
 const LANES = 5;                                       // kick, snare, clap, closed hat, open hat
+const FX = { REP8: 0, REP16: 1, ROLL: 2, REV: 3, TAPE: 4, LP: 5, HP: 6, CRUSH: 7, GATE: 8, ECHO: 9, BASSOUT: 10, DRUMSOUT: 11 };
+const on = (mask, b) => (mask >> b) & 1;
+class SVF {                                            // a state-variable filter (Chamberlin, 2x over), for the sweeps
+  constructor() { this.lp = 0; this.bp = 0; }
+  run(x, f, q, hp) {
+    let out = 0;
+    for (let k = 0; k < 2; k++) {
+      this.lp += f * this.bp;
+      const h = x - this.lp - q * this.bp;
+      this.bp += f * h;
+      out = hp ? h : this.lp;
+    }
+    return out;
+  }
+}
 
 class AcidFlower extends AudioWorkletProcessor {
   constructor() {
@@ -72,6 +91,16 @@ class AcidFlower extends AudioWorkletProcessor {
     // to the page
     this.wave = new Float32Array(64); this.wi = 0; this.wdiv = 0; this.lastPost = 0; this.t = 0;
     this.hits = 0;                                     // bits: the drums that hit since the last post
+    // the punch-ins: the mix's last 4 s, what is held, and each effect's state
+    this.HN = Math.ceil(sr * 4); this.hl = new Float32Array(this.HN); this.hr = new Float32Array(this.HN); this.hw = 0;
+    this.stepAt = 0; this.fx = 0;
+    this.play = null;                                  // buffer playback: { mode: "rep" | "rev" | "tape", ... }
+    this.xf = 0;                                       // 0 live .. 1 the buffer's playback
+    this.lpC = 1; this.hpC = 0;                        // the sweeps' positions, 0..1
+    this.svf = [new SVF(), new SVF(), new SVF(), new SVF()];
+    this.crushN = 0; this.crushL = 0; this.crushR = 0; this.gateG = 1;
+    this.eL = new Float32Array(Math.ceil(sr * 2.2)); this.eR = new Float32Array(Math.ceil(sr * 2.2)); this.ew = 0; this.eIn = 0;
+    this.bassG = 1; this.drumsG = 1;
     this.accHit = false; this.noteHit = -1;
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
@@ -90,6 +119,7 @@ class AcidFlower extends AudioWorkletProcessor {
       this.noteOn(m.note, !!m.acc, false);
       this.gateLeft = Math.round(this.sr * 0.18);
     } else if (m.type === "hit") this.drum(m.lane | 0, 1);
+    else if (m.type === "fx") this.setFx(m.mask | 0);
   }
 
   rnd() {                                              // white noise, -1..1 (xorshift)
@@ -128,6 +158,27 @@ class AcidFlower extends AudioWorkletProcessor {
     this.hits |= 1 << lane;
   }
 
+  // the punch-ins held change: start a loop, a reverse or a tape stop from here; the rest follow the mask by themselves
+  setFx(mask) {
+    const was = this.fx;
+    this.fx = mask;
+    const sps = (this.sr * 60) / Math.max(40, Math.min(220, this.p.tempo)) / 4, HN = this.HN;
+    const div = on(mask, FX.ROLL) ? 0.5 : on(mask, FX.REP16) ? 1 : on(mask, FX.REP8) ? 2 : 0;
+    if (on(mask, FX.TAPE)) {
+      if (!on(was, FX.TAPE)) this.play = { mode: "tape", pos: (this.hw - 1 + HN) % HN, rate: 1 };
+    } else if (on(mask, FX.REV)) {
+      if (!on(was, FX.REV) || (this.play && this.play.mode !== "rev")) this.play = { mode: "rev", pos: (this.hw - 1 + HN) % HN };
+    } else if (div) {
+      const len = Math.max(64, Math.round(sps * div));
+      if (!this.play || this.play.mode !== "rep" || this.play.len !== len) {
+        // loop from the last 16th's start (playing), or the last loop's length (stopped); the first pass is live
+        const start = this.playing ? this.stepAt : (this.hw - len + HN) % HN;
+        const k = this.playing ? (this.hw - start + HN) % HN : 0;
+        this.play = { mode: "rep", start, len, k };
+      }
+    } else this.play = null;
+  }
+
   tick() {                                             // a new step
     const len = Math.max(1, Math.min(16, this.pat.len | 0));
     let s = this.step + 1;
@@ -137,6 +188,7 @@ class AcidFlower extends AudioWorkletProcessor {
     }
     const prev = this.pat.bass[(this.step + len) % len] || {};
     this.step = s;
+    this.stepAt = this.hw;                             // (where this step's sound goes in the punch-ins' history)
     const sps = (this.sr * 60) / Math.max(40, Math.min(220, this.p.tempo)) / 4;
     const sw = Math.max(0.5, Math.min(0.75, this.p.swing));
     this.dur = (s % 2 === 0 ? sw : 1 - sw) * 2 * sps;
@@ -169,12 +221,20 @@ class AcidFlower extends AudioWorkletProcessor {
     const kDec = Math.exp(-1 / (0.42 * sr)), kP = Math.exp(-1 / (0.028 * sr)), clickD = Math.exp(-1 / (0.0015 * sr));
     const snT = Math.exp(-1 / (0.11 * sr)), snN = Math.exp(-1 / (0.17 * sr));
     const vol = p.volume, dvol = p.drums * 0.9;
+    // the punch-ins' constants for this block
+    const fx = this.fx, HN = this.HN, P = this.play, xfK = 1 - Math.exp(-1 / (0.004 * sr));
+    const lpOn = on(fx, FX.LP), hpOn = on(fx, FX.HP), crush = on(fx, FX.CRUSH), gateOn = on(fx, FX.GATE), echoOn = on(fx, FX.ECHO);
+    const lpK = lpOn ? Math.exp(-1 / (1.4 * sr)) : Math.exp(-1 / (0.06 * sr)), hpK = hpOn ? Math.exp(-1 / (1.4 * sr)) : Math.exp(-1 / (0.06 * sr));
+    const tapeDec = 1 / (0.75 * sr), muteK = 1 - Math.exp(-1 / (0.006 * sr));
+    const bassT = on(fx, FX.BASSOUT) ? 0 : 1, drumsT = on(fx, FX.DRUMSOUT) ? 0 : 1;
+    const elen = Math.min(this.eL.length - 1, Math.round(sps * 3)), echoFb = echoOn ? 0.72 : 0.55;
     for (let i = 0; i < n; i++) {
       // ---- the clock
       if (this.playing) {
         if (this.phase >= this.dur) { this.phase -= this.dur; this.tick(); }
         this.phase++;
       }
+      this.bassG += (bassT - this.bassG) * muteK; this.drumsG += (drumsT - this.drumsG) * muteK;
       // ---- the bass voice
       if (this.gateLeft !== Infinity && this.gateLeft > 0 && --this.gateLeft === 0) this.gate = false;
       if (this.slideLeft > 0) { this.freq += (this.target - this.freq) * glideK; this.slideLeft--; if (!this.slideLeft) this.freq = this.target; }
@@ -241,7 +301,7 @@ class AcidFlower extends AudioWorkletProcessor {
         h.env *= h.dec;
       }
       // ---- the delay (the bass and the clap into it), ping-pong
-      const send = bass * sm.delay;
+      const send = bass * sm.delay * this.bassG;        // (BASS OUT: nothing more into the delay; its repeats ring out)
       let rd = this.dw - dlen; if (rd < 0) rd += this.dl.length;
       const dLeft = this.dl[rd], dRight = this.dlr[rd];
       this.dlp += (dRight - this.dlp) * 0.35;          // the repeats a little darker each time
@@ -249,9 +309,56 @@ class AcidFlower extends AudioWorkletProcessor {
       this.dl[this.dw] = send + this.dlp * 0.48;
       this.dlr[this.dw] = this.dlpR * 0.48;
       this.dw = (this.dw + 1) % this.dl.length;
-      const mix = bass * 0.95 + drums * dvol;
-      L[i] = tanh((mix + dLeft * 0.8) * vol * 0.9);
-      if (R !== L) R[i] = tanh((mix + dRight * 0.8) * vol * 0.9);
+      const mix = bass * 0.95 * this.bassG + drums * dvol * this.drumsG;
+      let oL = mix + dLeft * 0.8, oR = mix + dRight * 0.8;
+      // ---- the punch-ins: the mix into its history; a loop, a reverse or a tape stop played from it
+      this.hl[this.hw] = oL; this.hr[this.hw] = oR;
+      let bL = 0, bR = 0;
+      if (P) {
+        if (P.mode === "rep") {
+          const j = P.k % P.len, idx = (P.start + j) % HN, w = Math.min(1, j / 48, (P.len - j) / 48);
+          bL = this.hl[idx] * w; bR = this.hr[idx] * w; P.k++;
+        } else if (P.mode === "rev") {
+          bL = this.hl[P.pos]; bR = this.hr[P.pos]; P.pos = (P.pos - 1 + HN) % HN;
+        } else {                                       // the tape: slowing to a stop, read between samples
+          const i0 = Math.floor(P.pos), f = P.pos - i0, i1 = (i0 + 1) % HN, e = Math.min(1, P.rate * 1.5);
+          bL = (this.hl[i0] + (this.hl[i1] - this.hl[i0]) * f) * e; bR = (this.hr[i0] + (this.hr[i1] - this.hr[i0]) * f) * e;
+          P.pos += P.rate; if (P.pos >= HN) P.pos -= HN;
+          P.rate = Math.max(0, P.rate - tapeDec);
+        }
+      }
+      this.hw = (this.hw + 1) % HN;
+      this.xf += ((P ? 1 : 0) - this.xf) * xfK;
+      oL += (bL - oL) * this.xf; oR += (bR - oR) * this.xf;
+      // the sweeps: a lowpass closing, a highpass opening, while held; back when let go
+      this.lpC = lpOn ? 0.02 + (this.lpC - 0.02) * lpK : 1 - (1 - this.lpC) * lpK;
+      this.hpC = hpOn ? 0.75 - (0.75 - this.hpC) * hpK : this.hpC * lpK;
+      if (this.lpC < 0.995) {
+        const f = Math.min(0.9, 2 * Math.sin((Math.PI * 30 * Math.pow(600, this.lpC)) / (2 * sr)));
+        oL = this.svf[0].run(oL, f, 0.55, false); oR = this.svf[1].run(oR, f, 0.55, false);
+      }
+      if (this.hpC > 0.005) {
+        const f = Math.min(0.9, 2 * Math.sin((Math.PI * 20 * Math.pow(400, this.hpC)) / (2 * sr)));
+        oL = this.svf[2].run(oL, f, 0.7, true); oR = this.svf[3].run(oR, f, 0.7, true);
+      }
+      if (crush) {                                      // 4-bit, a sixth of the rate
+        if (++this.crushN >= 6) { this.crushN = 0; this.crushL = Math.round(oL * 7) / 7; this.crushR = Math.round(oR * 7) / 7; }
+        oL = this.crushL * 1.1; oR = this.crushR * 1.1;
+      }
+      // the gate: on for the first half of every 16th, in time with the clock
+      const gT = !gateOn ? 1 : this.playing ? (this.phase < this.dur * 0.5 ? 1 : 0) : ((this.t + i) % Math.round(sps)) < sps * 0.5 ? 1 : 0;
+      this.gateG += (gT - this.gateG) * 0.02;
+      oL *= this.gateG; oR *= this.gateG;
+      // the echo throw: the mix into a long echo while held; its repeats ring on after
+      this.eIn += ((echoOn ? 1 : 0) - this.eIn) * muteK;
+      let er = this.ew - elen; if (er < 0) er += this.eL.length;
+      const eL = this.eL[er], eR = this.eR[er];
+      this.eL[this.ew] = oL * this.eIn + eR * echoFb;
+      this.eR[this.ew] = oR * this.eIn * 0.6 + eL * echoFb;
+      this.ew = (this.ew + 1) % this.eL.length;
+      oL += eL * 0.85; oR += eR * 0.85;
+      L[i] = tanh(oL * vol * 0.9);
+      if (R !== L) R[i] = tanh(oR * vol * 0.9);
       // ---- a scrap of the waveform for the display
       if (++this.wdiv >= 4) { this.wdiv = 0; this.wave[this.wi] = bass; this.wi = (this.wi + 1) & 63; }
     }
@@ -262,7 +369,7 @@ class AcidFlower extends AudioWorkletProcessor {
       for (let j = 0; j < 64; j++) w[j] = this.wave[(this.wi + j) & 63];
       this.port.postMessage({ type: "viz", step: this.playing ? this.step : -1, playing: this.playing, env: this.fenv,
         acc: this.accCap, cut: sm.cutoff, reso: sm.reso, amp: this.amp, hits: this.hits, accHit: this.accHit,
-        note: this.noteHit, wave: w }, [w.buffer]);
+        note: this.noteHit, wave: w, fx: this.fx, tape: this.play && this.play.mode === "tape" ? this.play.rate : 1 }, [w.buffer]);
       this.hits = 0; this.accHit = false; this.noteHit = -1;
     }
     return true;

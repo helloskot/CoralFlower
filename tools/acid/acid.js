@@ -296,8 +296,10 @@
     document.querySelectorAll("[data-tab]").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
     bassEl.hidden = t.dataset.tab !== "bass";
     drumsEl.hidden = t.dataset.tab !== "drums";
+    $("punch").hidden = t.dataset.tab !== "punch";
+    document.querySelector(".tools").style.visibility = t.dataset.tab === "punch" ? "hidden" : "";
   });
-  const tab = () => (bassEl.hidden ? "drums" : "bass");
+  const tab = () => (!bassEl.hidden ? "bass" : "drums");
   act("#wave", () => { S.params.wave = S.params.wave ? 0 : 1; sendParams(); save(); drawAll(); });
   act("[data-tune]", (x) => { S.params.tune = Math.max(-12, Math.min(12, S.params.tune + +x.dataset.tune)); sendParams(); save(); drawAll(); });
   act("[data-len]", (x) => { pat().len = Math.max(1, Math.min(16, pat().len + +x.dataset.len)); edited(); drawAll(); });
@@ -343,6 +345,54 @@
     else pat().drums = grid([]);
     edited(); drawAll();
   });
+
+  // ------------------------------------------------------------------------------------------ the punch-ins ---
+  // twelve effects on the whole mix, each on while a finger (or a key) holds it; a finger can slide from pad to pad
+  const FXS = [["Repeat", "1/8", "#FFE100"], ["Repeat", "1/16", "#FFE100"], ["Roll", "1/32", "#FFE100"], ["Reverse", "back", "#2BF0FF"],
+               ["Tape", "stop", "#2BF0FF"], ["Lowpass", "sweep", "#FF2FB4"], ["Highpass", "sweep", "#FF2FB4"], ["Crush", "bits", "#FF8A1F"],
+               ["Gate", "1/16", "#FF8A1F"], ["Echo", "throw", "#B4FF2B"], ["Bass", "out", "#B4FF2B"], ["Drums", "out", "#B4FF2B"]];
+  const FXKEYS = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9", "Digit0", "Minus", "Equal"];
+  const fxSrc = FXS.map(() => new Set()), fxEls = FXS.map(() => []);
+  let fxSent = -1;
+  const fxPublish = () => {
+    let m = 0;
+    fxSrc.forEach((s, i) => s.size && (m |= 1 << i));
+    if (m !== fxSent) { fxSent = m; post({ type: "fx", mask: m }); }
+    fxEls.forEach((list, i) => list.forEach((e) => e.classList.toggle("is-on", fxSrc[i].size > 0)));
+  };
+  const fxHold = (i, src, down) => { if (!fxSrc[i]) return; down ? fxSrc[i].add(src) : fxSrc[i].delete(src); fxPublish(); };
+  for (const box of [$("punch"), $("ravePunch")]) {
+    FXS.forEach(([a, b2, c], i) => {
+      const d = document.createElement("div");
+      d.className = "fxp"; d.dataset.fx = i; d.style.setProperty("--c", c); d.setAttribute("role", "button"); d.setAttribute("aria-label", a + " " + b2);
+      d.innerHTML = `<kbd>${["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="][i]}</kbd><b>${a}</b><small>${b2}</small>`;
+      box.appendChild(d); fxEls[i].push(d);
+    });
+    const held = new Map();
+    box.addEventListener("pointerdown", (e) => {
+      const d = e.target.closest(".fxp");
+      if (!d) return;
+      e.preventDefault(); e.stopPropagation();
+      held.set(e.pointerId, +d.dataset.fx); fxHold(+d.dataset.fx, "p" + e.pointerId, true);
+      try { box.setPointerCapture(e.pointerId); } catch {}
+    });
+    box.addEventListener("pointermove", (e) => {
+      if (!held.has(e.pointerId)) return;
+      const el = document.elementFromPoint(e.clientX, e.clientY), d = el && el.closest && el.closest(".fxp");
+      if (!d || !box.contains(d) || +d.dataset.fx === held.get(e.pointerId)) return;
+      fxHold(held.get(e.pointerId), "p" + e.pointerId, false); held.set(e.pointerId, +d.dataset.fx); fxHold(+d.dataset.fx, "p" + e.pointerId, true);
+    });
+    const end = (e) => { if (!held.has(e.pointerId)) return; fxHold(held.get(e.pointerId), "p" + e.pointerId, false); held.delete(e.pointerId); };
+    box.addEventListener("pointerup", end); box.addEventListener("pointercancel", end);
+  }
+  addEventListener("keydown", (e) => {
+    const i = FXKEYS.indexOf(e.code);
+    if (i < 0 || e.repeat || e.metaKey || e.ctrlKey || $("menu").open) return;
+    e.preventDefault(); fxHold(i, "k", true);
+  });
+  addEventListener("keyup", (e) => { const i = FXKEYS.indexOf(e.code); if (i >= 0) fxHold(i, "k", false); });
+  addEventListener("blur", () => { fxSrc.forEach((s) => s.clear()); fxPublish(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { fxSrc.forEach((s) => s.clear()); fxPublish(); } });
 
   // ------------------------------------------------------------------------------------------ the display ---
   // the pixel rave is rave.js; here: the playhead on the editor, the queued pattern taking over at the bar, the drums'

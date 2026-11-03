@@ -1,0 +1,111 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Coral Acid: an acid house machine for iPad. A squelchy bass line with accent and slide, a drum machine, a squelch
+     pad and knobs for playing the filter live, and a pixel rave. The sound is acid-worklet.js; this page, acid.js, is
+     the touch surface. A Home Screen web app (manifest.webmanifest, sw.js: it works offline after the first visit).
+     tools/make_site.sh puts it in acid/. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Coral Acid</title>
+<meta name="description" content="Coral Acid: an acid house machine for iPad. Program squelchy bass lines and beats, then play the filter with your fingers.">
+<meta name="theme-color" content="#07020C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Coral Acid">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preload" href="../fonts/DepartureMono.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="acid.css">
+</head>
+<body>
+<main class="app" id="app" aria-label="Coral Acid">
+  <header class="bar">
+    <h1 class="logo"><img src="icon.svg" width="28" height="28" alt=""><span>CORAL<b>ACID</b></span></h1>
+    <button class="play" id="play" type="button" aria-pressed="false"><i aria-hidden="true"></i><span>Play</span></button>
+    <div class="strip strip--bar" data-p="tempo" role="slider" aria-label="Tempo"><b>Tempo</b><em></em><i class="strip__l">&#9664;</i><i class="strip__r">&#9654;</i></div>
+    <div class="strip strip--bar" data-p="swing" role="slider" aria-label="Swing"><b>Swing</b><em></em><i class="strip__l">&#9664;</i><i class="strip__r">&#9654;</i></div>
+    <nav class="slots" id="slots" aria-label="Patterns"></nav>
+    <button class="menu-btn" id="menuBtn" type="button" aria-label="Menu" aria-haspopup="dialog">&#8943;</button>
+  </header>
+
+  <section class="rave" aria-label="The display">
+    <canvas id="viz" width="160" height="100" role="img" aria-label="A pixel rave that moves with the music"></canvas>
+  </section>
+
+  <section class="perf" aria-label="Play the filter">
+    <div class="xy" id="xy" role="slider" aria-label="Squelch pad: cutoff left to right, resonance bottom to top">
+      <span class="xy__lab xy__lab--x">Cutoff &#8594;</span><span class="xy__lab xy__lab--y">Resonance &#8594;</span>
+      <i class="xy__dot" id="xyDot"></i><i class="xy__h" id="xyH"></i><i class="xy__v" id="xyV"></i>
+    </div>
+    <div class="strips">
+      <div class="strip" data-p="env" role="slider" aria-label="Envelope"><b>Env mod</b><em></em><span class="strip__bar"></span></div>
+      <div class="strip" data-p="decay" role="slider" aria-label="Decay"><b>Decay</b><em></em><span class="strip__bar"></span></div>
+      <div class="strip" data-p="accent" role="slider" aria-label="Accent"><b>Accent</b><em></em><span class="strip__bar"></span></div>
+      <div class="strip" data-p="drive" role="slider" aria-label="Drive"><b>Drive</b><em></em><span class="strip__bar"></span></div>
+      <div class="strip" data-p="delay" role="slider" aria-label="Delay"><b>Delay</b><em></em><span class="strip__bar"></span></div>
+      <div class="strip" data-p="drums" role="slider" aria-label="Drums level"><b>Drums</b><em></em><span class="strip__bar"></span></div>
+    </div>
+  </section>
+
+  <section class="edit" aria-label="The pattern">
+    <div class="edit__head">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="bass" aria-selected="true">Bass line</button>
+        <button type="button" role="tab" data-tab="drums" aria-selected="false">Drums</button>
+      </div>
+      <div class="tools">
+        <button type="button" id="wave" class="tool" title="The bass's waveform">Saw</button>
+        <div class="stepper" aria-label="Transpose"><button type="button" data-tune="-1">&minus;</button><span id="tune">C</span><button type="button" data-tune="1">+</button></div>
+        <div class="stepper" aria-label="Length"><button type="button" data-len="-1">&minus;</button><span id="len">16</span><button type="button" data-len="1">+</button></div>
+        <button type="button" class="tool" id="mutate">Mutate</button>
+        <button type="button" class="tool" id="random">Random</button>
+        <button type="button" class="tool tool--quiet" id="clear">Clear</button>
+      </div>
+    </div>
+    <div class="bass" id="bass" role="tabpanel" aria-label="Bass line: drag a note up or down to change it, tap it to rest"></div>
+    <div class="drums" id="drums" role="tabpanel" aria-label="Drums" hidden></div>
+  </section>
+</main>
+
+<div class="gate" id="gate">
+  <div class="gate__card">
+    <img src="icon.svg" width="96" height="96" alt="">
+    <h2>CORAL<b>ACID</b></h2>
+    <p>An acid house machine. Program a bass line and a beat, then play the filter with your fingers.</p>
+    <button class="gate__go" id="start" type="button">Start the machine</button>
+    <p class="gate__hint" id="a2hs" hidden>For a full-screen machine with its own icon: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
+  </div>
+</div>
+
+<dialog class="menu" id="menu" aria-labelledby="menuTitle">
+  <h2 id="menuTitle">CORAL<b>ACID</b></h2>
+  <h3>How it plays</h3>
+  <ul>
+    <li><b>Bass line:</b> drag a note up or down to change it; tap it to rest it. <b>Oct</b> drops or lifts it an octave, <b>Acc</b> accents it (louder, a sharper squelch), <b>Slide</b> glides it into the next note.</li>
+    <li><b>Drums:</b> tap a step to set or clear it, or drag across steps to paint. Tap a drum’s name to hear it.</li>
+    <li><b>Squelch pad:</b> cutoff left to right, resonance bottom to top. The strips do the rest: drag up or down.</li>
+    <li><b>Patterns:</b> 1 to 8 along the top. While it plays, the next one starts at the end of the bar.</li>
+  </ul>
+  <h3>Sound</h3>
+  <div class="opt"><span>Response<small>Smooth uses a bigger audio buffer: try it if you hear crackles. Applies the next time you open the app.</small></span>
+    <div class="seg" data-pref="latency"><button type="button" data-v="interactive">Fast</button><button type="button" data-v="playback">Smooth</button></div></div>
+  <h3>Your patterns</h3>
+  <p>They are saved on this iPad. Keep a copy in Files.</p>
+  <div class="menu__row">
+    <button type="button" id="export">Save patterns</button>
+    <button type="button" id="import">Load patterns</button>
+    <button type="button" id="reset" class="is-bad">Start over</button>
+  </div>
+  <input type="file" id="importFile" accept=".json,application/json" hidden>
+  <p class="menu__msg" id="msg" role="status"></p>
+  <p class="menu__fine">Free software under the GPL-3.0, from the makers of <a href="../ipad/">CoralFlower</a>.</p>
+  <form method="dialog"><button class="menu__close">Close</button></form>
+</dialog>
+
+<script src="acid.js"></script>
+</body>
+</html>

@@ -32,7 +32,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .bar { grid-area: bar; display: flex; gap: var(--gap); align-items: stretch; min-width: 0; }
 .rave { grid-area: rave; min-height: 0; min-width: 0; display: flex; align-items: center; justify-content: center; }
 .perf { grid-area: perf; min-height: 0; display: grid; gap: var(--gap); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.edit { grid-area: edit; min-height: 0; display: grid; gap: var(--gap); grid-template-rows: auto minmax(0, 1fr); }
+.edit { grid-area: edit; min-height: 0; min-width: 0; display: grid; gap: var(--gap); grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
 @media (orientation: portrait) {
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) minmax(0, 0.8fr) clamp(260px, 32vh, 340px);
          grid-template-areas: "bar" "rave" "perf" "edit"; }
@@ -123,7 +123,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .st__note::before { content: ""; position: absolute; left: 4px; right: 4px; bottom: calc(5px + var(--h, 0) * 24%); height: 3px; border-radius: 2px; background: var(--dim); }
 .st.is-on .st__note { background: var(--cell-hi); color: var(--text); }
 .st.is-on .st__note::before { background: var(--lime); }
-.st__t { min-height: 0; border-radius: 7px; background: var(--cell); box-shadow: inset 0 0 0 1.5px var(--line); font-size: clamp(9px, 1vw, 12px); letter-spacing: .04em; color: var(--dim); text-transform: uppercase; }
+.st__t { min-height: 0; min-width: 0; padding: 0; overflow: hidden; white-space: nowrap; border-radius: 7px; background: var(--cell); box-shadow: inset 0 0 0 1.5px var(--line); font-size: clamp(9px, 1vw, 12px); letter-spacing: .04em; color: var(--dim); text-transform: uppercase; }
 .st__t.is-up { background: var(--cyan); color: var(--black); }
 .st__t.is-dn { background: #2155FF; color: var(--text); }
 .st__t.is-acc { background: var(--yellow); color: var(--black); }
@@ -222,3 +222,113 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .rave__fx .fxp { background: rgba(18, 10, 28, .72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .rave__fx .fxp b { font-size: 12px; } .rave__fx .fxp small, .rave__fx .fxp kbd { display: none; }
 .rave__fx .fxp.is-on { background: var(--c); }
+
+/* ================================================================================== phones and foldables ===
+ * Folded, a foldable is a phone: phone layouts below (portrait: stacked, a two-row bar, the bass line and the drums
+ * in two rows of 8 steps; landscape: the rave and the filter on the left, the pattern on the right). Unfolded flat it
+ * is the tablet layout above. Half-folded, nothing sits on the fold: the screen's two segments (the Viewport Segments
+ * API: the media queries measure them into the variables below; acid.js picks the layout, falling back to the Device
+ * Posture API) are used as two screens:
+ *   .fold-tb  a hinge across (laptop / tabletop): the rave on the top half, the controls on the bottom half; in rave
+ *             mode the rave on top and the punch-ins as big pads below
+ *   .fold-lr  a hinge down the middle (book): the rave and the filter on the left page, the pattern on the right */
+:root { --seg-top-h: 50vh; --hinge-h: 0px; --seg-left-w: 50vw; --hinge-w: 0px; --bar-h: 48px; }
+@media (vertical-viewport-segments: 2) {
+  :root { --seg-top-h: env(viewport-segment-height 0 0, 50vh); --hinge-h: calc(env(viewport-segment-top 0 1, 50vh) - env(viewport-segment-bottom 0 0, 50vh)); }
+}
+@media (horizontal-viewport-segments: 2) {
+  :root { --seg-left-w: env(viewport-segment-width 0 0, 50vw); --hinge-w: calc(env(viewport-segment-left 1 0, 50vw) - env(viewport-segment-right 0 0, 50vw)); }
+}
+
+/* -- phones, portrait (and a foldable folded) -- */
+@media (max-width: 600px) and (orientation: portrait) {
+  .app { --gap: 5px; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(110px, .8fr) minmax(150px, .85fr) minmax(320px, 1.9fr);
+         grid-template-areas: "bar" "rave" "perf" "edit"; }
+  .bar { flex-wrap: wrap; row-gap: 5px; }
+  .logo span, .rave-btn span, .tilt-btn span { display: none; }
+  .logo { padding: 0 2px; }
+  .play { padding: 0 12px; min-height: 40px; }
+  .strip--bar { flex: 1 1 0; min-width: 0; padding: 2px 24px; }
+  .strip--bar .strip__l, .strip--bar .strip__r { width: 22px; }
+  .rave-btn, .tilt-btn, .menu-btn { padding: 0 9px; flex: 0 0 auto; }
+  .slots { flex: 1 1 100%; order: 9; min-height: 36px; }
+  .strip { padding: 3px 6px; }
+  .strip em { font-size: 15px; }
+  .edit__head { gap: 5px; }
+  .tabs button, .tool, .stepper { min-height: 36px; padding: 0 9px; font-size: 13px; }
+  .stepper button { min-width: 30px; min-height: 36px; }
+  .tools { flex-wrap: wrap; gap: 5px; }
+  .bass { grid-template-columns: repeat(8, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); row-gap: 8px; }
+  .st { grid-template-rows: auto minmax(0, 1fr) repeat(3, minmax(22px, .5fr)); gap: 3px; }
+  .st__t { font-size: 9px; letter-spacing: 0; }
+  .drums { grid-template-columns: 48px repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(10, minmax(0, 1fr)); gap: 3px; }
+  .dr__name { grid-row: span 2; font-size: 9px; letter-spacing: 0; }
+  .punch { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); }
+  .fxp kbd { display: none; }
+  .app.is-rave .rave__fx { grid-template-columns: repeat(6, minmax(0, 1fr)); height: 120px; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 52px); }
+  .rave__b { padding: 0 11px; font-size: 13px; }
+}
+
+/* -- phones, landscape (short screens) -- */
+@media (max-height: 500px) and (orientation: landscape) {
+  .app { --gap: 5px; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); grid-template-rows: 40px minmax(0, 1fr) minmax(0, 1fr);
+         grid-template-areas: "bar bar" "rave edit" "perf edit"; }
+  .logo span, .rave-btn span, .tilt-btn span { display: none; }
+  .play { padding: 0 12px; font-size: 13px; }
+  .strip--bar { flex-basis: 92px; padding: 1px 22px; }
+  .strip--bar b { font-size: 9px; } .strip--bar em { font-size: 13px; }
+  .strip--bar .strip__l, .strip--bar .strip__r { width: 20px; }
+  .rave-btn, .tilt-btn, .menu-btn { padding: 0 9px; flex: 0 0 auto; }
+  .slot { font-size: 13px; }
+  .perf { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+  .strip { padding: 2px 6px; } .strip b { font-size: 9px; } .strip em { font-size: 13px; }
+  .strip__bar { bottom: 4px; height: 3px; }
+  .tabs button, .tool, .stepper { min-height: 30px; padding: 0 8px; font-size: 12px; }
+  .stepper button { min-width: 26px; min-height: 30px; }
+  .st { grid-template-rows: auto minmax(0, 1fr) repeat(3, minmax(18px, .38fr)); gap: 3px; }
+  .st__n { font-size: 9px; } .st__t { font-size: 8px; letter-spacing: 0; }
+  .st__note { font-size: 13px; }
+  .drums { grid-template-columns: 54px repeat(16, minmax(0, 1fr)); gap: 3px; }
+  .dr__name { font-size: 9px; letter-spacing: 0; }
+  .punch { gap: 4px; } .fxp b { font-size: 12px; } .fxp small, .fxp kbd { display: none; }
+  .app.is-rave .rave__fx { height: 48px; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 48px); }
+  .rave__b { min-height: 38px; padding: 0 12px; font-size: 13px; }
+}
+
+/* -- half-folded, the hinge across (laptop / tabletop): the top half shows, the bottom half plays -- */
+:root.fold-tb .app {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-rows: var(--bar-h) calc(var(--seg-top-h) - var(--bar-h) - 3 * var(--gap) - env(safe-area-inset-top)) var(--hinge-h) minmax(0, 1fr);
+  grid-template-areas: "bar bar" "rave perf" "hinge hinge" "edit edit";
+}
+:root.fold-tb .app.is-rave .rave { place-items: start center; }
+:root.fold-tb .app.is-rave #viz { height: var(--seg-top-h); }
+:root.fold-tb .app.is-rave .rave__fx { top: calc(var(--seg-top-h) + var(--hinge-h) + 10px); bottom: calc(max(10px, env(safe-area-inset-bottom)) + 56px); height: auto;
+  grid-template-columns: repeat(6, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 8px; }
+:root.fold-tb .app.is-rave .rave__fx .fxp b { font-size: 15px; }
+:root.fold-tb .gate__boot { height: var(--seg-top-h); bottom: auto; }
+:root.fold-tb .gate__power { top: calc(var(--seg-top-h) / 2); }
+
+/* -- half-folded, the hinge down the middle (book): the left page shows and shapes, the right page edits -- */
+:root.fold-lr .app {
+  grid-template-columns: calc(var(--seg-left-w) - 2 * var(--gap) - env(safe-area-inset-left)) var(--hinge-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "bar hinge edit" "rave hinge edit" "perf hinge edit";
+}
+/* (the right page is a phone's width: the steps in two rows of 8) */
+:root.fold-lr .bass { grid-template-columns: repeat(8, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); row-gap: 10px; }
+:root.fold-lr .drums { grid-template-columns: 56px repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(10, minmax(0, 1fr)); }
+:root.fold-lr .dr__name { grid-row: span 2; }
+:root.fold-lr .punch { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); }
+:root.fold-lr .bar { flex-wrap: wrap; row-gap: 5px; }
+:root.fold-lr .slots { flex: 1 1 100%; order: 9; min-height: 36px; }
+:root.fold-lr .logo span { display: none; }
+:root.fold-lr .app.is-rave #viz { position: absolute; left: 0; top: 0; width: var(--seg-left-w); height: 100%; }
+:root.fold-lr .app.is-rave .rave__bar { left: max(12px, env(safe-area-inset-left)); right: auto; }
+:root.fold-lr .app.is-rave .rave { place-items: center start; }
+:root.fold-lr .app.is-rave .rave__fx { left: calc(var(--seg-left-w) + var(--hinge-w) + 10px); top: 12px; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 56px); height: auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 8px; }
+:root.fold-lr .app.is-rave .rave__fx .fxp b { font-size: 15px; }
+:root.fold-lr .gate__boot { width: var(--seg-left-w); right: auto; }
+:root.fold-lr .gate__power { left: calc(var(--seg-left-w) / 2); }
+:root.fold-lr .gate__card { margin-left: calc(var(--seg-left-w) + var(--hinge-w)); }

@@ -56,6 +56,16 @@ before you install anything.
   </tr>
 </table>
 
+## Acid Flower
+
+<p align="center"><img src="tools/acid/icon-512.png" width="128" alt="The Acid Flower icon: a pixel smiley with pink and lime petals"></p>
+
+Acid Flower is a pocket acid house machine where you squelch basslines, punch in glitchy tape-stops and stutters, and
+tilt your phone to bend the filter while a grinning pixel smiley-flower raves through neon cyberspace.
+
+It runs in the browser on iPad, iPhone and foldables, and installs to the Home Screen:
+<https://helloskot.github.io/CoralFlower/acid/>. Its source is in `tools/acid/`.
+
 ## Install
 
 1. Open <https://ficusficusov.github.io/CoralFlower/> in **Chrome or Edge** on a computer. Only these browsers can talk

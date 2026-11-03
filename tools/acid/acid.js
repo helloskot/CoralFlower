@@ -49,12 +49,34 @@
   for (const t of ["pointerdown", "keydown"]) addEventListener(t, wake, true);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
   const pref = (k, d) => { try { return localStorage.getItem("acid-flower-" + k) || d; } catch { return d; } };
+  // the AudioContext: made by the first tap (Power, or Start), so iPadOS lets it sound; the boot's sounds and the machine
+  // share it
+  const makeCtx = () => {
+    if (ctx) { ctx.resume().catch(() => {}); return ctx; }
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
+    ctx = new AudioContext({ latencyHint: pref("latency", "interactive") === "playback" ? "playback" : "interactive" });
+    ctx.resume().catch(() => {});
+    return ctx;
+  };
+  const playBuf = ([l, r], offset = 0) => {
+    const b = ctx.createBuffer(2, l.length, ctx.sampleRate);
+    b.copyToChannel(l, 0); b.copyToChannel(r, 1);
+    const src = ctx.createBufferSource(), g = ctx.createGain();
+    src.buffer = b; g.gain.value = 0.8; src.connect(g); g.connect(ctx.destination);
+    src.start(0, offset);
+    return src;
+  };
+  // the boot's soundtrack: one buffer on the boot animation's clock; a skip jumps it to SYSTEM READY
+  const bootSnd = { src: null, buf: null,
+    play(offset) { try { this.stop(); this.buf = this.buf || globalThis.AcidBootSound.bootSound(ctx.sampleRate); this.src = playBuf(this.buf, offset); } catch {} },
+    stop() { if (this.src) { try { this.src.stop(); } catch {} this.src = null; } } };
   const start = async () => {
     try {
       if (!window.AudioWorkletNode) throw new Error("this browser has no AudioWorklet: update iPadOS (16.4 or later)");
       try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
-      ctx = new AudioContext({ latencyHint: pref("latency", "interactive") === "playback" ? "playback" : "interactive" });
-      ctx.resume().catch(() => {});
+      makeCtx();
+      bootSnd.stop();
+      playBuf(globalThis.AcidBootSound.enterSound(ctx.sampleRate));   // (the Start button's zap and kick)
       const code = await (await fetch("acid-worklet.js", { cache: "no-cache" })).text();   // (a blob: offline it comes from the cache)
       const url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
       await ctx.audioWorklet.addModule(url);
@@ -503,13 +525,85 @@
   if (!standalone && navigator.maxTouchPoints > 0) $("a2hs").hidden = false;
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   drawAll();
+  // ------------------------------------------------------------------------------------------- the icons ---
+  // pixel icons, 12 x 12, drawn as crisp SVG: the bass line a squelching saw, the drums a drum and its sticks, the
+  // punch-ins a lightning bolt, the rave a smiley, the tilt an iPad leaning
+  const ICONS = {
+    bass: [["............", "............", "....L.....L.", "...LL....LL.", "..L.L...L.L.", ".L..L..L..L.", "L...L.L...L.", "....GG....GG", "....G.....G.", "............", "............", "............"], { L: "#B4FF2B", G: "#5FA81A" }],
+    drums: [["S.........S.", ".S.......S..", "..S.....S...", "...S...S....", "..RRRRRRRR..", ".RWWWWWWWWR.", ".RRRRRRRRRR.", ".YYOYYOYYOY.", ".YOYYOYYOYY.", ".YYOYYOYYOY.", ".RRRRRRRRRR.", "............"], { S: "#E8D6B0", R: "#FF8A1F", W: "#FFFFFF", Y: "#FFE100", O: "#FF8A1F" }],
+    punch: [["......PPPP..", ".....PPPP...", "....PPPP....", "...PPPP.....", "..PPPPPPPP..", ".....PPPP...", "....PPPP....", "...PPPP.....", "..PPP.......", "..PP........", ".P..........", "............"], { P: "#FF2FB4" }],
+    rave: [["...YYYYYY...", "..YYYYYYYY..", ".YYYYYYYYYY.", "YYYKYYYYKYYY", "YYYKYYYYKYYY", "YYYYYYYYYYYY", "YYKYYYYYYKYY", "YYYKYYYYKYYY", ".YYYKKKKYYY.", "..YYYYYYYY..", "...YYYYYY...", "............"], { Y: "#FFE100", K: "#110A02" }],
+    tilt: [["..AAAAAA....", ".A......A...", "A........A.A", "A.........AA", "........AAA.", "............", ".CCCCCCCCCC.", ".C........C.", ".C.DDDDDD.CC", ".C........C.", ".CCCCCCCCCC.", "............"], { C: "#2BF0FF", A: "#9FF8FF", D: "#1A8F99" }],
+  };
+  const iconSvg = (name) => {
+    const [g, col] = ICONS[name];
+    let r = "";
+    g.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col[ch]}"/>`; }));
+    return `<svg class="pix" viewBox="0 0 12 12" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
+  };
+  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"]]) {
+    const el = document.querySelector(sel);
+    el.innerHTML = iconSvg(name) + `<span>${el.textContent}</span>`;
+  }
+
   // ------------------------------------------------------------------------------------------- the boot ---
   // the start screen: the machine powering on (rave.js bootScene), then its button; a tap skips ahead
   const boot = new globalThis.AcidRave($("boot"), { pattern: () => pat(), params: () => S.params, slot: () => S.cur, playing: () => false,
                                                     onReady: () => $("gate").classList.add("is-ready") }, { boot: true });
   boot.calm = rave.calm;
   boot.start();
-  $("gate").addEventListener("pointerdown", (e) => { if (!e.target.closest("button")) boot.skip(); });
+  // Power: the tap that lets the iPad sound; the boot animation and its sounds start together
+  $("power").addEventListener("click", () => {
+    makeCtx();
+    $("gate").classList.add("is-on");
+    boot.power();
+    bootSnd.play(boot.calm ? globalThis.AcidBootSound.READY - 0.02 : 0);
+  });
+  // the start screen, booting: a tap skips to SYSTEM READY (its chord too); ready: a toy (rave.js) with notes from here
+  const gateTouch = new Map();
+  const gatePt = (e) => {                                 // a touch on the boot picture: 0..1 across it (it is fitted, not cropped)
+    const r = $("boot").getBoundingClientRect(), k = Math.min(r.width / 240, r.height / 150), w = 240 * k, h = 150 * k;
+    return [(e.clientX - r.left - (r.width - w) / 2) / w, (e.clientY - r.top - (r.height - h) / 2) / h];
+  };
+  const PENTA = [0, 3, 5, 7, 10];
+  const pluck = (x, y, low) => {                          // an acid pluck: a saw through a resonant filter that snaps shut
+    if (!ctx) return;
+    const now = ctx.currentTime, step = Math.round(Math.max(0, Math.min(1, x)) * 10), midi = (low ? 33 : 45) + PENTA[step % 5] + 12 * Math.floor(step / 5);
+    const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = "sawtooth"; o.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+    f.type = "lowpass"; f.Q.value = 14;
+    const top = 400 + (1 - Math.max(0, Math.min(1, y))) * 4600;
+    f.frequency.setValueAtTime(top, now); f.frequency.exponentialRampToValueAtTime(140, now + 0.32);
+    g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(low ? 0.4 : 0.22, now + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, now + (low ? 0.7 : 0.4));
+    o.connect(f); f.connect(g); g.connect(ctx.destination);
+    o.start(now); o.stop(now + 0.75);
+  };
+  $("gate").addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button") || !boot.powered) return;
+    if (!boot.ready) { boot.skip(); bootSnd.play(globalThis.AcidBootSound.READY - 0.02); return; }   // (straight to SYSTEM READY)
+    e.preventDefault();
+    const [x, y] = gatePt(e);
+    gateTouch.set(e.pointerId, { x, y, x0: x, y0: y, moved: false });
+    try { $("gate").setPointerCapture(e.pointerId); } catch {}
+    if (gateTouch.size === 2) { boot.burst(); pluck(0.2, 0.9, true); pluck(0.6, 0.9, true); }
+    else boot.grab();
+  });
+  $("gate").addEventListener("pointermove", (e) => {
+    const p = gateTouch.get(e.pointerId);
+    if (!p) return;
+    const [x, y] = gatePt(e);
+    if (Math.abs(x - p.x0) + Math.abs(y - p.y0) > 0.02) p.moved = true;
+    if (gateTouch.size === 1) boot.spinBy(x - p.x, y - p.y);
+    p.x = x; p.y = y;
+  });
+  const gateUp = (e) => {
+    const p = gateTouch.get(e.pointerId);
+    if (!p) return;
+    gateTouch.delete(e.pointerId);
+    if (!gateTouch.size) boot.release();
+    if (!p.moved && e.type === "pointerup" && gateTouch.size === 0) { boot.tap(p.x, p.y); pluck(p.x, p.y, false); }
+  };
+  $("gate").addEventListener("pointerup", gateUp); $("gate").addEventListener("pointercancel", gateUp);
 
   // ------------------------------------------------------------------------------------------- the tilt ---
   // lean the iPad to play the filter: left / right the cutoff, towards / away the resonance, about the way it was

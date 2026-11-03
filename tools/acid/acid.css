@@ -149,9 +149,18 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .gate__card { position: relative; z-index: 1; display: grid; gap: 14px; justify-items: center; text-align: center; max-width: 30rem; align-self: end; margin-bottom: max(4vh, env(safe-area-inset-bottom));
   transition: opacity .5s ease-out, transform .5s ease-out; }
 .gate:not(.is-ready) .gate__card { opacity: 0; transform: translateY(12px); pointer-events: none; }
+/* Power: a pixel power symbol, glowing, until the first tap (the one that lets the iPad sound) */
+.gate__power { position: absolute; z-index: 2; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 14px;
+  padding: 26px 34px; border-radius: 24px; color: var(--lime); font-size: 18px; letter-spacing: .12em; text-transform: uppercase; }
+.gate__power svg { filter: drop-shadow(0 0 14px rgba(180, 255, 43, .7)); animation: pulse 1.2s ease-in-out infinite alternate; }
+@keyframes pulse { from { opacity: .55; } to { opacity: 1; } }
+.gate.is-on .gate__power { display: none; }
+/* the pixel icons on the tabs and buttons */
+.pix { flex: 0 0 auto; image-rendering: pixelated; }
+.tabs button, .rave-btn, .tilt-btn { display: inline-flex; align-items: center; gap: 8px; }
 /* the power-on: the boot's own pixel picture, the whole screen */
 .gate__boot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; }
-.gate { background: #000; }
+.gate { background: #000; touch-action: none; }
 .gate p { text-shadow: 0 1px 6px #000; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .tilt-btn { flex-basis: auto; padding: 0 14px; font-size: 14px; color: var(--cyan); letter-spacing: .06em; text-transform: uppercase; }
@@ -183,7 +192,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .menu__fine { font-size: 13px !important; }
 .menu__fine a { color: var(--cyan); }
 .menu__close { width: 100%; background: var(--lime); color: var(--black); box-shadow: none; }
-@media (prefers-reduced-motion: reduce) { .gate__card img, .slot.is-next { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .gate__card img, .slot.is-next, .gate__power svg { animation: none; } }
 
 /* rave mode: the display fills the screen (the rest of the machine waits underneath); drag on it to play the filter */
 .rave { position: relative; }

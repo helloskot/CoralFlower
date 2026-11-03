@@ -16,6 +16,10 @@
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <link rel="icon" href="../favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CoralFlower">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <link rel="preload" href="../fonts/DepartureMono.woff" as="font" type="font/woff" crossorigin>
 <link rel="stylesheet" href="../site.css">
 <script>document.documentElement.classList.add("js");</script>
@@ -43,7 +47,7 @@
     <div class="container play__inner">
       <div class="section-head section-head--center play__head">
         <h1 class="display-2" id="play-title">Play it in your browser</h1>
-        <p class="lead">This is the real CoralFlower firmware, running in your browser with sound. Tap or click the keys, or use your computer keyboard.</p>
+        <p class="lead">This is the real CoralFlower firmware, running in your browser with sound. Tap or click the keys, or use your computer keyboard. On an iPad, touch several keys at once and drag a knob up or down to turn it.</p>
       </div>
       <div class="device play__screen">
         <div class="device__bezel"><canvas id="lcd" width="240" height="240" aria-label="The FM-1 screen"></canvas></div>
@@ -58,6 +62,7 @@
       </div>
       <div class="actions play__bar">
         <div class="meter" title="How much of each second the browser spends running the synth">Load <b><i id="load"></i></b> <span id="loadv">&ndash;</span></div>
+        <button id="latch" class="btn btn--secondary btn--sm" type="button" aria-pressed="false" title="While it is on, a tap holds a key or button down, and a second tap lets it go" hidden>Latch</button>
         <button id="midi" class="btn btn--secondary btn--sm" type="button">Enable MIDI</button>
         <label class="play__select" hidden>Out <select id="mout"><option value="">none</option></select></label>
         <label class="play__select" hidden>In <select id="min"><option value="">none</option></select></label>
@@ -80,6 +85,7 @@
           <dt><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>6</kbd><kbd>7</kbd><kbd>9</kbd></dt><dd>upper row <b>F#4&ndash;F#5</b></dd>
           <dt class="legend__rule"><kbd class="m">click</kbd></dt><dd class="legend__rule">play</dd>
           <dt><kbd class="m" title="or Ctrl-click; again to let go">right-click</kbd></dt><dd>hold</dd>
+          <dt><kbd class="m" title="on a touch screen: tap again to let go">Latch + tap</kbd></dt><dd>hold</dd>
         </dl></section>
         <section class="card" style="--legend: var(--c-fire-400)" aria-labelledby="lg-btns"><h3 class="legend__title" id="lg-btns">Buttons</h3><dl>
           <dt><kbd>F1</kbd><kbd>F2</kbd><kbd>F3</kbd></dt><dd><b>FX SEL ENV</b></dd>
@@ -90,6 +96,7 @@
           <dt><kbd>-</kbd><kbd>=</kbd></dt><dd><b>OCT&minus; OCT+</b></dd>
           <dt class="legend__rule"><kbd class="m">click</kbd></dt><dd class="legend__rule">press</dd>
           <dt><kbd class="m" title="or Ctrl-click; again to let go">right-click</kbd></dt><dd>hold</dd>
+          <dt><kbd class="m" title="on a touch screen: tap again to let go">Latch + tap</kbd></dt><dd>hold</dd>
         </dl></section>
         <section class="card" style="--legend: var(--c-sea-400)" aria-labelledby="lg-knobs"><h3 class="legend__title" id="lg-knobs">Knobs</h3><dl>
           <dt><kbd>[</kbd><kbd>]</kbd></dt><dd><b>PRESETS</b></dd>
@@ -98,7 +105,7 @@
           <dt><kbd>Tab</kbd></dt><dd>pick a knob</dd>
           <dt><kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&darr;</kbd><kbd>&uarr;</kbd></dt><dd>turn it</dd>
           <dt><kbd>Esc</kbd></dt><dd>leave the panel</dd>
-          <dt class="legend__rule"><kbd class="m">drag</kbd><kbd class="m">wheel</kbd></dt><dd class="legend__rule">turn</dd>
+          <dt class="legend__rule"><kbd class="m">drag</kbd><kbd class="m">wheel</kbd></dt><dd class="legend__rule">turn (drag up or down)</dd>
         </dl></section>
       </div>
       <p class="caption play__note">Settings and sounds you save stay in this browser.</p>

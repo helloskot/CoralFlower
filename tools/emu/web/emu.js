@@ -89,6 +89,8 @@
                                 width: SCREEN_A[2] * k + "px", height: SCREEN_A[3] * k + "px" });
   };
   addEventListener("resize", placeMini);
+  addEventListener("orientationchange", () => setTimeout(placeMini, 300));   // (iPad: the new size comes late)
+  if (window.ResizeObserver) new ResizeObserver(placeMini).observe(svg);
   placeMini();
 
   // ------------------------------------------------------------------------------- LCD and LEDs ---
@@ -167,7 +169,15 @@
     drawKnobs();
   };
 
-  // pointer: keys and buttons press while held (multi-touch), a right-click / ctrl-click latches; knobs: drag / wheel
+  // pointer: keys and buttons press while held (multi-touch), a right-click / ctrl-click latches (on a touch screen,
+  // with no right-click: a tap while the bar's Latch is on); knobs: drag / wheel
+  const touch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;   // (an iPad's Safari says it is a Mac)
+  const latchBtn = $("latch");
+  let latchMode = false;
+  if (latchBtn) {
+    latchBtn.hidden = false;
+    latchBtn.onclick = () => latchBtn.setAttribute("aria-pressed", String((latchMode = !latchMode)));
+  }
   const ptrs = new Map();
   const ctlAt = (e) => { const g = e.target.closest && e.target.closest("[data-c]"); return g ? g.getAttribute("data-c") : null; };
   svg.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -182,7 +192,7 @@
       svg.setPointerCapture(e.pointerId);
       return;
     }
-    if (e.button === 2 || e.ctrlKey) {   // latch
+    if (e.button === 2 || e.ctrlKey || latchMode) {   // latch
       const set = (c[0] === "k" ? keySrc : btnSrc)[+c.slice(1)];
       hold(c, "latch", !set.has("latch"));
       return;
@@ -221,7 +231,7 @@
                          !!(e.target.closest && e.target.closest("dialog")) ||   // (the Support dialog keeps its keys)
                          (e.code === "Tab" && e.target !== svg) ||
                          ((e.code === "Enter" || e.code === "Space") && !!(e.target.closest && e.target.closest("a, button, summary")));
-  svg.addEventListener("pointerdown", () => svg.focus({ preventScroll: true }));
+  svg.addEventListener("pointerdown", (e) => { if (e.pointerType !== "touch") svg.focus({ preventScroll: true }); });   // (a finger: no focus ring)
   svg.addEventListener("keydown", (e) => { if (e.code === "Escape") svg.blur(); });
   addEventListener("keydown", (e) => {
     const m = byCode[e.code];
@@ -244,6 +254,12 @@
     else if (m.kind === "btn") hold("b" + m.idx, "kb" + m.code, false);
   });
   addEventListener("blur", () => releaseSrc((s) => s.startsWith("kb") || s === "esc" || s === "fine"));   // no stuck notes
+  // (iPad: a swipe to the Home Screen or another app can take a finger away without its pointerup)
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) return;
+    ptrs.clear();
+    releaseSrc((s) => s.startsWith("kb") || s.startsWith("p"));
+  });
 
   // ------------------------------------------------------------------------- the flash (IndexedDB) ---
   const db = () => new Promise((ok, no) => {
@@ -313,11 +329,22 @@
     }
   })();
 
+  // iPad and iPhone (Safari): the context is resumed inside the tap itself (after an await it is no longer the tap's,
+  // and Safari keeps it suspended); the audio session is "playback", so the silent switch / Control Centre's mute
+  // does not silence it; and a context Safari suspended or interrupted (the screen locked, another app took the
+  // audio, the page in the background) is resumed by the next touch, key or return to the page.
+  let ctx = null;
+  const wake = () => { if (ctx && ctx.state !== "running" && ctx.state !== "closed") ctx.resume().catch(() => {}); };
+  for (const t of ["pointerdown", "keydown"]) addEventListener(t, wake, true);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
   $("start").onclick = async () => {
     $("start").disabled = true;
     try {
       if (!window.AudioWorkletNode) throw new Error("this browser has no AudioWorklet (try a current Chrome, Firefox or Safari)");
-      const ctx = new AudioContext({ sampleRate: 44100, latencyHint: "playback" });
+      try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
+      ctx = new AudioContext({ sampleRate: 44100, latencyHint: "playback" });
+      ctx.resume().catch(() => {});
+      ctx.onstatechange = () => { if (ctx.state === "interrupted" && !document.hidden) wake(); };
       await ctx.audioWorklet.addModule("worklet.js");
       node = new AudioWorkletNode(ctx, "coralflower-fm1", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
       node.connect(ctx.destination);
@@ -348,6 +375,7 @@
       sentK = sentB = -1;
       publish();
       status(m.version + " is running. The lower keys play roots; hold an upper key to change the chord type.");
+      if (touch) $("panel").scrollIntoView({ block: "center", behavior: "smooth" });   // (a tablet: the panel in view)
     } else if (m.type === "midi") midiOut(m.pkts);
     else if (m.type === "flash") flashSave(m.data);
     else if (m.type === "error") status("The emulator failed: " + m.message);

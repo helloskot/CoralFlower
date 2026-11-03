@@ -541,8 +541,11 @@ dialog.donate .x:hover { color: var(--color-on-accent); background: var(--color-
 .play__screen canvas { aspect-ratio: 1; height: auto; }
 .play__gate { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-xs) var(--space-m); }
 .play__status { min-height: 1.55em; max-width: var(--measure); text-align: center; color: var(--color-text-muted); }
-.play__panel { position: relative; width: 100%; max-width: 68rem; }
-#panel { width: 100%; height: auto; border-radius: var(--radius-l); touch-action: none; user-select: none; -webkit-user-select: none; }
+/* the panel fits the window's height too (an iPad in landscape: all of it in view under the header) */
+.play__panel { position: relative; width: 100%; max-width: min(68rem, calc((100vh - var(--header-h) - var(--space-m)) * 1.628)); }
+@supports (height: 100dvh) { .play__panel { max-width: min(68rem, calc((100dvh - var(--header-h) - var(--space-m)) * 1.628)); } }
+.play { touch-action: manipulation; }   /* (a touch screen: no double-tap zoom on the page's buttons) */
+#panel { width: 100%; height: auto; border-radius: var(--radius-l); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 #panel text { font-family: var(--font-display); pointer-events: none; }
 #panel [data-c] { cursor: pointer; }
 #mini { position: absolute; image-rendering: pixelated; pointer-events: none; }
@@ -561,3 +564,4 @@ dialog.donate .x:hover { color: var(--color-on-accent); background: var(--color-
 kbd { display: inline-block; min-width: 1.7em; padding: var(--space-4xs) var(--space-2xs); border-radius: var(--radius-s); font: var(--fs-xs) / var(--lh-snug) var(--font-display); text-align: center; color: var(--color-text); background: var(--color-raised); box-shadow: inset 0 -2px 0 var(--color-border); }
 kbd.m { color: var(--color-text-muted); background: transparent; box-shadow: inset 0 0 0 var(--border-w) var(--color-border-strong); }
 .play__note { margin-top: var(--space-m); }
+.play__bar .btn[aria-pressed="true"] { color: var(--color-on-accent); background: var(--color-accent); box-shadow: none; }

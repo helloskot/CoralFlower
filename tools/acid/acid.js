@@ -41,7 +41,7 @@
   const used = (p) => p.bass.some((s) => s.on) || p.drums.some((r, l) => r.some(Boolean) && !(l === 0 && r.filter(Boolean).length === 4 && [0, 4, 8, 12].every((i) => r[i])) );
 
   // --------------------------------------------------------------------------------------------- the sound ---
-  let ctx = null, node = null, playing = false, nextSlot = -1, nextAuto = false;
+  let ctx = null, node = null, playing = false, nextSlot = -1, nextAuto = false, barN = 0;
   const playHooks = [];                                   // (things that follow Play: the screen staying awake)
   const buzz = (ms = 8) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch {} };   // (a tick, where the device has one)
   const post = (m) => node && node.port.postMessage(m);
@@ -102,6 +102,8 @@
     playing = on;
     $("play").setAttribute("aria-pressed", String(on));
     $("play").querySelector("span").textContent = on ? "Stop" : "Play";
+    $("ravePlay").querySelector("span").textContent = on ? "Stop" : "Play";
+    if (on) barN = 0;
     post({ type: on ? "play" : "stop" });
     if (!on && nextSlot >= 0) {
       if (nextAuto) { nextSlot = -1; nextAuto = false; sendPattern(); drawSlots(); }   // (a chain's next: stopping stays put)
@@ -119,7 +121,9 @@
   const norm = { px: 1.6, unit: 0.01, min: 0, max: 1, fmt: (v) => Math.round(v * 100) };
   const spec = (k) => SPEC[k] || norm;
   const strips = [...document.querySelectorAll(".strip")];
-  const drawStrip = (el) => {
+  const drawStrip = (el) => strips.forEach((x) => x.dataset.p === el.dataset.p && drawOne(x));   // (tempo has two: the bar's and the rave's)
+  const drawKey = (k) => strips.forEach((x) => x.dataset.p === k && drawOne(x));
+  const drawOne = (el) => {
     const k = el.dataset.p, sp = spec(k), v = S.params[k];
     el.querySelector("em").textContent = sp.fmt(v);
     el.style.setProperty("--v", (100 * (v - sp.min)) / (sp.max - sp.min) + "%");
@@ -210,7 +214,8 @@
     cells.forEach((row, l) => row.forEach((d, s) => { d.classList.toggle("is-on", p.drums[l][s]); d.classList.toggle("is-out", s >= p.len); }));
   };
   const drawSlots = () => {
-    $("slots").querySelectorAll(".slot").forEach((e, i) => {
+    document.querySelectorAll(".slot[data-slot]").forEach((e) => {
+      const i = +e.dataset.slot;
       e.classList.toggle("is-cur", i === S.cur);
       e.classList.toggle("is-next", i === nextSlot);
       e.classList.toggle("is-used", used(S.slots[i]));
@@ -218,17 +223,18 @@
       e.dataset.next = nx >= 0 && nx !== i ? "\u2192" + (nx + 1) : "";
       e.title = (p.name ? p.name + ": " : "") + "pattern " + (i + 1) + (nx >= 0 && nx !== i ? ", then " + (nx + 1) : "") + " (hold for more)";
     });
+    drawStatus();
   };
   const drawAll = () => {
-    drawBass(); drawDrums(); drawSlots(); drawXY(); strips.forEach(drawStrip);
+    drawBass(); drawDrums(); drawSlots(); drawXY(); strips.forEach(drawOne);
     $("len").textContent = pat().len;
     $("tune").textContent = (S.params.tune > 0 ? "+" : "") + (S.params.tune ? S.params.tune : "C");
     $("wave").querySelector("b").textContent = S.params.wave ? "Square" : "Saw";
   };
-  for (let i = 0; i < 8; i++) {
+  for (const box of [$("slots"), $("raveSlots")]) for (let i = 0; i < 8; i++) {   // (the bar's, and rave mode's)
     const e = document.createElement("button");
     e.type = "button"; e.className = "slot"; e.textContent = i + 1; e.dataset.slot = i;
-    $("slots").appendChild(e);
+    box.appendChild(e);
   }
   const edited = () => { commit(); sendPattern(); save(); drawSlots(); };
   const audition = (i) => {
@@ -368,8 +374,9 @@
     if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
     else if (!e.shiftKey && /^Digit[1-8]$/.test(e.code)) { e.preventDefault(); pickSlot(+e.code.slice(5) - 1); }
     else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
-      e.preventDefault(); setParam("tempo", S.params.tempo + (e.code === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 5 : 1)); strips.forEach(drawStrip);
-    } else if (e.code === "KeyR" && !e.repeat) setRave(!app.classList.contains("is-rave"));
+      e.preventDefault(); setParam("tempo", S.params.tempo + (e.code === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 5 : 1)); drawKey("tempo");
+    } else if (e.code === "BracketRight" || e.code === "BracketLeft") { if (e.code === "BracketRight") rave.next(); else rave.back(); drawScenes(); }
+    else if (e.code === "KeyR" && !e.repeat) setRave(!app.classList.contains("is-rave"));
     else if (e.code === "Escape" && app.classList.contains("is-rave")) setRave(false);
   });
   document.addEventListener("visibilitychange", () => { ptr.clear(); });
@@ -531,7 +538,7 @@
         b.classList.remove("beat", "down"); void b.offsetWidth; b.classList.add("beat"); if (m.step === 0) b.classList.add("down");
       }
       if (m.step === 0 && nextSlot >= 0) { S.cur = nextSlot; nextSlot = -1; nextAuto = false; save(); drawAll(); }
-      if (m.step === 0) queueFollow();
+      if (m.step === 0) { queueFollow(); if (playing) { barN++; drawStatus(); } }
     }
     for (let l = 0; l < LANES.length; l++) if (m.hits & (1 << l)) {
       const n = drumsEl.querySelector(`.dr__name[data-lane="${l}"]`);
@@ -553,11 +560,59 @@
   if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fitViz)).observe(document.querySelector(".rave"));
   addEventListener("resize", () => requestAnimationFrame(fitViz));
   fitViz();
-  // rave mode: the display fills the screen, and the whole of it is the squelch pad
+  // rave mode: the display fills the screen, and the whole of it is the squelch pad. Along the top: where the set is,
+  // the patterns, the tempo, Tilt, Lock, full screen; along the bottom: the punch-ins, Play, Rec, Latch, the scene,
+  // Done. Two fingers on the picture: swipe for a scene, pinch for the squelch (env mod), tap for Latch, swipe down to
+  // leave. The controls fade after 3 s without a touch.
+  const raving = () => app.classList.contains("is-rave");
+  const raveEl = document.querySelector(".rave");
+  let locked = false, idleT = 0;
+  const vTouch = new Map();
+  const poke = () => {
+    app.classList.remove("rave-idle");
+    clearTimeout(idleT);
+    if (raving()) idleT = setTimeout(() => { if (!vTouch.size && $("raveScenes").hidden) app.classList.add("rave-idle"); else poke(); }, 3000);
+  };
+  for (const t of ["pointerdown", "pointermove"]) raveEl.addEventListener(t, () => { if (raving()) poke(); }, true);
+  addEventListener("keydown", () => { if (raving()) poke(); }, true);
+  const hint = (t) => { const h = $("raveHint"); h.textContent = t; h.classList.remove("is-on"); void h.offsetWidth; h.classList.add("is-on"); };
+  function drawStatus() {
+    if (!raving()) return;
+    const p = pat();
+    $("raveStatus").textContent = (p.name || "P" + (S.cur + 1)).toUpperCase() + (playing ? "  \u00b7  BAR " + Math.max(1, barN) : "  \u00b7  STOPPED") +
+      (nextSlot >= 0 ? "  \u00b7  NEXT " + (nextSlot + 1) : "");
+  }
+  // full screen, where the browser has it (not iPhone: there, Add to Home Screen is the full screen)
+  const fsOK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const fsNow = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const setFull = (on) => {
+    const d = document.documentElement;
+    try {
+      if (on && !fsNow()) { const r = (d.requestFullscreen || d.webkitRequestFullscreen).call(d); if (r && r.catch) r.catch(() => {}); }
+      else if (!on && fsNow()) { const r = (document.exitFullscreen || document.webkitExitFullscreen).call(document); if (r && r.catch) r.catch(() => {}); }
+    } catch {}
+  };
+  $("raveFull").hidden = !fsOK;
+  for (const t of ["fullscreenchange", "webkitfullscreenchange"]) document.addEventListener(t, () => { $("raveFull").setAttribute("aria-pressed", String(!!fsNow())); requestAnimationFrame(fitViz); });
+  const setLock = (on) => {
+    locked = on;
+    $("raveLock").setAttribute("aria-pressed", String(on));
+    raveEl.classList.toggle("is-locked", on);
+    hint(on ? "LOCKED" : "UNLOCKED");
+  };
+  // the scenes: hold Scene for all of them, and whether they change by themselves
+  const SC = globalThis.AcidRave.SCENES;
+  $("raveSceneList").innerHTML = SC.map((n, i) => `<button type="button" data-scene="${i}">${n}</button>`).join("");
+  function drawScenes() { $("raveSceneList").querySelectorAll("button").forEach((b, i) => b.setAttribute("aria-pressed", String(i === rave.scene))); }
+  const openScenes = () => { drawScenes(); $("raveScenes").hidden = false; poke(); };
+  const closeScenes = () => { $("raveScenes").hidden = true; };
+  $("raveSceneList").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; rave.go(+b.dataset.scene); drawScenes(); closeScenes(); });
   const setRave = (on) => {
     app.classList.toggle("is-rave", on);
     $("raveBtn").setAttribute("aria-pressed", String(on));
-    rave.setPad(null);
+    rave.setPad(null); closeScenes();
+    if (on) poke(); else { setFull(false); clearTimeout(idleT); app.classList.remove("rave-idle"); }
+    drawStatus();
     requestAnimationFrame(fitViz);
   };
   const onPress = (el, f) => {   // (on the touch itself; a keyboard's click too)
@@ -566,28 +621,65 @@
   };
   onPress($("raveBtn"), () => setRave(!app.classList.contains("is-rave")));
   onPress($("raveExit"), () => setRave(false));
-  onPress($("raveScene"), () => rave.next());
   onPress($("ravePlay"), () => setPlaying(!playing));
+  onPress($("raveLock"), () => setLock(!locked));
+  onPress($("raveFull"), () => setFull(!fsNow()));
+  // Scene: a tap the next one, a hold all of them
+  { const sb = $("raveScene"); let hold = 0, held = false;
+    sb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); held = false; hold = setTimeout(() => { held = true; buzz(15); openScenes(); }, 450); });
+    sb.addEventListener("pointerup", () => { clearTimeout(hold); if (held) return; if (!$("raveScenes").hidden) closeScenes(); else { rave.next(); drawScenes(); } });
+    sb.addEventListener("pointercancel", () => clearTimeout(hold));
+    sb.addEventListener("click", (e) => { if (e.detail === 0) rave.next(); }); }
+  // the picture: one finger plays the filter (out of rave mode: a tap is the next scene); two fingers make a gesture,
+  // decided when the first of them lifts
+  let solo = null, g2 = null;
+  const at = (ev) => { const r = vizEl.getBoundingClientRect(); return [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)]; };
+  const padAt = (ev) => { const [x, y] = at(ev); S.params.cutoff = x; S.params.reso = 1 - y; sendParams(); save(); drawXY(); rave.setPad(x, y); };
   vizEl.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    const raving = app.classList.contains("is-rave");
-    const at = (ev) => { const r = vizEl.getBoundingClientRect(); return [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)]; };
-    const p = { x0: e.clientX, y0: e.clientY, moved: false };
-    const move = (ev) => {
-      if (Math.abs(ev.clientX - p.x0) + Math.abs(ev.clientY - p.y0) > 6) p.moved = true;
-      if (!raving) return;
-      const [x, y] = at(ev);
-      S.params.cutoff = x; S.params.reso = 1 - y; sendParams(); save(); drawXY(); rave.setPad(x, y);
-    };
-    const end = (ev) => {
-      vizEl.removeEventListener("pointermove", move); vizEl.removeEventListener("pointerup", end); vizEl.removeEventListener("pointercancel", end);
-      if (raving) rave.setPad(null);
-      else if (!p.moved && ev.type === "pointerup") rave.next();   // a tap: the next scene
-    };
+    if (!$("raveScenes").hidden) { closeScenes(); return; }
     try { vizEl.setPointerCapture(e.pointerId); } catch {}
-    vizEl.addEventListener("pointermove", move); vizEl.addEventListener("pointerup", end); vizEl.addEventListener("pointercancel", end);
-    if (raving) move(e);
+    vTouch.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
+    if (!raving()) { solo = { id: e.pointerId, moved: false }; return; }
+    if (locked) { hint("LOCKED \u00b7 TAP LOCK TO UNLOCK"); return; }
+    if (vTouch.size === 2) {
+      const [a, b] = [...vTouch.values()];
+      g2 = { t0: performance.now(), d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, c0: [(a.x + b.x) / 2, (a.y + b.y) / 2], c: null, env0: S.params.env, pinched: false, done: false };
+      if (solo && performance.now() - solo.t < 180) { S.params.cutoff = solo.was[0]; S.params.reso = solo.was[1]; sendParams(); save(); drawXY(); }   // (two fingers landing: not a filter move)
+      solo = null; rave.setPad(null);
+    } else if (vTouch.size === 1 && !g2) { solo = { id: e.pointerId, t: performance.now(), was: [S.params.cutoff, S.params.reso] }; padAt(e); }
   });
+  vizEl.addEventListener("pointermove", (e) => {
+    const t = vTouch.get(e.pointerId);
+    if (!t) return;
+    t.x = e.clientX; t.y = e.clientY;
+    if (!raving()) { if (solo && Math.abs(t.x - t.x0) + Math.abs(t.y - t.y0) > 6) solo.moved = true; return; }
+    if (locked) return;
+    if (g2 && !g2.done && vTouch.size >= 2) {
+      const [a, b] = [...vTouch.values()], d = Math.hypot(a.x - b.x, a.y - b.y), r = d / g2.d0;
+      g2.c = [(a.x + b.x) / 2, (a.y + b.y) / 2];
+      // a pinch: the fingers part (or close) far more than they travel together; a swipe: they travel together
+      if (!g2.pinched && Math.abs(r - 1) > 0.2 && Math.abs(d - g2.d0) > 2.5 * Math.hypot(g2.c[0] - g2.c0[0], g2.c[1] - g2.c0[1])) g2.pinched = true;
+      if (g2.pinched) { setParam("env", g2.env0 + (r - 1) * 0.6); drawKey("env"); hint("ENV MOD " + Math.round(S.params.env * 100)); }
+    } else if (solo && solo.id === e.pointerId && !g2) padAt(e);
+  });
+  const vEnd = (e) => {
+    if (!vTouch.has(e.pointerId)) return;
+    vTouch.delete(e.pointerId);
+    if (!raving()) { if (solo && !solo.moved && e.type === "pointerup") rave.next(); solo = null; return; }
+    if (g2 && !g2.done) {
+      g2.done = true;
+      const c = g2.c || g2.c0, dx = c[0] - g2.c0[0], dy = c[1] - g2.c0[1], quick = performance.now() - g2.t0 < 350;
+      if (!g2.pinched && e.type === "pointerup") {
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.3) { if (dx < 0) rave.next(); else rave.back(); drawScenes(); }
+        else if (dy > 80 && dy > Math.abs(dx) * 1.3) setRave(false);
+        else if (quick && Math.abs(dx) + Math.abs(dy) < 24) { setLatch(!latch); hint(latch ? "LATCH ON" : "LATCH OFF"); }
+      }
+    }
+    if (!vTouch.size) { g2 = null; solo = null; rave.setPad(null); }
+    else if (solo && solo.id === e.pointerId) { solo = null; rave.setPad(null); }
+  };
+  vizEl.addEventListener("pointerup", vEnd); vizEl.addEventListener("pointercancel", vEnd);
   const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
   // -------------------------------------------------------------------------------------------- the menu ---
@@ -660,6 +752,8 @@
     clear: [["............", ".PP......PP.", ".PPP....PPP.", "..PPP..PPP..", "...PPPPPP...", "....PPPP....", "....PPPP....", "...PPPPPP...", "..PPP..PPP..", ".PPP....PPP.", ".PP......PP.", "............"], { P: "#FF6FAE" }],
     undo: [["............", "...C........", "..CC........", ".CCCCCCCC...", "..CC.....C..", "...C......C.", "..........C.", "..........C.", ".........C..", "....CCCCC...", "............", "............"], { C: "#2BF0FF" }],
     redo: [["............", "........C...", "........CC..", "...CCCCCCCC.", "..C.....CC..", ".C......C...", ".C..........", ".C..........", "..C.........", "...CCCCC....", "............", "............"], { C: "#2BF0FF" }],
+    lock: [["............", "....YYYY....", "...Y....Y...", "...Y....Y...", "...Y....Y...", "..YYYYYYYY..", "..YYYYYYYY..", "..YYY..YYY..", "..YYY..YYY..", "..YYYYYYYY..", "..YYYYYYYY..", "............"], { Y: "#FFE100" }],
+    full: [["............", ".WWWW..WWWW.", ".W........W.", ".W........W.", ".W........W.", "............", "............", ".W........W.", ".W........W.", ".W........W.", ".WWWW..WWWW.", "............"], { W: "#F4F1FF" }],
     tilt: [["..AAAAAA....", ".A......A...", "A........A.A", "A.........AA", "........AAA.", "............", ".CCCCCCCCCC.", ".C........C.", ".C.DDDDDD.CC", ".C........C.", ".CCCCCCCCCC.", "............"], { C: "#2BF0FF", A: "#9FF8FF", D: "#1A8F99" }],
   };
   const iconSvg = (name) => {
@@ -668,7 +762,7 @@
     g.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col[ch]}"/>`; }));
     return `<svg class="pix" viewBox="0 0 12 12" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
   };
-  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"]]) {
+  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"], ["#raveTilt", "tilt"], ["#raveLock", "lock"], ["#raveFull", "full"]]) {
     const el = document.querySelector(sel);
     el.innerHTML = iconSvg(name) + `<span>${el.textContent}</span>`;
   }
@@ -756,9 +850,9 @@
   const setTilt = (on) => {
     tiltOn = on; tiltZero = null; tiltS = [0, 0]; rave.tilt = [0, 0];
     tiltBase = [S.params.cutoff, S.params.reso];
-    $("tiltBtn").setAttribute("aria-pressed", String(on));
+    for (const id of ["tiltBtn", "raveTilt"]) $(id).setAttribute("aria-pressed", String(on));
   };
-  $("tiltBtn").addEventListener("click", async () => {
+  const tiltClick = async () => {
     if (tiltOn) return setTilt(false);
     try {
       if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function") {
@@ -768,7 +862,9 @@
     } catch (err) { alert("Tilt isn\u2019t available here: " + err.message); return; }
     if (!tiltListening) { addEventListener("deviceorientation", onTilt); tiltListening = true; }
     setTilt(true);
-  });
+  };
+  $("tiltBtn").addEventListener("click", tiltClick);
+  $("raveTilt").addEventListener("click", tiltClick);
   let tiltListening = false;
 
   // ------------------------------------------------------------------------------------------- the fold ---
@@ -942,6 +1038,7 @@
   const drawRec = () => {
     const on = !!(rec && rec.state === "recording"), t = on ? clock((performance.now() - recStart) / 1000) : "Rec";
     for (const id of ["rec", "raveRec"]) { const b = $(id); b.setAttribute("aria-pressed", String(on)); (b.querySelector("span") || b).textContent = t; }
+    $("raveRecDot").hidden = !on; $("raveRecDot").textContent = "\u25cf REC " + t;
   };
   const setRec = (on) => {
     if (on) {
@@ -1042,5 +1139,5 @@
   $("tourAgain").addEventListener("click", () => { menu.close(); setTimeout(() => tour(0), 200); });
   addEventListener("resize", () => { if (tourI >= 0) tour(tourI); });
 
-  window.acid = { state: () => S, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
+  window.acid = { state: () => S, locked: () => locked, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
 })();

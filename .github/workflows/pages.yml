@@ -84,6 +84,13 @@ jobs:
           : > build/site/firmware/SHA256SUMS
           while read -r v tag sha; do
             pkg="coralflower-$v.fwsc"
+            # a fork without the upstream releases still publishes the site (the emulator); a package its release
+            # does not have is left out of the published releases.json, so the installer never offers it
+            if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "::warning::$GITHUB_REPOSITORY has no release $tag: $pkg left out of the site"
+              python3 -c 'import json, sys; p = "build/site/firmware/releases.json"; d = json.load(open(p)); d["releases"] = [r for r in d["releases"] if r["tag"] != sys.argv[1]]; json.dump(d, open(p, "w"), indent=2)' "$tag"
+              continue
+            fi
             gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$pkg" --dir build/site/firmware --clobber
             echo "$sha  build/site/firmware/$pkg" | sha256sum -c -
             echo "$sha  $pkg" >> build/site/firmware/SHA256SUMS

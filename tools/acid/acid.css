@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Coral Acid: one screen, no scrolling. Landscape: the bar (play, tempo, swing, the 8 patterns); the pixel rave beside
+ * Acid Flower: one screen, no scrolling. Landscape: the bar (play, tempo, swing, the 8 patterns); the pixel rave beside
  * the squelch pad and the strips; the pattern editor along the bottom (the bass line or the drums). Portrait: stacked.
  * Acid colours: smiley yellow, laser lime, rave pink, cyan, on a warehouse black. */
 @font-face { font-family: "Departure Mono"; src: url("../fonts/DepartureMono.woff") format("woff"); font-display: block; }
@@ -144,7 +144,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .dr.is-on.is-now { filter: brightness(1.35); }
 
 /* -------------------------------------------------------------------------------------- gate and menu --- */
-.gate { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 40%, rgba(255, 47, 180, .25), rgba(7, 2, 12, .96) 60%); }
+.gate { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 40%, rgba(255, 47, 180, .25), transparent 60%), var(--black); }
 .gate[hidden] { display: none; }
 .gate__card { display: grid; gap: 18px; justify-items: center; text-align: center; max-width: 30rem; }
 .gate__card img { image-rendering: pixelated; animation: bob .5s ease-in-out infinite alternate; }

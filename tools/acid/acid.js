@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Coral Acid: the touch surface. The sound and the clock are acid-worklet.js; this file keeps the eight patterns and the
+// Acid Flower: the touch surface. The sound and the clock are acid-worklet.js; this file keeps the eight patterns and the
 // knobs (saved on the device), sends them to the worklet as they change, and draws the pixel rave from what the worklet
 // sends back (the step, the filter's motion, the accents and drum hits, a scrap of the waveform).
 "use strict";
@@ -7,14 +7,14 @@
   const $ = (id) => document.getElementById(id);
   const NOTE = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B", "C"];
   const LANES = [["Kick", "#FFE100"], ["Snare", "#FF8A1F"], ["Clap", "#FF2FB4"], ["Hat", "#2BF0FF"], ["Open hat", "#B4FF2B"]];
-  const STORE = "coral-acid-v1";
+  const STORE = "acid-flower-v1";
 
   // ------------------------------------------------------------------------------------------ the patterns ---
   const rest = () => ({ on: false, note: 0, oct: 0, acc: false, slide: false });
   const b = (note, oct = 0, f = "") => ({ on: true, note, oct, acc: f.includes("a"), slide: f.includes("s") });
   const grid = (spec) => LANES.map((_, l) => { const r = new Array(16).fill(false); for (const s of spec[l] || []) r[s] = true; return r; });
   const ALL16 = [...Array(16).keys()];
-  const STARTERS = [   // (written for Coral Acid: originals)
+  const STARTERS = [   // (written for Acid Flower: originals)
     { len: 16, bass: [b(0, 0, "a"), b(0), b(0, 1, "s"), b(0), rest(), b(3, 0, "a"), b(0), b(7, 0, "s"), b(8), b(7), b(0, 1, "a"), rest(), b(0), b(10, -1, "s"), b(0), b(3, 0, "a")],
       drums: grid([[0, 4, 8, 12], [], [4, 12], ALL16.filter((s) => s % 4 !== 2), [2, 6, 10, 14]]) },
     { len: 16, bass: [b(0, 0, "a"), rest(), b(0), b(12, 0, "s"), b(10), rest(), b(7, 0, "a"), b(0), b(0, -1), b(0, 0, "s"), b(3), b(5, 0, "a"), rest(), b(0), b(7, 0, "as"), b(5)],
@@ -48,7 +48,7 @@
   const wake = () => { if (ctx && ctx.state !== "running" && ctx.state !== "closed") ctx.resume().catch(() => {}); };
   for (const t of ["pointerdown", "keydown"]) addEventListener(t, wake, true);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) wake(); });
-  const pref = (k, d) => { try { return localStorage.getItem("coral-acid-" + k) || d; } catch { return d; } };
+  const pref = (k, d) => { try { return localStorage.getItem("acid-flower-" + k) || d; } catch { return d; } };
   const start = async () => {
     try {
       if (!window.AudioWorkletNode) throw new Error("this browser has no AudioWorklet: update iPadOS (16.4 or later)");
@@ -59,7 +59,7 @@
       const url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
       await ctx.audioWorklet.addModule(url);
       URL.revokeObjectURL(url);
-      node = new AudioWorkletNode(ctx, "coral-acid", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+      node = new AudioWorkletNode(ctx, "acid-flower", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
       node.connect(ctx.destination);
       node.port.onmessage = (e) => { if (e.data.type === "viz") onViz(e.data); };
       sendParams();
@@ -427,6 +427,15 @@
     }
     // the smiley: bounces on the kick, grins wider as the filter opens, wobbles with the resonance, rave eyes on accents
     const cx = 80, cy = 36 - bounce * 5, r = 15 + Math.round(env * 2), sq = 1 - bounce * 0.12;
+    // the petals (it is an acid flower): eight round ones, pink and lime, turning with the beat and opening out with
+    // the filter's sweep; an outline first, then the colour
+    const spin = scroll * 0.35, pr = 5.2 + env * 1.6, pd = r + 3 + env * 3 + bounce * 2;
+    for (const pass of [0, 1]) for (let k = 0; k < 8; k++) {
+      const a = spin + (k * Math.PI) / 4, px = cx + Math.cos(a) * pd, py = cy + Math.sin(a) * pd * sq;
+      const rr = pass ? pr : pr + 1.2, c = pass ? (k % 2 ? LIME : PINK) : INK;
+      for (let y = Math.floor(-rr); y <= rr; y++) for (let x = Math.floor(-rr); x <= rr; x++)
+        if (x * x + y * y <= rr * rr) put(px + x, py + y, c[0], c[1], c[2]);
+    }
     for (let y = -r - 1; y <= r + 1; y++) for (let x = -r - 1; x <= r + 1; x++) {
       const dd = (x * x) / ((r + 0.5) * (r + 0.5)) + (y * y) / ((r * sq + 0.5) * (r * sq + 0.5));
       if (dd <= 1) put(cx + x, cy + y, YEL[0], YEL[1] - 20 * (x + y > r ? 1 : 0), YEL[2]);
@@ -469,14 +478,14 @@
     x.setAttribute("aria-pressed", String(x.dataset.v === pref(s.dataset.pref, "interactive")))));
   document.querySelectorAll(".seg[data-pref]").forEach((s) => s.addEventListener("click", (e) => {
     const x = e.target.closest("button");
-    if (x) { try { localStorage.setItem("coral-acid-" + s.dataset.pref, x.dataset.v); } catch {} drawPrefs(); }
+    if (x) { try { localStorage.setItem("acid-flower-" + s.dataset.pref, x.dataset.v); } catch {} drawPrefs(); }
   }));
   drawPrefs();
   $("export").onclick = async () => {
-    const d = new Date(), name = `coral-acid-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.json`;
-    const file = new File([JSON.stringify({ app: "coral-acid", version: 1, ...S }, null, 1)], name, { type: "application/json" });
+    const d = new Date(), name = `acid-flower-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.json`;
+    const file = new File([JSON.stringify({ app: "acid-flower", version: 1, ...S }, null, 1)], name, { type: "application/json" });
     try {
-      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Coral Acid patterns" }); return msg("Saved: " + name); }
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Acid Flower patterns" }); return msg("Saved: " + name); }
     } catch (err) { if (err && err.name === "AbortError") return; }
     const a = document.createElement("a");
     a.href = URL.createObjectURL(file); a.download = name;
@@ -491,7 +500,7 @@
     if (!f) return;
     let d;
     try { d = JSON.parse(await f.text()); } catch { d = null; }
-    if (!valid(d)) return msg("That file isn’t a set of Coral Acid patterns.");
+    if (!valid(d)) return msg("That file isn’t a set of Acid Flower patterns.");
     if (!confirm("Replace your 8 patterns and knobs with “" + f.name + "”?")) return;
     S = { slots: d.slots, cur: Math.max(0, Math.min(7, d.cur | 0)), params: { ...DEF_PARAMS, ...d.params } };
     save(); sendParams(); sendPattern(); drawAll(); msg("Loaded " + f.name);

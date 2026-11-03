@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Coral Acid, offline: network first (a new build is used as soon as it is online), the last copy when there is no
+// Acid Flower, offline: network first (a new build is used as soon as it is online), the last copy when there is no
 // network. Everything the machine needs is fetched once at install.
-const CACHE = "coral-acid-v1";
+const CACHE = "acid-flower-v1";
 const FILES = ["./", "acid.js", "acid.css", "acid-worklet.js", "manifest.webmanifest", "icon.svg", "icon-180.png",
-               "icon-512.png", "../fonts/DepartureMono.woff"];
+               "icon-512.png", "favicon-40.png", "../fonts/DepartureMono.woff"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => Promise.all(FILES.map((f) =>
@@ -12,7 +12,7 @@ self.addEventListener("install", (e) => {
 });
 
 self.addEventListener("activate", (e) => {
-  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k.startsWith("coral-acid")).map((k) => caches.delete(k))))
+  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k.startsWith("acid-flower")).map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 

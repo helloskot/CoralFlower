@@ -6,7 +6,7 @@
 #   OUT/play/            the emulator page (tools/emu/web/index.html) with its build (build/emu-web: build_web.sh first)
 #   OUT/ipad/            CoralFlower for iPad (tools/emu/ipad): the same firmware as a full-screen touch instrument, a
 #                        Home Screen web app; it loads ../play/coralflower.wasm and ../play/worklet.js
-#   OUT/acid/            Coral Acid (tools/acid): an acid house machine for iPad, a Home Screen web app of its own
+#   OUT/acid/            Acid Flower (tools/acid): an acid house machine for iPad, a Home Screen web app of its own
 #   OUT/install/         the old installer address, forwarding to /#install
 # OUT/firmware/ (the released packages and releases.json) is not touched: pages.yml fills it from the releases, and a
 # local copy keeps what is there. A new site.css is a new address (?v=hash): a browser cannot keep an old one. The
@@ -29,7 +29,8 @@ cp "$EMU/index.html" "$EMU/emu.js" "$EMU/keymap.js" "$EMU/worklet.js" "$EMU/cora
 cp tools/emu/ipad/index.html tools/emu/ipad/app.js tools/emu/ipad/app.css tools/emu/ipad/sw.js \
    tools/emu/ipad/manifest.webmanifest "$OUT/ipad/"
 cp tools/acid/index.html tools/acid/acid.js tools/acid/acid.css tools/acid/acid-worklet.js tools/acid/sw.js \
-   tools/acid/manifest.webmanifest tools/acid/icon.svg tools/acid/icon-180.png tools/acid/icon-512.png "$OUT/acid/"
+   tools/acid/manifest.webmanifest tools/acid/icon.svg tools/acid/icon-180.png tools/acid/icon-512.png \
+   tools/acid/favicon-40.png "$OUT/acid/"
 STAMP=$(cat web/site.css | shasum | cut -c1-10)
 # (sed -i.bak, then the .bak removed: the one form both BSD sed on macOS and GNU sed on the CI runner take)
 sed -i.bak "s|href=\"site.css\"|href=\"site.css?v=$STAMP\"|" "$OUT/index.html"

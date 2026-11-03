@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Coral Acid's sound and clock, offline (node >= 18, no browser): tools/acid/acid-worklet.js loaded as an AudioWorklet
+// Acid Flower's sound and clock, offline (node >= 18, no browser): tools/acid/acid-worklet.js loaded as an AudioWorklet
 // would load it, then rendered block by block and measured.   node tools/acid/test_acid.mjs
 import fs from "node:fs";
 import path from "node:path";
@@ -50,7 +50,7 @@ const pitch = (a, from, to) => {                       // autocorrelation, 40..4
 };
 const sps = (bpm) => (SR * 60) / bpm / 4;
 
-console.log("Coral Acid: tools/acid/acid-worklet.js");
+console.log("Acid Flower: tools/acid/acid-worklet.js");
 { // stopped: silence
   const a = load();
   const { L } = a.render(0.5);

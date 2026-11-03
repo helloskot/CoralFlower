@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Coral Acid: the sound and the clock, in an AudioWorklet (acid.js is the touch surface; test_acid.mjs runs this file
+// Acid Flower: the sound and the clock, in an AudioWorklet (acid.js is the touch surface; test_acid.mjs runs this file
 // in node). One squelchy bass voice: a band-limited saw or square into a four-stage resonant ladder filter with a
 // decaying filter envelope, accent (louder, a sharper and shorter sweep, and a charge that builds over accents in a
 // row) and slide (the next note glides in without a new attack). Five drums made from scratch: kick, snare, clap,
@@ -45,7 +45,7 @@ const DEFAULT_PARAMS = { cutoff: 0.35, reso: 0.7, env: 0.55, decay: 0.45, accent
                          volume: 0.8, drums: 0.8, wave: 0, tempo: 124, swing: 0.54, tune: 0 };
 const LANES = 5;                                       // kick, snare, clap, closed hat, open hat
 
-class CoralAcid extends AudioWorkletProcessor {
+class AcidFlower extends AudioWorkletProcessor {
   constructor() {
     super();
     const sr = (this.sr = sampleRate);
@@ -269,4 +269,4 @@ class CoralAcid extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor("coral-acid", CoralAcid);
+registerProcessor("acid-flower", AcidFlower);

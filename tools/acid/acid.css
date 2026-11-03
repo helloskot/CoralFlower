@@ -617,3 +617,83 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .edit__head { row-gap: 4px; }
 }
 @media (max-width: 1199px) and (min-width: 601px) and (min-height: 501px) { .rec span { display: none; } .rec { padding: 0 13px; } }
+
+/* ============================================================================================ rave mode ===
+ * Along the top: where the set is (the pattern, the bar, what is next), the patterns, the tempo, Tilt, Lock, full
+ * screen; along the bottom: the punch-ins and Play, Rec, Latch, Scene, Done (a little apart). They fade after 3 s
+ * without a touch; a REC dot stays. Hold Scene for all the scenes. */
+.rave__top, .rave__recdot, .rave__hint, .rave__scenes { display: none; }
+.app.is-rave .rave__top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; position: absolute; z-index: 2;
+  top: max(10px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right)); }
+.rave__status { flex: 1 1 120px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; letter-spacing: .08em;
+  color: var(--yellow); text-shadow: 0 1px 4px #000, 0 0 2px #000; }
+.rave__slots { display: flex; gap: 4px; }
+.app.is-rave .rave__slots .slot { flex: 0 0 40px; height: 42px; background: rgba(18, 10, 28, .72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.app.is-rave .rave__slots .slot.is-cur { background: var(--yellow); }
+.app.is-rave .rave__tempo { flex: 0 0 116px; height: 44px; padding: 2px 30px; background: rgba(18, 10, 28, .75); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.app.is-rave .rave__tempo .strip__l, .app.is-rave .rave__tempo .strip__r { width: 28px; font-size: 12px; }
+.app.is-rave .rave__tempo b { font-size: 9px; } .app.is-rave .rave__tempo em { font-size: 16px; }
+.rave__i { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: rgba(18, 10, 28, .75); box-shadow: inset 0 0 0 1.5px var(--line);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.rave__i span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+#raveTilt[aria-pressed="true"] { background: var(--cyan); }
+#raveLock[aria-pressed="true"] { background: var(--yellow); }
+#raveFull[aria-pressed="true"] { background: var(--cell-hi); box-shadow: inset 0 0 0 2px var(--text); }
+.rave__i[aria-pressed="true"] .pix { filter: brightness(0); }
+#raveFull[aria-pressed="true"] .pix { filter: none; }
+.rave__exit { margin-left: 14px; box-shadow: inset 0 0 0 1.5px var(--muted); }
+/* locked: the picture, the pads, the patterns and the tempo ignore touches */
+.rave.is-locked .rave__fx, .rave.is-locked .rave__slots, .rave.is-locked .rave__tempo { opacity: .35; pointer-events: none; }
+.rave.is-locked #viz { cursor: not-allowed; }
+/* the fade */
+.app.is-rave .rave__top, .app.is-rave .rave__bar, .app.is-rave .rave__fx { transition: opacity .5s ease-out; }
+.app.is-rave.rave-idle .rave__top, .app.is-rave.rave-idle .rave__bar, .app.is-rave.rave-idle .rave__fx { opacity: 0; pointer-events: none; }
+.app.is-rave .rave__recdot { display: block; position: absolute; z-index: 3; left: max(12px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom));
+  margin: 0; padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, .55); color: #FF5A6E; font-size: 12px; letter-spacing: .08em; pointer-events: none; }
+.app.is-rave:not(.rave-idle) .rave__recdot { opacity: 0; }
+/* a word in the middle for a gesture (env mod, latch, lock) */
+.app.is-rave .rave__hint { display: block; position: absolute; z-index: 3; left: 50%; top: 42%; transform: translate(-50%, -50%); margin: 0; padding: 8px 16px;
+  border-radius: 12px; background: rgba(0, 0, 0, .6); color: var(--lime); font-size: clamp(16px, 3vw, 26px); letter-spacing: .1em; white-space: nowrap; opacity: 0; pointer-events: none; }
+.rave__hint.is-on { animation: hint 1.3s ease-out; }
+@keyframes hint { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+/* the scenes */
+.app.is-rave .rave__scenes { display: grid; gap: 12px; position: absolute; z-index: 4; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100vw - 24px));
+  padding: 14px; border-radius: 16px; background: rgba(18, 10, 28, .92); box-shadow: 0 0 0 1.5px var(--line), 0 20px 60px rgba(0, 0, 0, .6); }
+.rave__scenelist { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.rave__scenelist button { min-height: 48px; padding: 0 6px; border-radius: 10px; background: var(--cell); color: var(--text); font-size: 13px; letter-spacing: .04em; box-shadow: inset 0 0 0 1.5px var(--line); }
+.rave__scenelist button[aria-pressed="true"] { background: var(--yellow); color: var(--black); box-shadow: none; }
+.rave__scenes .seg { justify-self: center; }
+
+/* phones held sideways: taller pads, a slimmer top */
+@media (max-height: 500px) and (orientation: landscape) {
+  .app.is-rave .rave__top { gap: 6px; top: max(8px, env(safe-area-inset-top)); }
+  .app.is-rave .rave__slots .slot { flex-basis: 34px; height: 36px; font-size: 12px; }
+  .app.is-rave .rave__tempo { flex-basis: 96px; height: 38px; padding: 1px 24px; }
+  .app.is-rave .rave__tempo .strip__l, .app.is-rave .rave__tempo .strip__r { width: 22px; }
+  .rave__i { width: 38px; height: 38px; }
+  .app.is-rave .rave__fx { height: 72px; }
+  .rave__scenelist button { min-height: 40px; }
+  .app.is-rave .rave__scenes { gap: 8px; padding: 10px; }
+  .rave__exit { margin-left: 8px; }
+}
+@media (max-height: 500px) and (orientation: landscape) and (max-width: 700px) { .rave__status { display: none; } }
+/* phones held upright: the patterns get their own row */
+@media (max-width: 600px) and (orientation: portrait) {
+  .app.is-rave .rave__top { gap: 6px; }
+  .rave__status { flex-basis: 60px; }
+  .rave__slots { order: 5; flex: 1 1 100%; }
+  .app.is-rave .rave__slots .slot { flex: 1 1 0; height: 40px; }
+  .app.is-rave .rave__tempo { flex-basis: 100px; padding: 2px 24px; }
+  .app.is-rave .rave__tempo .strip__l, .app.is-rave .rave__tempo .strip__r { width: 22px; }
+  .rave__i { width: 40px; height: 40px; }
+  .rave__scenelist { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app.is-rave .rave__bar { left: max(10px, env(safe-area-inset-left)); justify-content: space-between; }
+  .rave__b { padding: 0 10px; }
+  .rave__exit { margin-left: 4px; }
+}
+/* the book fold: the top along the left page */
+:root.fold-lr .app.is-rave .rave__top { right: auto; width: calc(var(--seg-left-w) - 20px); }
+/* (the top sits on a dark glass, over the picture's own top line; the pads' names fit their pads) */
+.app.is-rave .rave__top { padding: 5px; border-radius: 16px; background: rgba(7, 2, 12, .62); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.app.is-rave .rave__status { padding-left: 6px; }
+.rave__fx .fxp b { font-size: clamp(9px, 1.15vw, 12px); letter-spacing: 0; }

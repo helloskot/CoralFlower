@@ -52,13 +52,28 @@
 
   <section class="rave" aria-label="The display">
     <canvas id="viz" width="240" height="150" role="img" aria-label="A pixel rave that moves with the music: tap it for the next scene"></canvas>
+    <!-- rave mode's own controls: they fade after a few seconds without a touch (any touch brings them back) -->
+    <div class="rave__top">
+      <p class="rave__status" id="raveStatus" aria-live="off"></p>
+      <nav class="rave__slots" id="raveSlots" aria-label="Patterns"></nav>
+      <div class="strip strip--bar rave__tempo" data-p="tempo" role="slider" aria-label="Tempo"><b>BPM</b><em></em><i class="strip__l">&#9664;</i><i class="strip__r">&#9654;</i></div>
+      <button type="button" class="rave__i" id="raveTilt" aria-pressed="false" aria-label="Tilt" title="Tilt: lean the device to bend the filter">Tilt</button>
+      <button type="button" class="rave__i" id="raveLock" aria-pressed="false" aria-label="Lock the picture" title="Lock: touches on the picture do nothing (for a stand, or passing it round)">Lock</button>
+      <button type="button" class="rave__i" id="raveFull" aria-pressed="false" aria-label="Full screen" title="Full screen" hidden>Full</button>
+    </div>
+    <p class="rave__recdot" id="raveRecDot" hidden></p>
+    <p class="rave__hint" id="raveHint" aria-live="polite"></p>
+    <div class="rave__scenes" id="raveScenes" hidden>
+      <div class="rave__scenelist" id="raveSceneList"></div>
+      <div class="seg" data-pref="scenes"><button type="button" data-v="auto">Every 8 bars</button><button type="button" data-v="hold">Stay</button></div>
+    </div>
     <div class="rave__fx fxpads" id="ravePunch" aria-label="Punch-in effects"></div>
     <div class="rave__bar">
-      <button type="button" id="ravePlay" class="rave__b">Play / Stop</button>
+      <button type="button" id="ravePlay" class="rave__b"><span>Play</span></button>
       <button type="button" id="raveRec" class="rave__b rave__rec" aria-pressed="false">Rec</button>
       <button type="button" id="raveLatch" class="rave__b" aria-pressed="false" title="Latch: a tap turns an effect on, another turns it off">Latch</button>
-      <button type="button" id="raveScene" class="rave__b">Next scene</button>
-      <button type="button" id="raveExit" class="rave__b">Done</button>
+      <button type="button" id="raveScene" class="rave__b" title="Tap: the next scene. Hold: pick one">Scene &#8250;</button>
+      <button type="button" id="raveExit" class="rave__b rave__exit">Done</button>
     </div>
   </section>
 
@@ -155,7 +170,7 @@
     <li><b>Rec:</b> records everything you hear, effects and all; when you stop, save it or send it.</li>
     <li><b>The squelch pad</b> stays where you leave it; double-tap it to go back to the start.</li>
     <li><b>On a keyboard:</b> Space plays, 1 to 8 pick a pattern, ← and → the tempo (with Shift, by 5), R the rave, ⌘Z undo; the punch-ins are Shift with 1 to 0, - and =.</li>
-    <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter.</li>
+    <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter. With two fingers: swipe left or right for another scene, pinch for more or less squelch (env mod), tap for Latch, swipe down to leave. Hold <b>Scene</b> to pick one. The patterns, the tempo and Tilt are along the top; <b>Lock</b> makes the picture ignore touches. The controls fade after a few seconds: touch to bring them back.</li>
   </ul>
   <h3>The rave</h3>
   <div class="opt"><span>Scenes<small>Warehouse, Cyberspace, Tunnel, Voxel, Plasma, Mainframe, Garden, Feedback</small></span>

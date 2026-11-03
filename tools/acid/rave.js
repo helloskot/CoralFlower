@@ -139,7 +139,9 @@
       this.glitch = 0.25;
     }
     burst() { this.scatter = 1; this.glitch = 0.4; this.flash = Math.max(this.flash, 0.3); }
-    next() { this.scene = (this.scene + 1) % SCENES.length; this.sceneLabel = 1.6; this.barOfScene = 0; this.prev.fill(0); }
+    go(i) { this.scene = ((i % SCENES.length) + SCENES.length) % SCENES.length; this.sceneLabel = 1.6; this.barOfScene = 0; this.prev.fill(0); }
+    next() { this.go(this.scene + 1); }
+    back() { this.go(this.scene - 1); }
     setPad(x, y) { this.pad = x == null ? null : [x, y]; }
 
     // ------------------------------------------------------------------------------------- the sound's news ---

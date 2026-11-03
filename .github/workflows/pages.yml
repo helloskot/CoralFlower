@@ -15,6 +15,7 @@ on:
     branches: [main]
     paths:
       - "tools/emu/**"
+      - "tools/acid/**"
       - "web/**"
       - "firmware/**"
       - "assets/**"

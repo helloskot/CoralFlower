@@ -80,7 +80,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 
 /* ----------------------------------------------------------------------------------- the rave and the pad --- */
 #viz {
-  display: block; max-width: 100%; max-height: 100%; width: auto; height: 100%; aspect-ratio: 160 / 100;
+  display: block; max-width: 100%; max-height: 100%; width: auto; height: 100%; aspect-ratio: 240 / 150; touch-action: none; cursor: pointer;
   image-rendering: pixelated; image-rendering: crisp-edges; border-radius: var(--r); background: #000;
   box-shadow: 0 0 0 2px var(--line), 0 0 44px 4px rgba(255, 47, 180, .18);
 }
@@ -175,3 +175,14 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .menu__fine a { color: var(--cyan); }
 .menu__close { width: 100%; background: var(--lime); color: var(--black); box-shadow: none; }
 @media (prefers-reduced-motion: reduce) { .gate__card img, .slot.is-next { animation: none; } }
+
+/* rave mode: the display fills the screen (the rest of the machine waits underneath); drag on it to play the filter */
+.rave { position: relative; }
+.rave__bar { display: none; }
+.rave-btn { flex-basis: auto; padding: 0 14px; font-size: 14px; color: var(--pink); letter-spacing: .06em; text-transform: uppercase; }
+.rave-btn[aria-pressed="true"] { background: var(--pink); color: var(--black); }
+.app.is-rave .rave { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; background: #000;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.app.is-rave #viz { width: 100%; height: 100%; object-fit: contain; border-radius: 0; box-shadow: none; aspect-ratio: auto; cursor: crosshair; }
+.app.is-rave .rave__bar { display: flex; gap: 8px; position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); }
+.rave__b { min-height: 44px; padding: 0 16px; border-radius: 12px; background: rgba(18, 10, 28, .75); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--line); font-size: 14px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }

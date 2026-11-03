@@ -30,11 +30,17 @@
     <div class="strip strip--bar" data-p="tempo" role="slider" aria-label="Tempo"><b>Tempo</b><em></em><i class="strip__l">&#9664;</i><i class="strip__r">&#9654;</i></div>
     <div class="strip strip--bar" data-p="swing" role="slider" aria-label="Swing"><b>Swing</b><em></em><i class="strip__l">&#9664;</i><i class="strip__r">&#9654;</i></div>
     <nav class="slots" id="slots" aria-label="Patterns"></nav>
+    <button class="menu-btn rave-btn" id="raveBtn" type="button" aria-pressed="false" title="Rave mode: the display fills the screen, and you play the filter on it">Rave</button>
     <button class="menu-btn" id="menuBtn" type="button" aria-label="Menu" aria-haspopup="dialog">&#8943;</button>
   </header>
 
   <section class="rave" aria-label="The display">
-    <canvas id="viz" width="160" height="100" role="img" aria-label="A pixel rave that moves with the music"></canvas>
+    <canvas id="viz" width="240" height="150" role="img" aria-label="A pixel rave that moves with the music: tap it for the next scene"></canvas>
+    <div class="rave__bar">
+      <button type="button" id="ravePlay" class="rave__b">Play / Stop</button>
+      <button type="button" id="raveScene" class="rave__b">Next scene</button>
+      <button type="button" id="raveExit" class="rave__b">Done</button>
+    </div>
   </section>
 
   <section class="perf" aria-label="Play the filter">
@@ -90,7 +96,13 @@
     <li><b>Drums:</b> tap a step to set or clear it, or drag across steps to paint. Tap a drum’s name to hear it.</li>
     <li><b>Squelch pad:</b> cutoff left to right, resonance bottom to top. The strips do the rest: drag up or down.</li>
     <li><b>Patterns:</b> 1 to 8 along the top. While it plays, the next one starts at the end of the bar.</li>
+    <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter.</li>
   </ul>
+  <h3>The rave</h3>
+  <div class="opt"><span>Scenes<small>Warehouse, Tunnel, Plasma, Garden, Feedback</small></span>
+    <div class="seg" data-pref="scenes"><button type="button" data-v="auto">Every 8 bars</button><button type="button" data-v="hold">Stay</button></div></div>
+  <div class="opt"><span>Motion<small>Calm: no strobe, no shaking, no flashing words</small></span>
+    <div class="seg" data-pref="motion"><button type="button" data-v="full">Full</button><button type="button" data-v="calm">Calm</button></div></div>
   <h3>Sound</h3>
   <div class="opt"><span>Response<small>Smooth uses a bigger audio buffer: try it if you hear crackles. Applies the next time you open the app.</small></span>
     <div class="seg" data-pref="latency"><button type="button" data-v="interactive">Fast</button><button type="button" data-v="playback">Smooth</button></div></div>
@@ -107,6 +119,7 @@
   <form method="dialog"><button class="menu__close">Close</button></form>
 </dialog>
 
+<script src="rave.js"></script>
 <script src="acid.js"></script>
 </body>
 </html>

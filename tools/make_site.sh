@@ -30,7 +30,7 @@ cp tools/emu/ipad/index.html tools/emu/ipad/app.js tools/emu/ipad/app.css tools/
    tools/emu/ipad/manifest.webmanifest "$OUT/ipad/"
 cp tools/acid/index.html tools/acid/acid.js tools/acid/rave.js tools/acid/boot-sound.js tools/acid/acid.css tools/acid/acid-worklet.js tools/acid/sw.js \
    tools/acid/manifest.webmanifest tools/acid/icon.svg tools/acid/icon-180.png tools/acid/icon-512.png \
-   tools/acid/favicon-40.png tools/acid/og-image.png "$OUT/acid/"
+   tools/acid/favicon-40.png tools/acid/og-image.png tools/acid/vj.html "$OUT/acid/"
 STAMP=$(cat web/site.css | shasum | cut -c1-10)
 # (sed -i.bak, then the .bak removed: the one form both BSD sed on macOS and GNU sed on the CI runner take)
 sed -i.bak "s|href=\"site.css\"|href=\"site.css?v=$STAMP\"|" "$OUT/index.html"

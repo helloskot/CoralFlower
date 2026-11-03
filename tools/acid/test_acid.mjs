@@ -222,6 +222,88 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
     ok(finite(r.L) && finite(r.R) && peak(r.L) <= 1, `all twelve held at once: finite, peak ${peak(r.L).toFixed(2)}`);
   }
 }
+{ // v2: the three new drums, each drum's knobs, chance, ratchets, track lengths, 32 steps, the lead, motion, live keys,
+  // the room and the pump
+  const S = sps(120);
+  const e8 = () => { const p = empty(); p.drums = Array.from({ length: 8 }, () => new Array(32).fill(false)); return p; };
+  for (const [lane, name] of [[5, "tom"], [6, "rim"], [7, "cowbell"]]) {
+    const a = load(), pat = e8();
+    pat.drums[lane][0] = pat.drums[lane][8] = true;
+    a.send({ type: "params", params: { tempo: 120, swing: 0.5, delay: 0 } });
+    a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
+    const { L } = a.render(1.2);
+    const hit = rms(L, 0, Math.round(S)), quiet = rms(L, Math.round(5 * S), Math.round(7.5 * S));
+    ok(finite(L) && hit > 0.02 && quiet < hit * 0.25, `${name}: hits (${hit.toFixed(3)}), then dies away (${quiet.toFixed(4)})`);
+  }
+  { // a drum's tune and level
+    const tom = (dk) => { const a = load(), pat = e8(); pat.drums[5][0] = true;
+      a.send({ type: "params", params: { tempo: 120, swing: 0.5, delay: 0, dk } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
+      return a.render(0.4).L; };
+    const f0 = pitch(tom(null), 4000, 9000), f1 = pitch(tom([null, null, null, null, null, [12, 0.5, 0.8]]), 4000, 9000);
+    ok(Math.abs(f1 / f0 - 2) < 0.15, `tom tuned up an octave: ${f0.toFixed(0)} to ${f1.toFixed(0)} Hz`);
+    const q = rms(tom([null, null, null, null, null, [0, 0.5, 0.2]]), 0, 6000), l = rms(tom(null), 0, 6000);
+    ok(q < l * 0.4, `tom's level down: ${q.toFixed(3)} against ${l.toFixed(3)}`);
+  }
+  { // chance: 0 never plays, 50 plays about half
+    const count = (prob) => { const a = load(), pat = e8(); pat.dp = pat.drums.map(() => new Array(32).fill(prob));
+      for (let s2 = 0; s2 < 16; s2++) pat.drums[6][s2] = true;
+      a.send({ type: "params", params: { tempo: 120, swing: 0.5, delay: 0 } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
+      a.render(8); return a.posted.filter((m) => m.type === "viz").reduce((n, m) => n + ((m.hits >> 6) & 1), 0); };
+    const none = count(0), half = count(50), all = count(100);
+    ok(none === 0 && half > all * 0.25 && half < all * 0.75, `chance: 0% ${none} hits, 50% ${half}, 100% ${all}`);
+  }
+  { // ratchets: a step repeated 4 times inside itself
+    const a = load(), pat = e8(); pat.drums[6][0] = true; pat.dr = pat.drums.map(() => new Array(32).fill(1)); pat.dr[6][0] = 4;
+    a.send({ type: "params", params: { tempo: 60, swing: 0.5, delay: 0 } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
+    const { L } = a.render(0.25), S60 = sps(60);
+    let onsets = 0;
+    for (let q = 0; q < 4; q++) if (rms(L, Math.round((q * S60) / 4), Math.round((q * S60) / 4 + 300)) > 0.02) onsets++;
+    ok(onsets === 4, `ratchet x4: ${onsets} hits inside one step`);
+  }
+  { // track lengths: a 3-step kick against a 16-step bar; 32 steps
+    const a = load(), pat = e8(); pat.drums[0][0] = true; pat.dlen = [3, 0, 0, 0, 0, 0, 0, 0];
+    a.send({ type: "params", params: { tempo: 120, swing: 0.5, delay: 0 } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
+    a.render(2.05);
+    const kicks = a.posted.filter((m) => m.type === "viz").reduce((n, m) => n + (m.hits & 1), 0);
+    ok(kicks === 6, `a 3-step kick lane: ${kicks} kicks in 16 steps (6)`);
+    const b = load(), p32 = e8(); p32.len = 32;
+    b.send({ type: "params", params: { tempo: 120, swing: 0.5, delay: 0 } }); b.send({ type: "pattern", pattern: p32 }); b.send({ type: "play" });
+    const { steps } = b.render(4.2);
+    ok(Math.max(...steps.map(([s2]) => s2)) === 31, `32 steps: the clock runs to step 32`);
+  }
+  { // the lead: an octave above the bass, its own track
+    const a = load(), pat = e8(); pat.lead = Array.from({ length: 32 }, () => ({ on: false, note: 0, oct: 0, acc: false, slide: false }));
+    pat.lead[0] = { on: true, note: 0, oct: 0, acc: false, slide: true }; pat.lead[1] = { on: true, note: 0, oct: 0, acc: false, slide: true };
+    a.send({ type: "params", params: { tempo: 120, swing: 0.5, delay: 0, drums: 0, leadWave: 0, lead: 1 } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
+    const { L } = a.render(0.6), f = pitch(L, 3000, 9000);
+    ok(Math.abs(f - 130.8) / 130.8 < 0.04, `lead: C3 sounds at ${f.toFixed(1)} Hz (130.8)`);
+  }
+  { // motion: the cutoff recorded at step 5 is there when step 5 plays
+    const a = load(), pat = e8(); pat.motion = { cutoff: new Array(32).fill(null) }; pat.motion.cutoff[4] = 0.91;
+    a.send({ type: "params", params: { tempo: 120, cutoff: 0.2 } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
+    a.render(0.4); const c1 = a.p.p.cutoff; a.render(0.2);
+    ok(Math.abs(c1 - 0.2) < 1e-9 && Math.abs(a.p.p.cutoff - 0.91) < 1e-9, `motion: the cutoff ${c1} until step 5, then ${a.p.p.cutoff}`);
+  }
+  { // a live key: held, then let go
+    const a = load();
+    a.send({ type: "params", params: { delay: 0, lead: 1 } }); a.send({ type: "live", on: true, note: 57, voice: "lead" });
+    const held = a.render(0.5).L; a.send({ type: "live", on: false, note: 57, voice: "lead" }); const after = a.render(0.3).L;
+    ok(rms(held, 15000, 22000) > 0.03 && rms(after, 4000, 13000) < 0.003, `live key: sounds while held (${rms(held, 15000, 22000).toFixed(3)}), stops after (${rms(after, 4000, 13000).toFixed(4)})`);
+  }
+  { // the room: a tail after a snare; the pump: the bass ducked after a kick
+    const tail = (verb) => { const a = load(), pat = e8(); pat.drums[1][0] = true;
+      a.send({ type: "params", params: { tempo: 60, swing: 0.5, delay: 0, verb } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
+      const { L } = a.render(1.2); return rms(L, Math.round(0.5 * SR), Math.round(1.0 * SR)); };
+    const wet = tail(0.8), dry = tail(0);
+    ok(wet > dry * 2.5 && wet > 0.004, `reverb: a tail after the snare (${wet.toFixed(4)} against ${dry.toFixed(5)} dry)`);
+    const duck = (pump) => { const a = load(), pat = e8(); pat.drums[0][0] = true; pat.bass[0] = { on: true, note: 0, oct: 0, acc: false, slide: true };
+      for (let s2 = 1; s2 < 16; s2++) pat.bass[s2] = { on: true, note: 0, oct: 0, acc: false, slide: true };
+      a.send({ type: "params", params: { tempo: 120, swing: 0.5, delay: 0, drums: 0, pump } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
+      const { L } = a.render(0.5); return rms(L, 800, 3500); };
+    const pumped = duck(1), flat = duck(0);
+    ok(pumped < flat * 0.5, `pump: the bass ducked under the kick (${pumped.toFixed(3)} against ${flat.toFixed(3)})`);
+  }
+}
 { // the power-on sounds (boot-sound.js): each part where the boot animation puts it, nothing clipped, then quiet
   const ctx = vm.createContext({ Math, Float32Array, globalThis: {} });
   ctx.globalThis = ctx;

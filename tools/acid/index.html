@@ -60,7 +60,26 @@
       <button type="button" class="rave__i" id="raveTilt" aria-pressed="false" aria-label="Tilt" title="Tilt: lean the device to bend the filter">Tilt</button>
       <button type="button" class="rave__i" id="raveLock" aria-pressed="false" aria-label="Lock the picture" title="Lock: touches on the picture do nothing (for a stand, or passing it round)">Lock</button>
       <button type="button" class="rave__i" id="raveFull" aria-pressed="false" aria-label="Full screen" title="Full screen" hidden>Full</button>
+      <button type="button" class="rave__i rave__vj" id="raveVJ" aria-pressed="false" aria-label="VJ" title="VJ: colours, mirrors, trails, words, a second screen">VJ</button>
     </div>
+    <aside class="vj" id="vjPanel" aria-label="VJ" hidden>
+      <div class="vj__head"><b>VJ</b><button type="button" class="vj__x" id="vjReset">Reset</button><button type="button" class="vj__x" id="vjClose">Done</button></div>
+      <div class="vjrow"><span>Picture</span><div class="seg" data-vj="fill"><button type="button" data-v="1">Fill</button><button type="button" data-v="0">Fit</button></div></div>
+      <label class="vjrow"><span>Hue</span><input type="range" data-vj="hue" min="0" max="1" step="0.01"></label>
+      <div class="vjrow"><span>Speed</span><div class="seg" data-vj="speed"><button type="button" data-v="0.25">&#188;</button><button type="button" data-v="0.5">&#189;</button><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button></div></div>
+      <div class="vjrow"><span>Mirror</span><div class="seg" data-vj="mirror"><button type="button" data-v="0">Off</button><button type="button" data-v="1">&#8644;</button><button type="button" data-v="2">Four</button><button type="button" data-v="3">Kaleido</button></div></div>
+      <label class="vjrow"><span>Trails</span><input type="range" data-vj="trails" min="0" max="0.95" step="0.01"></label>
+      <label class="vjrow"><span>Kick zoom</span><input type="range" data-vj="zoom" min="0" max="1" step="0.01"></label>
+      <label class="vjrow"><span>Colour split</span><input type="range" data-vj="rgb" min="0" max="1" step="0.01"></label>
+      <div class="vjrow"><span>Pixels</span><div class="seg" data-vj="pix"><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button><button type="button" data-v="6">6</button></div></div>
+      <div class="vjrow"><span>Strobe<small>Not in Calm</small></span><div class="seg" data-vj="strobe"><button type="button" data-v="0">Off</button><button type="button" data-v="1">Kick</button><button type="button" data-v="2">Bar</button></div></div>
+      <div class="vjrow"><span>Show</span><div class="seg vj__shows"><button type="button" data-show="hud">Readouts</button><button type="button" data-show="scan">Scanlines</button><button type="button" data-show="parts">Confetti</button><button type="button" data-show="words">Words</button></div></div>
+      <label class="vjrow vjrow--text"><span>Words</span><input type="text" data-vj="text" maxlength="40" placeholder="Type, and it scrolls by" autocomplete="off" spellcheck="false"></label>
+      <div class="vjrow"><span>Auto VJ<small>New colours and mirrors every 4 bars</small></span><div class="seg" data-vj="auto"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></div></div>
+      <div class="vjrow"><span>Rec<small>What the red button records</small></span><div class="seg" data-vj="rec"><button type="button" data-v="sound">Sound</button><button type="button" data-v="video">Sound + picture</button></div></div>
+      <div class="menu__row"><button type="button" id="vjOut">Open a second screen</button></div>
+      <p class="sheet__hint">For a projector or a TV: the second screen is a window of its own (drag it there, then tap it for full screen). On iPad and iPhone, AirPlay or a cable mirrors the whole screen instead.</p>
+    </aside>
     <p class="rave__recdot" id="raveRecDot" hidden></p>
     <p class="rave__hint" id="raveHint" aria-live="polite"></p>
     <div class="rave__scenes" id="raveScenes" hidden>
@@ -90,7 +109,12 @@
       <div class="strip" data-p="accent" role="slider" aria-label="Accent"><b>Accent</b><em></em><span class="strip__bar"></span></div>
       <div class="strip" data-p="drive" role="slider" aria-label="Drive"><b>Drive</b><em></em><span class="strip__bar"></span></div>
       <div class="strip" data-p="delay" role="slider" aria-label="Delay"><b>Delay</b><em></em><span class="strip__bar"></span></div>
+      <div class="strip" data-p="verb" role="slider" aria-label="Reverb"><b>Verb</b><em></em><span class="strip__bar"></span></div>
+      <div class="strip" data-p="pump" role="slider" aria-label="Pump: the kick ducks the bass and the lead"><b>Pump</b><em></em><span class="strip__bar"></span></div>
+      <div class="strip" data-p="lead" role="slider" aria-label="Lead level"><b>Lead</b><em></em><span class="strip__bar"></span></div>
       <div class="strip" data-p="drums" role="slider" aria-label="Drums level"><b>Drums</b><em></em><span class="strip__bar"></span></div>
+      <button type="button" class="knobbtn" id="motionBtn" aria-pressed="false" title="Motion: while it plays, your knob moves are recorded into the pattern. Hold to clear them."><i aria-hidden="true"></i><span>Motion</span></button>
+      <button type="button" class="knobbtn" id="soundBtn" aria-haspopup="dialog" title="Sounds: presets for the knobs"><span>Sounds</span></button>
     </div>
   </section>
 
@@ -98,6 +122,7 @@
     <div class="edit__head">
       <div class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="bass" aria-selected="true">Bass line</button>
+        <button type="button" role="tab" data-tab="lead" aria-selected="false">Lead</button>
         <button type="button" role="tab" data-tab="drums" aria-selected="false">Drums</button>
         <button type="button" role="tab" data-tab="punch" aria-selected="false">Punch</button>
         <button type="button" role="tab" data-tab="filter" aria-selected="false" class="tab-filter">Filter</button>
@@ -107,6 +132,7 @@
         <button type="button" class="tool tool--icon" id="redo" aria-label="Redo" title="Redo (⇧⌘Z)" disabled>Redo</button>
       </div>
       <button type="button" class="tool latch" id="latch" aria-pressed="false" title="Latch: a tap turns an effect on, another turns it off" hidden>Latch</button>
+      <div class="pager" id="pager" role="group" aria-label="Steps shown" hidden><button type="button" data-page="0" aria-pressed="true">1&#8211;16</button><button type="button" data-page="1" aria-pressed="false">17&#8211;32</button></div>
       <div class="tools">
         <button type="button" id="wave" class="tool tool--lab" title="The bass's waveform"><small>Wave</small><b>Saw</b></button>
         <div class="stepper" aria-label="Key (transpose)"><button type="button" data-tune="-1" aria-label="Key down">&minus;</button><span class="stepper__v"><small>Key</small><b id="tune">C</b></span><button type="button" data-tune="1" aria-label="Key up">+</button></div>
@@ -146,16 +172,91 @@
   <div class="sheet__nums" id="slotCopy"></div>
   <div class="menu__row">
     <button type="button" id="slotShare">Share as a link</button>
+    <button type="button" id="slotMidi">Save as MIDI</button>
     <button type="button" id="slotClear" class="is-bad">Clear this pattern</button>
   </div>
   <form method="dialog"><button class="menu__close">Done</button></form>
 </dialog>
 
+<dialog class="menu sheet" id="genMenu" aria-labelledby="genTitle">
+  <h2 id="genTitle">Generate</h2>
+  <p class="sheet__hint">A whole new pattern in a style: the bass line, the drums and the tempo. (Undo brings yours back.)</p>
+  <div class="gen__list" id="genList"></div>
+  <form method="dialog"><button class="menu__close">Close</button></form>
+</dialog>
+
+<dialog class="menu sheet" id="songMenu" aria-labelledby="songTitle">
+  <h2 id="songTitle">Song</h2>
+  <p class="sheet__hint">Patterns in order, each played a number of times, round and round. With Song on, Play plays it from the top.</p>
+  <div class="opt"><span>Play as a song</span><div class="seg" id="songOn"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></div></div>
+  <ol class="song__list" id="songList"></ol>
+  <div class="menu__row">
+    <button type="button" id="songAdd">Add a pattern</button>
+    <button type="button" id="songMidi">Save the song as MIDI</button>
+  </div>
+  <form method="dialog"><button class="menu__close">Done</button></form>
+</dialog>
+
+<dialog class="menu sheet midi" id="midiMenu" aria-labelledby="midiTitle">
+  <h2 id="midiTitle">MIDI</h2>
+  <p class="sheet__hint" id="midiStatus"></p>
+  <div class="menu__row"><button type="button" id="midiOn">Turn on MIDI</button></div>
+  <div id="midiBody" hidden>
+    <div class="opt"><span>From<small>The keyboards and controllers to listen to</small></span><select id="midiIn"></select></div>
+    <div class="opt"><span>To<small>Where to send the clock (and start and stop)</small></span><select id="midiOut"></select></div>
+    <div class="opt"><span>Keys play<small>Scenes &amp; punch-ins: C2 to B2 hold the twelve effects, C3 to G3 pick the scenes</small></span>
+      <div class="seg" id="midiKeys"><button type="button" data-v="lead">Lead</button><button type="button" data-v="bass">Bass</button><button type="button" data-v="vj">Scenes &amp; punch-ins</button></div></div>
+    <div class="opt"><span>Clock in<small>Follow another machine's tempo, start and stop</small></span>
+      <div class="seg" id="midiFollow"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></div></div>
+    <div class="opt"><span>Clock out<small>Lead other machines (24 a beat)</small></span>
+      <div class="seg" id="midiSend"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></div></div>
+    <h3>Knobs</h3>
+    <p class="sheet__hint">Tap Learn, then turn a knob on your controller. Program changes 1 to 8 pick the patterns.</p>
+    <div class="midi__map" id="midiMap"></div>
+    <p class="menu__msg" id="midiMsg" role="status"></p>
+  </div>
+  <form method="dialog"><button class="menu__close">Done</button></form>
+</dialog>
+
+<dialog class="menu sheet" id="soundMenu" aria-labelledby="soundTitle">
+  <h2 id="soundTitle">Sounds</h2>
+  <p class="sheet__hint">A sound is the knobs (the filter, the envelope, the effects, the waves and the drums' tune); your patterns stay as they are.</p>
+  <h3>Built in</h3>
+  <div class="sheet__nums sound__list" id="soundBuilt"></div>
+  <h3>Yours</h3>
+  <div class="sound__mine" id="soundMine"></div>
+  <form method="dialog"><button class="menu__close">Done</button></form>
+</dialog>
+
+<dialog class="menu sheet" id="stepMenu" aria-labelledby="stepTitle">
+  <h2 id="stepTitle">Step 1</h2>
+  <h3>Chance</h3>
+  <p class="sheet__hint">How often it plays: every time, or now and then.</p>
+  <div class="sheet__nums" id="stepProb"></div>
+  <h3>Repeat</h3>
+  <p class="sheet__hint">Played again inside its step (a ratchet): a roll on a drum, a trill on a note.</p>
+  <div class="sheet__nums" id="stepRat"></div>
+  <form method="dialog"><button class="menu__close">Done</button></form>
+</dialog>
+
+<dialog class="menu sheet" id="laneMenu" aria-labelledby="laneTitle">
+  <h2 id="laneTitle">Kick</h2>
+  <p class="sheet__hint">Tune, decay and level are the drum's sound, in every pattern. Length is this pattern's: a drum on its own length drifts against the others.</p>
+  <div class="lane__rows" id="laneRows"></div>
+  <div class="menu__row"><button type="button" id="laneHear">Hear it</button><button type="button" id="laneReset">As it was made</button></div>
+  <form method="dialog"><button class="menu__close">Done</button></form>
+</dialog>
+
+<button type="button" class="nosound" id="noSound" hidden>No sound? Tap here</button>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastMsg"></span><button type="button" id="toastBtn" hidden></button></div>
 <div class="tour" id="tour" role="dialog" aria-live="polite" hidden><p id="tourMsg"></p><div class="tour__row"><span id="tourStep"></span><button type="button" id="tourSkip">Skip</button><button type="button" id="tourNext">Next</button></div><i class="tour__arrow" id="tourArrow"></i></div>
 
 <dialog class="menu" id="menu" aria-labelledby="menuTitle">
   <h2 id="menuTitle">ACID<b>FLOWER</b></h2>
+  <div class="menu__row menu__row--top">
+    <button type="button" id="songBtn">Song&#8230;</button>
+    <button type="button" id="midiBtn">MIDI&#8230;</button>
+  </div>
   <h3>How it plays</h3>
   <ul>
     <li><b>Bass line:</b> each note sits at its pitch, like a piano roll: drag it up or down to change it; tap it to rest it. <b>Oct</b> lifts it an octave, then drops it; <b>Acc</b> accents it (louder, a sharper squelch); <b>Slide</b> glides it into the next note.</li>
@@ -166,6 +267,11 @@
     <li><b>Tilt:</b> lean the iPad to play the filter: left and right for the cutoff, towards you and away for the resonance. It takes the way you hold it when you turn it on as the middle; turn it off and on again to re-centre. The picture leans with it.</li>
     <li><b>Tempo and swing:</b> drag up or down, or tap the arrows; hold an arrow to keep going. Tap the middle of Tempo in time with the music to set it.</li>
     <li><b>Patterns:</b> 1 to 8 along the top; a dot marks the ones with something in them. While it plays, the next one blinks until the bar ends, then takes over. <b>Hold</b> a number to name the pattern, copy it, share it as a link, or chain it to another (<b>Then play</b>) to make a song.</li>
+    <li><b>Lead:</b> a second line an octave up, on its own tab, with its own wave and length.</li>
+    <li><b>Hold a step</b> (a note or a drum): its chance (how often it plays) and its repeats (a roll). <b>Hold a drum's name</b>: its tune, decay, level and length. Lengths up to 32 steps; tracks of different lengths drift against each other.</li>
+    <li><b>Motion:</b> on while it plays, the knobs you move are recorded into the pattern. <b>Sounds:</b> presets for the knobs. <b>Hold Random</b> for a whole pattern in a style.</li>
+    <li><b>Song</b> and <b>MIDI</b> are at the top of this menu: patterns in order; a keyboard, a controller and a clock (in Chrome, Edge or Android). A pattern or the song saves as a MIDI file.</li>
+    <li><b>VJ</b> (in rave mode): colours, mirrors, trails, scrolling words, Auto VJ, a second screen for a projector, and Rec with the picture.</li>
     <li><b>Undo:</b> the arrows beside the tabs undo and redo any change to a pattern.</li>
     <li><b>Rec:</b> records everything you hear, effects and all; when you stop, save it or send it.</li>
     <li><b>The squelch pad</b> stays where you leave it; double-tap it to go back to the start.</li>
@@ -173,10 +279,17 @@
     <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter. With two fingers: swipe left or right for another scene, pinch for more or less squelch (env mod), tap for Latch, swipe down to leave. Hold <b>Scene</b> to pick one. The patterns, the tempo and Tilt are along the top; <b>Lock</b> makes the picture ignore touches. The controls fade after a few seconds: touch to bring them back.</li>
   </ul>
   <h3>The rave</h3>
-  <div class="opt"><span>Scenes<small>Warehouse, Cyberspace, Tunnel, Voxel, Plasma, Mainframe, Garden, Feedback</small></span>
+  <div class="opt"><span>Scenes<small>Warehouse, Cyberspace, Tunnel, Voxel, Plasma, Mainframe, Garden, Feedback, Hyperspace, Acid rain, Spiral</small></span>
     <div class="seg" data-pref="scenes"><button type="button" data-v="auto">Every 8 bars</button><button type="button" data-v="hold">Stay</button></div></div>
   <div class="opt"><span>Motion<small>Calm: no strobe, no shaking, no flashing words</small></span>
     <div class="seg" data-pref="motion"><button type="button" data-v="full">Full</button><button type="button" data-v="calm">Calm</button></div></div>
+  <div class="opt"><span>Text<small>Bigger labels on the steps, the knobs and the tabs</small></span>
+    <div class="seg" data-pref="text"><button type="button" data-v="normal">Normal</button><button type="button" data-v="large">Large</button></div></div>
+  <h3>Pocket jam</h3>
+  <div class="opt"><span>Shake to mutate<small>Shake the phone or iPad: a few steps change</small></span>
+    <div class="seg" id="shakeSeg"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></div></div>
+  <div class="opt"><span>Light filter<small>The front camera's brightness opens the filter (nothing is recorded or sent)</small></span>
+    <div class="seg" id="lightSeg"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></div></div>
   <h3>Sound</h3>
   <div class="opt"><span>Response<small>Smooth uses a bigger audio buffer: try it if you hear crackles. Applies the next time you open the app.</small></span>
     <div class="seg" data-pref="latency"><button type="button" data-v="interactive">Fast</button><button type="button" data-v="playback">Smooth</button></div></div>

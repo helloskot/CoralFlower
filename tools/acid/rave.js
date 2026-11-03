@@ -73,8 +73,10 @@
   const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
   class Rave {
-    constructor(canvas, hooks) {
-      this.cv = canvas; this.g = canvas.getContext("2d"); this.hooks = hooks;
+    constructor(canvas, hooks, opts = {}) {
+      this.cv = canvas; this.g = canvas.getContext("2d"); this.hooks = hooks; this.opts = opts;
+      this.tilt = [0, 0];                                  // the iPad's tilt (-1..1 each way), when Tilt is on
+      this.bootT = 0; this.ready = false; this.stopped = false;
       canvas.width = W; canvas.height = H;
       this.img = this.g.createImageData(W, H);
       this.buf = new Float32Array(N * 3); this.prev = new Float32Array(N * 3);
@@ -103,6 +105,8 @@
       this.loop = this.loop.bind(this);
     }
     start() { requestAnimationFrame(this.loop); }
+    stop() { this.stopped = true; }
+    skip() { if (this.bootT < 3.9) this.bootT = 3.9; }
     next() { this.scene = (this.scene + 1) % SCENES.length; this.sceneLabel = 1.6; this.barOfScene = 0; this.prev.fill(0); }
     setPad(x, y) { this.pad = x == null ? null : [x, y]; }
 
@@ -269,7 +273,7 @@
       const beams = 4 + Math.round(cut * 6) + (this.accent > 0.3 ? 4 : 0), inten = 0.2 + 0.35 * env + 0.45 * this.accent + 0.2 * cut;
       for (let k = 0; k < beams; k++) {
         const ox = [6, W - 7, W / 2, W / 4, (3 * W) / 4][k % 5], col = [LIME, CYAN, PINK, LIME, YEL][k % 5];
-        const a = Math.PI / 2 + Math.sin(this.t * (0.7 + 0.25 * k) + k * 1.7 + this.scroll * 0.5) * (0.55 + 0.35 * reso) + [-0.4, 0.4, 0, -0.2, 0.2][k % 5];
+        const a = Math.PI / 2 + Math.sin(this.t * (0.7 + 0.25 * k) + k * 1.7 + this.scroll * 0.5) * (0.55 + 0.35 * reso) + [-0.4, 0.4, 0, -0.2, 0.2][k % 5] - this.tilt[0] * 0.5;
         this.line(ox, 0, ox + Math.cos(a) * 220, Math.sin(a) * 220, this.accent > 0.6 ? WHITE : col, inten, true);
       }
       // fog: slow bands, lit by the kick
@@ -309,7 +313,7 @@
     tunnel() {
       const v = this.v, sh = this.slotShift(), reso = v.reso, env = v.env || 0;
       this.fade(0.55);
-      const rings = 16, rot = Math.sin(this.t * 0.35) * 0.6 + reso * 0.3 * Math.sin(this.t);
+      const rings = 16, rot = Math.sin(this.t * 0.35) * 0.6 + reso * 0.3 * Math.sin(this.t) + this.tilt[0] * 0.8;
       for (let i = rings; i >= 1; i--) {
         let z = (i - ((this.scroll * 2) % 1)) / rings;
         const s = 6 / (z * z + 0.02), half = s * (1 + this.kick * 0.08), a = rot + z * 1.2 * reso;
@@ -489,7 +493,7 @@
       const v = this.v, sh = this.slotShift(), B = this.buf;
       for (let y = 0; y < H; y++) { const t = y / H, r = 4 + 30 * Math.max(0, 0.55 - Math.abs(t - 0.45)), b = 12 + 60 * Math.max(0, 0.55 - Math.abs(t - 0.45)); for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = r; B[i + 1] = 2; B[i + 2] = b; } }
       const speed = this.scroll * 6, camZ = speed, bank = Math.sin(this.t * 0.4) * 0.25 + (v.cut - 0.5) * 0.4;
-      this.cam(Math.sin(this.t * 0.3) * 3, 7 + Math.sin(this.t * 0.5) * 1.5 - this.kick * 0.6, camZ, bank, -0.18 + (v.reso - 0.5) * 0.1, 130);
+      this.cam(Math.sin(this.t * 0.3) * 3 + this.tilt[0] * 4, 7 + Math.sin(this.t * 0.5) * 1.5 - this.kick * 0.6, camZ, bank + this.tilt[0] * 0.35, -0.18 + (v.reso - 0.5) * 0.1 + this.tilt[1] * 0.15, 130);
       // the floor: a neon grid running under the city
       const gz0 = Math.floor(camZ / 4) * 4;
       for (let k = 0; k < 18; k++) { const z = gz0 + k * 4; const a = this.proj(-60, 0, z), b = this.proj(60, 0, z); if (a && b) this.line(a[0], a[1], b[0], b[1], pal(sh + 200), 0.25); }
@@ -518,7 +522,7 @@
     mainframe() {
       const v = this.v, sh = this.slotShift();
       this.fade(0.35);
-      this.cam(0, 2, -34, Math.sin(this.t * 0.2) * 0.2, -0.05, 140);
+      this.cam(this.tilt[0] * 8, 2 - this.tilt[1] * 5, -34, Math.sin(this.t * 0.2) * 0.2 + this.tilt[0] * 0.25, -0.05 + this.tilt[1] * 0.15, 140);
       for (let x = -40; x <= 40; x += 5) { const a = this.proj(x, -12, -10), b = this.proj(x, -12, 60); if (a && b) this.line(a[0], a[1], b[0], b[1], [0, 160, 60], 0.35); }
       for (let z = -10; z <= 60; z += 5) { const zz = z - ((this.scroll * 5) % 5); const a = this.proj(-40, -12, zz), b = this.proj(40, -12, zz); if (a && b) this.line(a[0], a[1], b[0], b[1], [0, 160, 60], 0.35); }
       // the core: a wire sphere turning, its radius beating
@@ -567,7 +571,7 @@
     voxelScene() {
       const v = this.v, sh = this.slotShift(), B = this.buf;
       for (let y = 0; y < H; y++) { const t = y / H, c = pal(sh + 20 + t * 40); for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = c[0] * 0.18; B[i + 1] = c[1] * 0.12; B[i + 2] = c[2] * 0.3; } }
-      const yaw = Math.sin(this.t * 0.25) * 0.5;
+      const yaw = Math.sin(this.t * 0.25) * 0.5 + this.tilt[0] * 0.6;
       this.cam(Math.sin(yaw) * -46, 16, -Math.cos(yaw) * 46 + 4, yaw, -0.32, 150);
       // the landscape: on each new step a new row from the sound
       if (v.step >= 0 && v.step !== this.tStep) {
@@ -589,10 +593,97 @@
       for (const o of vs) this.voxel(o.x, o.y, o.z, sc * 1.02, R, T, this.accent > 0.4 && o.q.c === VCOL.Y ? WHITE : o.q.c);
     }
 
+    // ---------------------------------------------------------------------------------------- the boot ---
+    // the machine powering on: a CRT's line opening into static; a BIOS typing its checks; a cloud of points flying
+    // together into the flower over a neon grid; the name glitching in; SYSTEM READY (the page shows its button then)
+    bootScene() {
+      const t = this.bootT, B = this.buf, calm = this.calm;
+      const BIOS = [["ACIDFLOWER BIOS 1.0", ""], ["CORE: SQUELCH UNIT X1", "OK"], ["MEMORY 4096K", "OK"], ["OSCILLATORS SAW SQR", "OK"],
+                    ["LADDER FILTER 24DB", "OK"], ["RESONANCE CALIBRATE", "OK"], ["SEQUENCER 16 STEPS", "OK"], ["DRUM BANK 5 VOICES", "OK"],
+                    ["PUNCH-IN FX 12", "OK"], ["MOUNT /DEV/RAVE", "OK"], ["LOADING ACID.SYS", ""]];
+      if (t < 0.9) {                                      // the tube: a line, opening, then static
+        this.fill(0, 0, 0);
+        if (t > 0.08) {
+          const w = Math.min(1, (t - 0.08) / 0.25) * W, h = t < 0.38 ? 1 : Math.min(H, 1 + ((t - 0.38) / 0.3) * H), y0 = (H - h) / 2;
+          const bright = t < 0.7 ? 255 : 255 * (1 - (t - 0.7) / 0.2);
+          for (let y = Math.floor(y0); y < y0 + h; y++) for (let x = ((W - w) / 2) | 0; x < (W + w) / 2; x++) {
+            const n = h > 4 ? rnd() * 0.6 + 0.4 : 1;
+            this.set(x, y, [bright * n * 0.7, bright * n, bright * n * 0.8]);
+          }
+        }
+        return;
+      }
+      this.fade(t < 2.4 ? 0 : 0.45);
+      if (t < 2.4) this.fill(0, 6, 2);
+      // the grid: a neon floor scrolling under it all, from the BIOS on
+      this.cam(0, 6, -40, Math.sin(t * 0.4) * 0.15 + this.tilt[0] * 0.3, -0.12 + this.tilt[1] * 0.1, 140);
+      const gz = (t * 14) % 6, ga = clamp((t - 1.2) / 1, 0, 0.55);
+      if (ga > 0) {
+        for (let k = 0; k < 16; k++) { const a = this.proj(-60, -6, k * 6 - gz), b = this.proj(60, -6, k * 6 - gz); if (a && b) this.line(a[0], a[1], b[0], b[1], [255, 47, 180], ga * 0.6); }
+        for (let x = -60; x <= 60; x += 8) { const a = this.proj(x, -6, -20), b = this.proj(x, -6, 90); if (a && b) this.line(a[0], a[1], b[0], b[1], [43, 240, 255], ga * 0.45); }
+      }
+      // the BIOS: lines typed fast, their OKs a beat later, a progress bar for the last
+      if (t < 3.3) {
+        const up = t > 2.5 ? (t - 2.5) * 200 : 0;
+        BIOS.forEach(([l, ok], i) => {
+          const t0 = 0.95 + i * 0.12, n = Math.floor((t - t0) * 60);
+          if (n <= 0) return;
+          const y = 6 + i * 8 - up;
+          this.text3(l.slice(0, n), 6, y, i === 0 ? YEL : [60, 255, 120]);
+          if (ok && t > t0 + 0.12) this.text3(ok, 6 + 22 * 4, y, CYAN);
+          if (i === BIOS.length - 1 && n >= l.length) {
+            const f = clamp((t - t0 - 0.25) / 0.45, 0, 1);
+            this.rect(6, y + 7, 90, 5, [0, 40, 10]); this.rect(7, y + 8, 88 * f, 3, [60, 255, 120]);
+          }
+        });
+        if (Math.floor(t * 4) % 2 && t < 2.3) this.rect(6, 6 + BIOS.length * 8, 3, 5, [60, 255, 120]);
+      }
+      // the flower: points from everywhere flying together, turning
+      if (t > 2.2) {
+        // (spinning in as it forms, then turning to face you, swaying)
+        const f = clamp((t - 2.2) / 1.3, 0, 1), e = 1 - Math.pow(1 - f, 3);
+        const a = (1 - e) * TAU * 1.5 + Math.sin(t * 1.1) * 0.35 * e + this.tilt[0] * 0.6, ca = Math.cos(a), sa = Math.sin(a);
+        VOX.forEach((q, i) => {
+          const r0 = 55 + hash(i, 7) * 40, u = hash(i, 3) * TAU, w = (hash(i, 5) - 0.5) * Math.PI;
+          const sx = Math.cos(w) * Math.cos(u) * r0, sy = Math.sin(w) * r0, sz = Math.cos(w) * Math.sin(u) * r0;
+          const x = sx + (q.x * 1.0 - sx) * e, y = sy + (q.y * 1.0 + 12 - sy) * e, z = sz + (q.z * 1.0 - sz) * e;
+          const rx = x * ca - z * sa, rz = x * sa + z * ca, p = this.proj(rx, y, rz);
+          if (!p) return;
+          const c = e < 0.9 ? [60 + 195 * e, 255, 120 + 60 * (1 - e)] : q.c;
+          if (e < 0.9) this.add(p[0], p[1], c, 0.9);
+          else { const k = 1 + (p[2] < 52 ? 1 : 0); this.rect(p[0] | 0, p[1] | 0, k + 1, k, c); }   // (landed: solid, a block a voxel)
+        });
+      }
+      // the name: letters glitching in, then SYSTEM READY
+      if (t > 3.3) {
+        const word = "ACID FLOWER", k = 2, w = word.length * 6 * k, x0 = ((W - w) / 2) | 0, y0 = 86;
+        const shown = Math.min(word.length, Math.floor((t - 3.3) * 22));
+        const jit = !calm && t < 4.1 ? 1 : 0;
+        for (let i = 0; i < shown; i++) {
+          const ch = word[i], dx = jit && rnd() < 0.3 ? ((rnd() - 0.5) * 6) | 0 : 0;
+          if (jit) { this.text5(ch, x0 + i * 6 * k + dx - 1, y0, k, [255, 0, 80]); this.text5(ch, x0 + i * 6 * k + dx + 1, y0, k, [0, 220, 255]); }
+          this.text5(ch, x0 + i * 6 * k + dx, y0, k, i < 4 ? WHITE : YEL);
+        }
+        if (t > 3.8 && Math.floor(t * 2.5) % 2 === 0) this.text3("SYSTEM READY", W / 2 - 24, y0 + 19, [60, 255, 120]);
+        if (t > 3.8 && !this.ready) { this.ready = true; if (this.hooks.onReady) this.hooks.onReady(); }
+      }
+      // glitch bands, now and then
+      if (!calm && rnd() < 0.08) { const y = (rnd() * H) | 0, h = 2 + ((rnd() * 6) | 0), dx = ((rnd() - 0.5) * 20) | 0; for (let yy = y; yy < Math.min(H, y + h); yy++) for (let x = 0; x < W; x++) { const xs = clamp(x - dx, 0, W - 1), i = (yy * W + x) * 3, j = (yy * W + xs) * 3; B[i] = B[j + 2]; B[i + 1] = B[j]; } }
+    }
+
     // --------------------------------------------------------------------------------------------- a frame ---
     loop(now) {
+      if (this.stopped) return;
       const dt = Math.min(0.1, this.tPrev ? (now - this.tPrev) / 1000 : 0.016);
       this.tPrev = now; this.dt = dt; this.t += dt;
+      if (this.opts.boot) {                               // the power-on (the start screen's own copy)
+        this.bootT += dt;
+        if (this.calm && this.bootT < 3.9) this.bootT = 3.9;
+        this.bootScene();
+        this.post();
+        requestAnimationFrame(this.loop);
+        return;
+      }
       const playing = this.hooks.playing(), bpm = this.hooks.params().tempo;
       this.scroll += playing ? dt * (bpm / 60) : dt * 0.12;
       const d = (k) => Math.pow(k, dt);

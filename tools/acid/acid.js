@@ -66,6 +66,7 @@
       sendPattern();
       await ctx.resume();
       $("gate").hidden = true;
+      boot.stop();
     } catch (err) {
       $("start").textContent = "Couldn’t start: " + err.message;
     }
@@ -502,5 +503,52 @@
   if (!standalone && navigator.maxTouchPoints > 0) $("a2hs").hidden = false;
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   drawAll();
-  window.acid = { state: () => S, playing: () => playing, viz: () => viz, rave };
+  // ------------------------------------------------------------------------------------------- the boot ---
+  // the start screen: the machine powering on (rave.js bootScene), then its button; a tap skips ahead
+  const boot = new globalThis.AcidRave($("boot"), { pattern: () => pat(), params: () => S.params, slot: () => S.cur, playing: () => false,
+                                                    onReady: () => $("gate").classList.add("is-ready") }, { boot: true });
+  boot.calm = rave.calm;
+  boot.start();
+  $("gate").addEventListener("pointerdown", (e) => { if (!e.target.closest("button")) boot.skip(); });
+
+  // ------------------------------------------------------------------------------------------- the tilt ---
+  // lean the iPad to play the filter: left / right the cutoff, towards / away the resonance, about the way it was
+  // held when Tilt went on; the picture leans with it. (iPadOS asks first: from the tap itself, a click.)
+  let tiltOn = false, tiltZero = null, tiltS = [0, 0];
+  const tiltAxes = (e) => {
+    const ang = (screen.orientation && screen.orientation.angle != null ? screen.orientation.angle : window.orientation || 0) | 0;
+    const b = e.beta || 0, g = e.gamma || 0;
+    return ang === 90 ? [b, -g] : ang === -90 || ang === 270 ? [-b, g] : ang === 180 ? [-g, -b] : [g, b];
+  };
+  const onTilt = (e) => {
+    if (!tiltOn || e.beta == null) return;
+    const [x, y] = tiltAxes(e);
+    if (!tiltZero) tiltZero = [x, y];
+    const dx = clamp1((x - tiltZero[0]) / 28), dy = clamp1((y - tiltZero[1]) / 28);
+    tiltS[0] += (dx - tiltS[0]) * 0.35; tiltS[1] += (dy - tiltS[1]) * 0.35;
+    S.params.cutoff = clamp01(tiltBase[0] + tiltS[0] * 0.5); S.params.reso = clamp01(tiltBase[1] - tiltS[1] * 0.5);
+    rave.tilt = [tiltS[0], tiltS[1]];
+    sendParams(); save(); drawXY();
+  };
+  const clamp1 = (v) => (v < -1 ? -1 : v > 1 ? 1 : v);
+  let tiltBase = [0.5, 0.5];
+  const setTilt = (on) => {
+    tiltOn = on; tiltZero = null; tiltS = [0, 0]; rave.tilt = [0, 0];
+    tiltBase = [S.params.cutoff, S.params.reso];
+    $("tiltBtn").setAttribute("aria-pressed", String(on));
+  };
+  $("tiltBtn").addEventListener("click", async () => {
+    if (tiltOn) return setTilt(false);
+    try {
+      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function") {
+        const r = await DeviceOrientationEvent.requestPermission();
+        if (r !== "granted") { alert("Tilt needs motion access: allow it when asked (or in Settings, Safari, Motion & Orientation Access)."); return; }
+      } else if (!("DeviceOrientationEvent" in window)) { alert("This device has no tilt sensor."); return; }
+    } catch (err) { alert("Tilt isn\u2019t available here: " + err.message); return; }
+    if (!tiltListening) { addEventListener("deviceorientation", onTilt); tiltListening = true; }
+    setTilt(true);
+  });
+  let tiltListening = false;
+
+  window.acid = { state: () => S, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn };
 })();

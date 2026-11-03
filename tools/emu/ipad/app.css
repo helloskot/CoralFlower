@@ -1,13 +1,15 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * CoralFlower for iPad: one screen, no scrolling. Landscape: the screen buttons along the top; the sound dials, the
  * firmware's screen and the four knob strips in the middle; the chord pads over the root pads at the bottom.
- * Portrait: the same, stacked. Colours are the site's (web/site.css) and the panel's (../play/emu.js). */
+ * Portrait: the same, stacked. Perform (.is-perform): the dials and strips put away, the pads bigger. Colours are the
+ * site's (web/site.css) and the panel's (../play/emu.js). The screen itself is the firmware's, drawn pixel for pixel. */
 @font-face { font-family: "Departure Mono"; src: url("../fonts/DepartureMono.woff") format("woff"); font-display: block; }
 
 :root {
-  --night: #110A02; --body: #1A120B; --bed: #0C0702; --cap: #2C2018; --cap-hi: #3A2B22; --edge: #050200;
+  --night: #110A02; --body: #1A120B; --bed: #0C0702; --cap: #2C2018; --cap-hi: #3A2B22; --edge: #050200; --line: #2A1F17;
   --cream: #F1ECE0; --hint: #A89A88; --dim: #6D5E59;
   --rose: #E86879; --fire: #F1750D; --sun: #F9C62A; --sea: #48E6D9; --lime: #D6E34C; --lit: #F9E8C0;
+  --plum: #B07CE8; --sand: #D9C49A;
   --gap: clamp(4px, 0.7vmin, 8px);
   --r: 10px;
   --font: "Departure Mono", ui-monospace, Menlo, monospace;
@@ -16,32 +18,42 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; background: var(--night); color: var(--cream); font: 15px/1.2 var(--font); }
 body { position: fixed; inset: 0; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
-button { font: inherit; color: inherit; border: 0; background: none; }
-.app, .gate { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+.app, .gate, .tips { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 
 /* ------------------------------------------------------------------------------------------------ the grid --- */
 .app {
+  --pads-h: clamp(150px, 36vh, 280px);
   position: absolute; inset: 0; display: grid; gap: var(--gap); touch-action: none;
   padding: max(var(--gap), env(safe-area-inset-top)) max(var(--gap), env(safe-area-inset-right))
            max(var(--gap), env(safe-area-inset-bottom)) max(var(--gap), env(safe-area-inset-left));
   grid-template-columns: minmax(150px, 1fr) minmax(0, auto) minmax(190px, 1.25fr);
-  grid-template-rows: clamp(40px, 7vh, 54px) minmax(0, 1fr) clamp(150px, 36vh, 280px);
+  grid-template-rows: clamp(40px, 7vh, 54px) minmax(0, 1fr) var(--pads-h);
   grid-template-areas: "screens screens screens" "dials screen knobs" "pads pads pads";
 }
+.app.is-large { --pads-h: clamp(190px, 46vh, 360px); }
+.app.is-left { grid-template-columns: minmax(190px, 1.25fr) minmax(0, auto) minmax(150px, 1fr); grid-template-areas: "screens screens screens" "knobs screen dials" "pads pads pads"; }
+.app.is-perform { --pads-h: minmax(0, 1.7fr); grid-template-columns: minmax(0, 1fr); grid-template-rows: clamp(40px, 7vh, 54px) minmax(0, 1fr) var(--pads-h); grid-template-areas: "screens" "screen" "pads"; }
+.app.is-perform .dials, .app.is-perform .knobs { display: none; }
 .screens { grid-area: screens; display: flex; gap: var(--gap); min-width: 0; }
 .dials { grid-area: dials; display: grid; gap: var(--gap); grid-template-rows: repeat(4, minmax(0, 1fr)); min-height: 0; }
-.screen { grid-area: screen; position: relative; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.screen { grid-area: screen; position: relative; min-height: 0; min-width: 0; display: flex; align-items: center; justify-content: center; }
 .knobs { grid-area: knobs; display: grid; gap: var(--gap); grid-template-rows: repeat(4, minmax(0, 1fr)); min-height: 0; }
 .pads { grid-area: pads; display: grid; gap: var(--gap); grid-template-rows: 1fr 1.15fr; min-height: 0; }
 
 @media (orientation: portrait) {
   .app {
+    --pads-h: clamp(170px, 26vh, 300px);
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto clamp(170px, 26vh, 300px);
+    grid-template-rows: auto minmax(0, 1fr) auto var(--pads-h);
     grid-template-areas: "screens screens" "screen screen" "dials knobs" "pads pads";
   }
+  .app.is-large { --pads-h: clamp(220px, 34vh, 380px); }
+  .app.is-left { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "screens screens" "screen screen" "knobs dials" "pads pads"; }
+  .app.is-perform { --pads-h: minmax(0, 1.2fr); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) var(--pads-h); grid-template-areas: "screens" "screen" "pads"; }
   .screens { flex-wrap: wrap; }
   .screens .sbtn { flex: 1 1 15%; min-height: 44px; }
+  .screens__gap { display: none; }
   .dials, .knobs { grid-template-rows: none; grid-auto-rows: 60px; }
 }
 
@@ -49,70 +61,97 @@ button { font: inherit; color: inherit; border: 0; background: none; }
 .sbtn {
   flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; position: relative;
   border-radius: var(--r); background: var(--cap); box-shadow: inset 0 0 0 1.5px var(--edge), inset 0 -3px 0 rgba(0,0,0,.35);
-  font-size: clamp(11px, 1.35vw, 15px); letter-spacing: .02em; text-transform: uppercase; color: var(--cream);
+  font-size: clamp(11px, 1.3vw, 15px); letter-spacing: .02em; text-transform: uppercase; color: var(--hint);
 }
 .sbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
 .sbtn--home { color: var(--sun); }
-.sbtn--menu { flex: 0 0 clamp(40px, 5vw, 54px); font-size: 22px; color: var(--hint); }
+.sbtn--tool { flex: 0 0 auto; padding: 0 12px; color: var(--cream); background: var(--bed); box-shadow: inset 0 0 0 1.5px var(--line); }
+.sbtn--menu { width: clamp(40px, 5vw, 54px); padding: 0; font-size: 22px; color: var(--hint); }
+.sbtn--tool[aria-pressed="true"] { background: var(--rose); color: var(--night); box-shadow: none; }
 .screens__gap { flex: 0 0 var(--gap); }
+/* the screen that is open: its button cream, with a bar under it */
+.sbtn.is-active { color: var(--cream); background: var(--cap-hi); }
+.sbtn.is-active::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: 5px; height: 3px; border-radius: 2px; background: var(--rose); }
+.sbtn--home.is-active { color: var(--sun); }
+.sbtn--home.is-active::after { background: var(--sun); }
 .sbtn.is-down, .tbtn.is-down { transform: translateY(1px); box-shadow: inset 0 0 0 2px var(--sun); }
-.sbtn.led-1, .tbtn.led-1 { background: color-mix(in srgb, var(--led, var(--cream)) 16%, var(--cap)); }
-.sbtn.led-3, .tbtn.led-3 { background: color-mix(in srgb, var(--led, var(--cream)) 45%, var(--cap)); }
-.sbtn.led-2, .tbtn.led-2 { background: var(--led, var(--cream)); color: #111; }
+.tbtn.led-1 { background: color-mix(in srgb, var(--led, var(--cream)) 18%, var(--cap)); }
+.tbtn.led-3 { background: color-mix(in srgb, var(--led, var(--cream)) 45%, var(--cap)); }
+.tbtn.led-2 { background: var(--led, var(--cream)); color: #111; }
 
 /* --------------------------------------------------------------------------------------------- screen --- */
 #lcd { display: none; }
 #view {
   display: block; max-width: 100%; max-height: 100%; width: auto; height: 100%; aspect-ratio: 240 / 157;
-  image-rendering: pixelated; border-radius: var(--r); background: #000;
+  image-rendering: pixelated; image-rendering: crisp-edges; border-radius: var(--r); background: #000;
   box-shadow: 0 0 0 2px #2A1F17, 0 0 0 8px var(--body), 0 0 40px 6px rgba(232, 104, 121, .16);
 }
 .screen.is-full #view { aspect-ratio: 1; }
 
 /* ---------------------------------------------------------------------------------- dials and knob strips --- */
 .enc {
-  position: relative; display: grid; align-content: center; gap: 2px; min-height: 0; overflow: hidden;
+  position: relative; display: grid; align-content: center; gap: 3px; min-height: 0; min-width: 0; overflow: hidden;
   padding: 6px 44px; border-radius: var(--r); background: var(--body); text-align: center;
-  box-shadow: inset 0 0 0 1.5px #2A1F17; touch-action: none; cursor: ns-resize;
+  box-shadow: inset 0 0 0 1.5px var(--line); touch-action: none; cursor: ns-resize;
 }
-.enc b { font-weight: 400; font-size: clamp(11px, 1.2vw, 14px); letter-spacing: .06em; text-transform: uppercase; color: var(--hint); }
+.enc b { font-weight: 400; font-size: clamp(10px, 1.1vw, 13px); letter-spacing: .06em; text-transform: uppercase; color: var(--hint); }
 .enc[data-e="2"] b { color: var(--fire); }
 .enc[data-e="0"] b { color: var(--rose); }
 .enc[data-e="1"] b { color: var(--sun); }
-.enc em { font-style: normal; font-size: clamp(15px, 2vw, 22px); color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.enc em { font-style: normal; font-size: clamp(14px, 1.8vw, 21px); color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1em; }
+.enc em:empty::before { content: "\2013"; color: var(--dim); }
 .enc__l, .enc__r {
   position: absolute; top: 0; bottom: 0; width: 42px; display: grid; place-items: center; font-style: normal;
   font-size: 14px; color: var(--dim); background: rgba(255,255,255,.025);
 }
-.enc__l { left: 0; border-right: 1px solid #2A1F17; }
-.enc__r { right: 0; border-left: 1px solid #2A1F17; }
-.enc__bar { position: absolute; left: 44px; right: 44px; bottom: 6px; height: 4px; border-radius: 2px; background: #2A1F17; overflow: hidden; }
+.enc__l { left: 0; border-right: 1px solid var(--line); }
+.enc__r { right: 0; border-left: 1px solid var(--line); }
+.enc__bar { position: absolute; left: 44px; right: 44px; bottom: 6px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .enc__bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--bar, 0%); background: var(--sea); }
 .enc__bar[hidden] { display: none; }
 .enc.is-dis em { color: var(--dim); }
+/* a sound's name: two lines when it needs them */
+.dials .enc em { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: clamp(13px, 1.55vw, 19px); line-height: 1.15; overflow-wrap: anywhere; }
 .enc.is-sel { box-shadow: inset 0 0 0 2px var(--sun); }
 .enc.is-turn { box-shadow: inset 0 0 0 2px var(--sea); }
 .enc.is-l .enc__l, .enc.is-r .enc__r { color: var(--cream); background: rgba(255,255,255,.08); }
 .enc--vol { padding: 6px 12px; cursor: ew-resize; }
-.enc__fill { position: absolute; inset: auto 12px 8px; height: 6px; border-radius: 3px; background: #2A1F17; }
+.enc__fill { position: absolute; inset: auto 12px 8px; height: 6px; border-radius: 3px; background: var(--line); }
 .enc__fill::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--vol, 70%); border-radius: 3px; background: var(--lime); }
 
 /* --------------------------------------------------------------------------------------------- the pads --- */
 .row { display: flex; gap: var(--gap); min-height: 0; }
 .pad, .tbtn {
   flex: 1 1 0; min-width: 0; position: relative; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 2px; border-radius: var(--r); background: var(--cap);
+  justify-content: center; gap: 2px; border-radius: var(--r); background: var(--cap); overflow: hidden;
   box-shadow: inset 0 0 0 1.5px var(--edge), inset 0 -4px 0 rgba(0,0,0,.35); touch-action: none;
 }
-.tbtn { flex: 0.9 1 0; font-size: clamp(11px, 1.3vw, 15px); text-transform: uppercase; color: var(--cream); }
+.tbtn { flex: 0.9 1 0; font-size: clamp(10px, 1.2vw, 14px); text-transform: uppercase; color: var(--cream); }
 .tbtn--play { color: var(--lime); --led: var(--lime); }
 .tbtn--rec { color: var(--rose); --led: var(--rose); }
+.tbtn--strum { color: var(--sea); }
+.tbtn--strum[aria-pressed="true"] { background: var(--sea); color: var(--night); }
 .tbtn--play::after { content: ""; position: absolute; left: 8px; bottom: 8px; width: 7px; height: 7px; border-radius: 50%; background: #120C08; }
 .tbtn--play.is-green::after { background: var(--lime); box-shadow: 0 0 8px var(--lime); }
 .pad__top { font-size: clamp(14px, 2.2vw, 26px); line-height: 1; white-space: nowrap; }
+.app.is-large .pad__top, .app.is-perform .pad__top { font-size: clamp(16px, 2.6vw, 32px); }
 .pad__bot { font-size: clamp(10px, 1.2vw, 14px); line-height: 1; color: var(--hint); min-height: 1em; }
 .pad__led { position: absolute; left: 50%; top: 7px; width: 34%; max-width: 30px; height: 4px; margin-left: -17%; border-radius: 2px; background: #120C08; }
-.pad--btn .pad__top { color: var(--hint); }
+.pad__icon { width: 56%; max-width: 42px; aspect-ratio: 1; image-rendering: pixelated; image-rendering: crisp-edges; }
+.pad__icon[hidden] { display: none; }
+/* a chord button's family (web_keycaps: its chord type): a colour stripe, and its colour when it is lit */
+.pad[data-fam] { --fam: var(--hint); }
+.pad[data-fam]::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: var(--fam); opacity: .75; }
+.pad[data-fam] .pad__top { color: color-mix(in srgb, var(--fam) 55%, var(--cream)); }
+.pad[data-fam="maj"] { --fam: var(--fire); }
+.pad[data-fam="min"] { --fam: var(--sea); }
+.pad[data-fam="sus"] { --fam: var(--sand); }
+.pad[data-fam="aug"], .pad[data-fam="dim"] { --fam: var(--plum); }
+.pad[data-fam="pow"], .pad[data-fam="deg"] { --fam: var(--hint); }
+.pad[data-fam="hold"] { --fam: var(--lime); background: var(--bed); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--lime) 45%, transparent), inset 0 -4px 0 rgba(0,0,0,.35); }
+.pad[data-fam="hold"]::before { display: none; }
+.pad[data-fam].s-2 { background: color-mix(in srgb, var(--fam) 78%, var(--cap)); }
+.pad[data-fam].s-2 .pad__top { color: var(--night); }
 /* the firmware's key-cap styles (cf_draw.c KC_*): 0 root, 1 chord button, 2 on (latched), 3 down, 4 off, 5 sounding, 6 the tonic */
 .pad.s-1 { background: #241A13; }
 .pad.s-2 { background: color-mix(in srgb, var(--rose) 70%, var(--cap)); }
@@ -127,6 +166,19 @@ button { font: inherit; color: inherit; border: 0; background: none; }
 .pad.l-3 .pad__led { background: var(--lit); opacity: .68; }
 .pad.l-4 .pad__led { background: var(--lit); opacity: .18; }
 .pad.is-down { transform: translateY(1px); box-shadow: inset 0 0 0 2px var(--sun), inset 0 -2px 0 rgba(0,0,0,.35); }
+/* a soft-to-loud shade on the note pads while touch velocity is on: soft at the top, loud at the bottom */
+.app.is-vel .row--lower .pad:not(.s-3)::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(0,0,0,.18), rgba(255,255,255,.035)); }
+
+/* the sequencer (SEQ's drums and song): the lower row a step grid, the upper row the drums or patterns */
+.pads.is-seq .row--lower .pad { background: var(--bed); box-shadow: inset 0 0 0 1.5px var(--line); }
+.pads.is-seq .row--lower .pad.s-0 { background: var(--cap); }
+.pads.is-seq .row--lower .pad.s-2 { background: var(--sea); }
+.pads.is-seq .row--lower .pad.s-2 .pad__top { color: var(--night); }
+.pads.is-seq .row--lower .pad.s-4 { opacity: 1; }
+.pads.is-seq .row--lower .pad.s-4 .pad__top { color: var(--dim); }
+.pads.is-seq .pad.l-2 { box-shadow: inset 0 0 0 3px var(--lit), 0 0 14px rgba(249, 232, 192, .35); }
+.pads.is-seq .pad.l-2 .pad__led { display: none; }
+.pads.is-seq .row--upper .pad.s-2 { background: color-mix(in srgb, var(--sea) 55%, var(--cap)); }
 
 /* -------------------------------------------------------------------------------------- gate and menu --- */
 .gate { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: rgba(17, 10, 2, .94); }
@@ -140,13 +192,37 @@ h1, .menu h2 { font-weight: 400; font-size: clamp(32px, 6vw, 56px); letter-spaci
 .gate__go:disabled { opacity: .4; }
 .gate__hint { color: var(--hint); font-size: 14px; line-height: 1.5; }
 .gate__hint b { color: var(--cream); font-weight: 400; }
-.menu { margin: auto; max-width: min(34rem, 92vw); padding: 24px; border: 0; border-radius: 18px; background: var(--body); color: var(--cream); box-shadow: 0 0 0 2px #2A1F17, 0 20px 60px rgba(0,0,0,.6); }
+.menu { margin: auto; width: min(36rem, 94vw); max-height: 92dvh; overflow: auto; padding: 22px; border: 0; border-radius: 18px; background: var(--body); color: var(--cream); box-shadow: 0 0 0 2px var(--line), 0 20px 60px rgba(0,0,0,.6); overscroll-behavior: contain; }
 .menu::backdrop { background: rgba(5, 2, 0, .7); }
-.menu h2 { font-size: 30px; margin-bottom: 12px; }
+.menu h2 { font-size: 30px; margin-bottom: 4px; }
 .menu h2 small { font-size: 14px; color: var(--hint); }
-.menu p { margin-bottom: 12px; line-height: 1.5; color: var(--hint); }
-.menu__row { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
-.menu__row button, .menu__close { min-height: 48px; padding: 0 18px; border-radius: 12px; background: var(--cap); box-shadow: inset 0 0 0 1.5px var(--cap-hi); }
-.menu__fine { font-size: 13px; }
+.menu h3 { margin: 18px 0 8px; font-weight: 400; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--rose); }
+.menu p { margin-bottom: 10px; line-height: 1.5; color: var(--hint); font-size: 14px; }
+.opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.opt > span { display: grid; gap: 2px; }
+.opt small { font-size: 12px; color: var(--dim); line-height: 1.35; }
+.seg { display: inline-flex; flex: 0 0 auto; padding: 3px; gap: 3px; border-radius: 12px; background: var(--bed); }
+.seg button { min-height: 40px; padding: 0 12px; border-radius: 9px; color: var(--hint); font-size: 14px; }
+.seg button[aria-pressed="true"] { background: var(--cap-hi); color: var(--cream); box-shadow: inset 0 0 0 1.5px var(--rose); }
+.menu__row { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.menu__row button, .menu__close { min-height: 48px; padding: 0 16px; border-radius: 12px; background: var(--cap); box-shadow: inset 0 0 0 1.5px var(--cap-hi); }
+.menu__row .is-bad { color: var(--rose); }
+.menu__msg { min-height: 1.2em; color: var(--sea) !important; }
+.menu__fine { font-size: 13px !important; }
 .menu__fine a { color: var(--sea); }
 .menu__close { width: 100%; background: var(--rose); color: var(--night); box-shadow: none; }
+
+/* ---------------------------------------------------------------------------------------------- tips --- */
+.tips { position: fixed; inset: 0; z-index: 20; }
+.tips[hidden] { display: none; }
+.tips__hole { position: absolute; border-radius: 14px; box-shadow: 0 0 0 3px var(--sun), 0 0 0 200vmax rgba(8, 4, 1, .78); transition: all .25s ease-out; pointer-events: none; }
+.tips__card { position: absolute; width: min(24rem, 86vw); padding: 18px; border-radius: 16px; background: var(--body); box-shadow: 0 0 0 2px var(--sun), 0 18px 50px rgba(0,0,0,.6); transition: top .25s ease-out, left .25s ease-out; }
+.tips__step { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--sun); margin-bottom: 6px; }
+.tips__card h2 { font-weight: 400; font-size: 22px; margin-bottom: 8px; }
+.tips__card p { color: var(--hint); line-height: 1.5; font-size: 15px; }
+.tips__row { display: flex; justify-content: space-between; margin-top: 14px; }
+.tips__row button { min-height: 44px; padding: 0 18px; border-radius: 12px; color: var(--hint); }
+.tips__row .is-main { background: var(--sun); color: var(--night); }
+@media (prefers-reduced-motion: reduce) { .tips__hole, .tips__card { transition: none; } }
+/* (HOLD is four letters on a pad sized for a chord's one or two: smaller, so it fits at every size) */
+.pad[data-fam="hold"] .pad__top { font-size: clamp(11px, 1.5vw, 20px); }

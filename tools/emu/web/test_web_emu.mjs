@@ -197,6 +197,11 @@ ok(ex.web_lcd_writes() > w0, "boot: the LCD was written");
   ok(cap(25) === "HOLD" && c[20 * 25 + 17] === 1 && cap(7) === "C" && cs(c, 20 * 7 + 8, 8) === "1" && cap(22) === "m" && c[20 * 7 + 17] === 0,
      `web_keycaps: ${[1, 3, 13, 20, 22, 25].map(cap).join(" ")} on the chord keys, ${[0, 2, 7].map(cap).join(" ")} on the roots`);
   ok(knob(0) === "QUANTIZE=Basic" && knob(3).startsWith("GLIDE="), `web_knobs: ${[0, 1, 2, 3].map(knob).join(", ")}`);
+  const fam = [1, 13, 8, 25].map((i) => c[20 * i + 19]);   // M6 major, m6 minor, s2 sus2, HOLD (1 + CF_T_*, 255)
+  ok(fam.join() === "2,3,6,255" && c[20 * 7 + 19] === 0, `web_keycaps: the chord families ${fam.join(" ")} (major minor sus2 HOLD), none on a root`);
+  const info = new Uint8Array(ex.memory.buffer, ex.web_info(), 128).slice();
+  ok(info[0] === 0 && /^\d{3} \S/.test(cs(info, 16, 32)) && /^\d{3} \S/.test(cs(info, 48, 32)) && cs(info, 80, 16) === "Top Lock" && cs(info, 96, 32) === "HOME",
+     `web_info: ${cs(info, 96, 32)}, chord sound "${cs(info, 16, 32)}", bass sound "${cs(info, 48, 32)}", layout ${cs(info, 80, 16)}`);
 }
 const log = [];
 const t0 = performance.now();
@@ -276,6 +281,30 @@ const settingsOf = (e) => { stdout = ""; e.web_dump(); return /settings: (\w+), 
   const avg = ts.reduce((a, b) => a + b, 0) / ts.length, budget = 128 / 44.1;
   ok(ts[ts.length - 1] < budget * 4, `render quantum (128 frames, budget ${budget.toFixed(2)} ms): avg ${avg.toFixed(3)} ms, ` +
      `99th ${ts[Math.floor(ts.length * 0.99)].toFixed(3)} ms, max ${ts[ts.length - 1].toFixed(3)} ms (node, this machine)`);
+}
+
+{ // web_touch (the iPad instrument): a touch's velocity on the note-ons, and Strum, without touching the saved settings
+  const ex = await load();
+  ex.web_boot();
+  ex.web_step(1600);
+  const ons = () => { const r = []; for (let p; (p = ex.web_midi_out_take()); ) if (((p >>> 8) & 0xf0) === 0x90 && p >>> 24) r.push([(p >>> 16) & 255, p >>> 24]); return r; };
+  ons();
+  ex.web_keys(1 << 20); ex.web_step(60); ex.web_keys(0); ex.web_step(60);   // M latched
+  ex.web_touch(40, 0, 0); ex.web_keys(1 << 7); ex.web_step(30);
+  const soft = ons();
+  ex.web_keys(0); ex.web_step(300); ons();
+  ex.web_touch(0, 0, 0); ex.web_keys(1 << 7); ex.web_step(30);
+  const saved = ons();
+  ok(soft.length && soft.every(([, v]) => v === 40) && saved.length && saved.every(([, v]) => v === 100),
+     `web_touch: velocity 40 on the touch's notes (${soft.map((n) => n.join("/")).join(" ")}), the saved 100 after (${saved.map((n) => n.join("/")).join(" ")})`);
+  ex.web_keys(0); ex.web_step(400); ons();
+  ex.web_touch(0, 1, 80); ex.web_keys(1 << 7);
+  const when = [];
+  for (let t = 0; t < 300; t += 5) { ex.web_step(5); for (const [n] of ons()) if (n >= 48) when.push([n, t]); }
+  ex.web_keys(0); ex.web_touch(0, 0, 0); ex.web_step(300);
+  const chord = when.map(([n]) => n), gaps = when.slice(1).map(([, t], i) => t - when[i][1]);
+  ok(chord.join() === "48,52,55" && gaps.every((g) => g >= 70 && g <= 95),
+     `web_touch: Strum up 80 ms, C E G one after another (${when.map(([n, t]) => n + "@" + t + "ms").join(" ")})`);
 }
 
 // ===================================================================================================== 2 ===

@@ -274,7 +274,8 @@ WEB_EXPORT uint8_t *web_leds(void)
 /* the key caps and the four knobs as the screen draws them (cf_draw.c, from cf_ui.c's ui_keycap / ui_knob_info), for
  * a page that shows them on its own controls (the iPad instrument, tools/emu/ipad):
  *   web_keycaps: 27 x 20 bytes, key 0..26: top[8] bot[8] (NUL-ended; bytes 0x10..0x19 are the small raised digits
- *                0..9), style (KC_ROOT BTN ON DOWN OFF SOUNDING SCALE), btn (a chord button), icon (a drum, 1 + lane), 0
+ *                0..9), style (KC_ROOT BTN ON DOWN OFF SOUNDING SCALE), btn (a chord button), icon (a drum, 1 + its
+ *                picture), family: a chord button's chord type as 1 + CF_T_* (HOLD 255; 0: not a chord button now)
  *   web_knobs:   4 x 32 bytes, K1..K4: name[12] val[14], bar (int16 little-endian, 0..255, -1 none), dis, sel, 0, 0 */
 static uint8_t caps_out[EMU_NKEY * 20];
 WEB_EXPORT uint8_t *web_keycaps(void)
@@ -295,6 +296,13 @@ WEB_EXPORT uint8_t *web_keycaps(void)
         o[16] = c.style;
         o[17] = c.btn;
         o[18] = c.icon;
+        {
+            cf_keycap_t q;
+            int idx;
+            memset(&q, 0, sizeof q);
+            if (cu.scr != SCR_EDIT && !sq_keycap(k, &q) && cf_key_role(cs.chord.algo, k, &idx) == CF_ROLE_BUTTON)
+                o[19] = cf_is_off(&cs.chord, idx) ? 255u : (uint8_t)(1 + cf_button_form(&cs.chord, idx)->type);
+        }
     }
     return caps_out;
 }
@@ -320,6 +328,61 @@ WEB_EXPORT uint8_t *web_knobs(void)
         p[29] = o.sel;
     }
     return knobs_out;
+}
+
+/* what the iPad instrument names beside its controls, 128 bytes: [0] the screen (SCR_*), [1] the chord algorithm
+ * (CF_ALG_*), [2] the keys' ARP on, [3] 0; [16..47] the chord sound ("005 FM ORGAN"), [48..79] the bass sound,
+ * [80..95] the algorithm's name ("Top Lock"), [96..127] the screen's name ("CHORD") */
+static uint8_t info_out[128];
+static void info_str(uint8_t *dst, int n, const char *a, const char *b)
+{
+    int i = 0;
+    while (a && *a && i < n - 1)
+        dst[i++] = (uint8_t)*a++;
+    if (b && i && i < n - 1)
+        dst[i++] = ' ';
+    while (b && *b && i < n - 1)
+        dst[i++] = (uint8_t)*b++;
+    dst[i] = 0;
+}
+WEB_EXPORT uint8_t *web_info(void)
+{
+    char num[4];
+    memset(info_out, 0, sizeof info_out);
+    if (!booted)
+        return info_out;
+    info_out[0] = (uint8_t)cu.scr;
+    info_out[1] = cs.chord.algo;
+    info_out[2] = cu.arp_on;
+    snd_num(cf_snd_pos(CF_PART_CHORD), num);
+    info_str(info_out + 16, 32, num, cf_snd[CF_PART_CHORD].name);
+    snd_num(cf_snd_pos(CF_PART_BASS), num);
+    info_str(info_out + 48, 32, num, cf_snd[CF_PART_BASS].name);
+    info_str(info_out + 80, 16, cs.chord.algo < CF_NALGS ? ALG_NAME[cs.chord.algo] : "", 0);
+    info_str(info_out + 96, 32, cu.scr < SCR_N ? SCR_NAME[cu.scr] : "", 0);
+    return info_out;
+}
+
+/* a touch's expression, for the keys that go down next (the iPad instrument): vel 1..127 the note-on velocity (the
+ * FM-1's keys have none: GLOBAL's VELOCITY plays every note), 0 the saved one; strum 1 up, 2 down: the keys' chords
+ * strummed (the arpeggiator's STRUM UP / DOWN, ms between the notes), 0 the saved ARP. Only the audio side's copy
+ * (cfp_cfg) changes: the settings, and what the flash keeps, stay as they are; any settings change copies them back */
+WEB_EXPORT void web_touch(int32_t vel, int32_t strum, int32_t ms)
+{
+    if (!booted)
+        return;
+    fm1_irq_off();
+    cfp_cfg.vel = (uint8_t)(vel > 0 ? (vel > 127 ? 127 : vel) : cs.vel);
+    if (strum) {
+        cfp_cfg.arp_on = 1;
+        cfp_cfg.arp.mode = strum == 2 ? CF_ARP_STRUM_DOWN : CF_ARP_STRUM_UP;
+        cfp_cfg.arp.strum_ms = (uint8_t)(ms < 5 ? 5 : ms > 250 ? 250 : ms);
+    } else {
+        cfp_cfg.arp_on = sq_keys_arp();
+        cfp_cfg.arp = cs.arp;
+    }
+    fm1_irq_on();
+    cf_post(CFE_CONFIG, 0, 0, 0);
 }
 
 /* MIDI: USB-MIDI event packets (byte 0 = cable << 4 | CIN in bits 0..7, then status, data1, data2) */

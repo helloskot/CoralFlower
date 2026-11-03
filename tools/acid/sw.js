@@ -3,7 +3,7 @@
 // network. Everything the machine needs is fetched once at install.
 const CACHE = "acid-flower-v11";
 const FILES = ["./", "acid.js", "rave.js", "boot-sound.js", "acid.css", "acid-worklet.js", "manifest.webmanifest", "icon.svg", "icon-180.png",
-               "icon-512.png", "favicon-40.png", "../fonts/DepartureMono.woff"];
+               "icon-512.png", "favicon-40.png", "vj.html", "../fonts/DepartureMono.woff"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => Promise.all(FILES.map((f) =>

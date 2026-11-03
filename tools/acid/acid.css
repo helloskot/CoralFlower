@@ -697,3 +697,140 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .app.is-rave .rave__top { padding: 5px; border-radius: 16px; background: rgba(7, 2, 12, .62); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .app.is-rave .rave__status { padding-left: 6px; }
 .rave__fx .fxp b { font-size: clamp(9px, 1.15vw, 12px); letter-spacing: 0; }
+
+/* ============================================================================================== v2 editor ===
+ * the lead (pink, where the bass is lime); a step's chance and repeats marked in its corner; the pages; eight drums;
+ * a drum's menu */
+.bass.is-lead .st__pill { background: rgba(255, 47, 180, .2); box-shadow: inset 0 0 0 1.5px var(--pink); }
+.bass.is-lead .st.is-now .st__pill { box-shadow: inset 0 0 0 2px var(--yellow); background: rgba(255, 225, 0, .25); }
+.st__note[data-prob]:not([data-prob=""])::after, .dr[data-prob]:not([data-prob=""])::after {
+  content: attr(data-prob); position: absolute; top: 2px; left: 3px; font-size: 8px; color: var(--cyan); pointer-events: none; }
+.st__note[data-rat]:not([data-rat=""])::before { content: attr(data-rat); display: block; position: absolute; top: 2px; right: 3px; left: auto; bottom: auto; width: auto; height: auto;
+  background: none; font-size: 8px; color: var(--yellow); pointer-events: none; }
+.dr { position: relative; }
+.dr[data-rat]:not([data-rat=""])::before { content: attr(data-rat); position: absolute; right: 2px; bottom: 1px; font-size: 8px; color: var(--black); pointer-events: none; }
+.dr.is-on[data-prob]:not([data-prob=""])::after { color: var(--black); }
+.dr.is-on[data-prob]:not([data-prob=""]) { opacity: .75; }
+.dr__name { position: relative; }
+.dr__name[data-len]:not([data-len=""])::after { content: attr(data-len); position: absolute; right: 3px; top: 2px; font-size: 8px; color: var(--muted); }
+.pager { display: flex; gap: 0; border-radius: 9px; overflow: hidden; box-shadow: inset 0 0 0 1.5px var(--line); }
+.pager button { min-height: 40px; padding: 0 10px; background: var(--panel); color: var(--muted); font-size: 12px; }
+.pager button[aria-pressed="true"] { background: var(--cell-hi); color: var(--yellow); }
+.drums { grid-template-rows: repeat(8, minmax(0, 1fr)); gap: 3px; }
+.lane__rows { display: grid; gap: 8px; margin: 12px 0; }
+.lrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lrow > span { color: var(--muted); font-size: 14px; letter-spacing: .06em; text-transform: uppercase; }
+.lrow .stepper { min-height: 44px; }
+.lrow .stepper button { min-width: 44px; min-height: 44px; }
+.lrow .stepper__v { min-width: 9em; }
+@media (max-width: 600px) and (orientation: portrait) {
+  .drums { grid-template-rows: repeat(16, minmax(0, 1fr)); gap: 2px; }
+  .pager button { min-height: 34px; padding: 0 7px; font-size: 11px; }
+}
+:root.fold-lr .drums { grid-template-rows: repeat(16, minmax(0, 1fr)); }
+@media (max-height: 500px) and (orientation: landscape) { .pager button { min-height: 30px; padding: 0 6px; font-size: 10px; } .drums { gap: 2px; } }
+@media (max-width: 1199px) { .hist .tool span { display: none; } }
+@media (max-width: 1199px) and (min-width: 601px) { .hist .tool { padding: 0 10px; } }
+
+/* the knobs: eight strips, Motion and Sounds; three across (four on a phone) */
+.strips { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); }
+.strip[data-p="verb"] { --c: #B98CFF; } .strip[data-p="pump"] { --c: var(--orange); } .strip[data-p="lead"] { --c: var(--pink); }
+.knobbtn { position: relative; display: grid; place-items: center; align-content: center; gap: 4px; min-height: 0; min-width: 0; border-radius: var(--r); background: var(--panel);
+  box-shadow: inset 0 0 0 1.5px var(--line); color: var(--muted); font-size: clamp(10px, 1.1vw, 13px); letter-spacing: .07em; text-transform: uppercase; }
+.knobbtn i { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 2px #FF5A6E; }
+#motionBtn.has-motion i { background: #FF5A6E; }
+#motionBtn[aria-pressed="true"] { background: #FF3B55; color: var(--black); box-shadow: none; }
+#motionBtn[aria-pressed="true"] i { box-shadow: inset 0 0 0 2px var(--black); background: var(--black); animation: recblink 1s steps(2) infinite; }
+#soundBtn { color: var(--yellow); }
+.sound__list button { min-width: 0; flex: 1 1 30%; }
+.sound__mine { display: grid; gap: 4px; }
+.sound__mine .menu__row { margin: 0; }
+.sound__mine .menu__row button { min-height: 40px; }
+.strip b { white-space: nowrap; }
+@media (max-width: 600px) and (orientation: portrait) {
+  .strips { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .strip { padding: 2px 4px; } .strip b { font-size: 9px; letter-spacing: .02em; } .strip em { font-size: 13px; }
+  .strip__bar { left: 5px; right: 5px; bottom: 4px; height: 3px; }
+  .knobbtn { font-size: 9px; letter-spacing: .02em; }
+  .app.is-tab-filter .strips { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .strips { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
+  .strip b, .knobbtn { font-size: 8px; } .strip em { font-size: 12px; }
+}
+@media (max-height: 500px) and (orientation: landscape) and (max-width: 700px) { .strips { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+:root.fold-tb .strips { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1199px) { #mutate span, #random span { display: none; } }
+@media (max-width: 1199px) and (min-width: 601px) { #mutate, #random { padding: 0 11px; } }
+
+/* generate, song */
+.gen__list { display: grid; gap: 6px; margin: 10px 0 14px; }
+.gen__list button { display: grid; gap: 2px; text-align: left; padding: 10px 14px; border-radius: 12px; background: var(--cell); box-shadow: inset 0 0 0 1.5px var(--line); }
+.gen__list b { font-weight: 400; color: var(--yellow); font-size: 15px; }
+.gen__list small { color: var(--muted); font-size: 12px; }
+.gen__list button:active { background: var(--cell-hi); }
+.song__list { display: grid; gap: 6px; margin: 10px 0; padding: 0; list-style: none; }
+.song__list .lrow { gap: 6px; }
+.song__list .stepper { min-height: 44px; }
+.song__list .stepper__v { min-width: 5.5em; }
+.song__x { min-width: 40px; min-height: 40px; border-radius: 10px; color: var(--pink); background: var(--cell); }
+.menu__row--top { margin-top: 4px; }
+.menu__row--top button { flex: 1 1 0; }
+.song__list .stepper button { min-width: 32px; }
+.song__list .stepper__v { min-width: 4.4em; }
+.song__list .lrow > span { min-width: 1.6em; }
+.song__list .lrow { justify-content: flex-start; }
+.song__x { margin-left: auto; flex: 0 0 auto; }
+.midi select { font: 14px var(--font); color: var(--text); background: var(--black); border: 0; border-radius: 10px; padding: 10px; box-shadow: inset 0 0 0 1.5px var(--line); max-width: 12rem; }
+.midi .seg { flex-wrap: wrap; justify-content: flex-end; }
+.midi__map { display: grid; gap: 4px; }
+.midi__map .lrow { gap: 8px; }
+.midi__map .lrow > span:first-child { flex: 1 1 auto; }
+.midi__cc { color: var(--cyan); font-size: 13px; min-width: 4em; text-align: right; }
+.midi__map button { min-height: 38px; padding: 0 12px; border-radius: 10px; background: var(--cell); box-shadow: inset 0 0 0 1.5px var(--line); font-size: 13px; }
+.midi__map button[aria-pressed="true"] { background: var(--yellow); color: var(--black); box-shadow: none; }
+
+/* ===================================================================================================== VJ ===
+ * Fill crops the picture's sides (the .rave hides what spills); the VJ panel slides in at the right */
+.app.is-rave .rave { overflow: hidden; }
+.app.is-rave #viz { flex: none; }
+#raveVJ[aria-pressed="true"] { background: var(--pink); }
+.vj { display: none; }
+.app.is-rave .vj:not([hidden]) { display: grid; align-content: start; gap: 8px; position: absolute; z-index: 6; right: max(10px, env(safe-area-inset-right));
+  top: calc(max(10px, env(safe-area-inset-top)) + 64px); bottom: max(10px, env(safe-area-inset-bottom)); width: min(340px, calc(100vw - 20px)); overflow: auto;
+  padding: 12px; border-radius: 16px; background: rgba(18, 10, 28, .9); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: 0 0 0 1.5px var(--line), 0 20px 60px rgba(0, 0, 0, .6); touch-action: pan-y; overscroll-behavior: contain; }
+.vj__head { display: flex; align-items: center; gap: 8px; }
+.vj__head b { flex: 1; font-weight: 400; font-size: 20px; color: var(--pink); letter-spacing: .1em; }
+.vj__x { min-height: 36px; padding: 0 12px; border-radius: 10px; background: var(--cell); font-size: 13px; }
+.vjrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; }
+.vjrow > span { display: grid; gap: 1px; font-size: 13px; color: var(--muted); letter-spacing: .04em; white-space: nowrap; }
+.vjrow small { font-size: 10px; color: var(--dim); white-space: normal; }
+.vjrow .seg { flex-wrap: wrap; justify-content: flex-end; padding: 2px; gap: 2px; }
+.vjrow .seg button { min-height: 34px; padding: 0 9px; font-size: 12px; }
+.vjrow input[type="range"] { flex: 1 1 auto; max-width: 190px; accent-color: var(--lime); height: 34px; }
+.vjrow--text input { flex: 1 1 auto; min-width: 0; font: 14px var(--font); color: var(--text); background: var(--black); border: 0; border-radius: 10px; padding: 9px 10px;
+  box-shadow: inset 0 0 0 1.5px var(--line); text-transform: uppercase; outline: none; }
+.vjrow--text input:focus { box-shadow: inset 0 0 0 2px var(--lime); }
+.vj__shows button { padding: 0 7px !important; }
+.vj .menu__row { margin: 4px 0 0; }
+.vj .menu__row button { min-height: 44px; padding: 0 14px; border-radius: 12px; background: var(--cell); box-shadow: inset 0 0 0 1.5px var(--cell-hi); color: var(--cyan); }
+@media (max-height: 500px) and (orientation: landscape) { .app.is-rave .vj:not([hidden]) { top: calc(max(8px, env(safe-area-inset-top)) + 54px); } .vjrow { min-height: 34px; } }
+@media (max-width: 600px) and (orientation: portrait) { .app.is-rave .vj:not([hidden]) { top: auto; height: 62vh; left: 10px; width: auto; } }
+.vjrow .seg { flex: 0 1 auto; min-width: 0; }
+
+/* no sound? a button at the top; larger text */
+.nosound { position: fixed; z-index: 35; left: 50%; top: max(10px, env(safe-area-inset-top)); transform: translateX(-50%); min-height: 44px; padding: 0 18px;
+  border-radius: 999px; background: #FF3B55; color: var(--black); font-size: 15px; letter-spacing: .04em; box-shadow: 0 8px 30px rgba(0, 0, 0, .5); }
+.nosound[hidden] { display: none; }
+.st__note:focus-visible, .dr:focus-visible, .strip:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+:root.is-large .st__t, :root.is-large .st__l { font-size: 12px !important; }
+:root.is-large .st__pill { font-size: clamp(14px, 2vw, 22px); }
+:root.is-large .st__n, :root.is-large .strip b, :root.is-large .knobbtn, :root.is-large .dr__name { font-size: 13px !important; }
+:root.is-large .strip em { font-size: clamp(17px, 2.2vw, 24px); }
+:root.is-large .tabs button, :root.is-large .tool, :root.is-large .stepper { font-size: 16px; }
+:root.is-large .slot { font-size: 19px; }
+:root.is-large .stepper__v small, :root.is-large .tool--lab small { font-size: 11px; }
+:root.is-large .menu p, :root.is-large .menu li { font-size: 16px; }
+@media (max-width: 600px) and (orientation: portrait) { .tabs { gap: 4px; } .tabs button { padding: 0 8px; } .hist .tool { padding: 0 7px; } }
+@media (max-width: 360px) and (orientation: portrait) { .tabs button { padding: 0 6px; } .hist .tool { padding: 0 5px; } .hist { gap: 3px; } }

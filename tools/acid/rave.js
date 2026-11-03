@@ -54,7 +54,9 @@
     B: "11110100011000111110100011000111110", X: "10001100010101000100010101000110001", 0: "01110100011001110101110011000101110" };
   const WORDS = ["ACID", "FLOWER", "RAVE", "JACK", "LOVE", "HOUSE", "ACID!"];
   const HACKWORDS = ["ROOT", "ACCESS", "OVERRIDE", "SYSTEM", "0XACID", "BYPASS"];
-  const SCENES = ["WAREHOUSE", "CYBERSPACE", "TUNNEL", "VOXEL", "PLASMA", "MAINFRAME", "GARDEN", "FEEDBACK"];
+  const SCENES = ["WAREHOUSE", "CYBERSPACE", "TUNNEL", "VOXEL", "PLASMA", "MAINFRAME", "GARDEN", "FEEDBACK", "HYPERSPACE", "ACID RAIN", "SPIRAL"];
+  // the VJ's controls: over every scene (acid.js's VJ panel, MIDI, and Auto VJ turn them)
+  const VJ0 = { hue: 0, speed: 1, mirror: 0, trails: 0, strobe: 0, zoom: 0, rgb: 0, pix: 1, hud: true, scan: true, parts: true, words: true, text: "", auto: false };
   const HACKER = { 1: true, 5: true };                  // (the scenes the terminal types over)
   const FXNAME = ["REPEAT 1/8", "REPEAT 1/16", "ROLL 1/32", "REVERSE", "TAPE STOP", "LOWPASS", "HIGHPASS", "CRUSH", "GATE", "ECHO", "BASS OUT", "DRUMS OUT"];
   const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -81,6 +83,9 @@
       this.bootT = 0; this.ready = false; this.stopped = false;
       this.W = 0;
       this.setWidth(240);
+      this.vj = { ...VJ0 }; this.view = [0, 240];          // (the part of the picture on the screen: fill mode crops the sides)
+      this.stars = Array.from({ length: 140 }, () => ({ x: rnd() * 2 - 1, y: rnd() * 2 - 1, z: rnd() }));
+      this.drops = Array.from({ length: 90 }, () => ({ x: rnd(), y: rnd(), v: 0.6 + rnd() * 0.8 }));
       this.scene = 0; this.auto = true; this.calm = false;
       this.t = 0; this.tPrev = 0; this.scroll = 0; this.bar = 0; this.lastStep = -1; this.barOfScene = 0;
       this.kick = 0; this.snare = 0; this.clap = 0; this.hat = 0; this.accent = 0; this.flash = 0; this.shake = 0;
@@ -98,8 +103,10 @@
     }
     // the picture's width: 150 pixels tall always, and as wide as the screen it fills (240 to 560), so a wide screen
     // shows more of the rave instead of black bars
+    setView(x0, x1) { this.view = [Math.max(0, x0 | 0), Math.min(this.W || 240, Math.ceil(x1))]; }
     setWidth(w) {
       w = clamp(Math.round(w / 2) * 2, 240, 560);
+      this.view = [0, w];
       if (w === this.W) return false;
       this.W = W = w; this.N = N = w * H;
       this.cv.width = W; this.cv.height = H;
@@ -139,6 +146,7 @@
       this.glitch = 0.25;
     }
     burst() { this.scatter = 1; this.glitch = 0.4; this.flash = Math.max(this.flash, 0.3); }
+    sceneCount() { return SCENES.length; }
     go(i) { this.scene = ((i % SCENES.length) + SCENES.length) % SCENES.length; this.sceneLabel = 1.6; this.barOfScene = 0; this.prev.fill(0); }
     next() { this.go(this.scene + 1); }
     back() { this.go(this.scene - 1); }
@@ -156,12 +164,15 @@
       if (m.step >= 0 && m.step !== this.lastStep) {
         if (m.step < this.lastStep || this.lastStep < 0) {   // a new bar
           this.bar++; this.barOfScene++;
+          if (this.vj.auto && this.bar % 4 === 0 && this.onAuto) this.onAuto();
           if (this.auto && this.barOfScene >= 8 && m.playing) this.next();
         }
         this.lastStep = m.step;
       }
       if (!m.playing) this.lastStep = -1;
-      if (m.hits & 1) { this.kick = 1; this.shake = 1; }
+      if (m.hits & 1) { this.kick = 1; this.shake = 1; if (this.vj.strobe === 1 && !this.calm) this.flash = 1; }
+      if (this.vj.strobe === 2 && !this.calm && m.step === 0 && m.step !== this.strobeStep) this.flash = 1;
+      this.strobeStep = m.step;
       if (m.hits & 2) this.snare = 1;
       if (m.hits & 4) { this.clap = 1; this.flash = Math.max(this.flash, 0.5); this.confetti(26); }
       if (m.hits & 24) { this.hat = 1; this.sparkle(m.hits & 16 ? 6 : 2); }
@@ -171,7 +182,7 @@
         const ws = HACKER[this.scene] ? HACKWORDS : WORDS;
         if (rnd() < 0.35 && !this.word) this.word = { s: ws[(rnd() * ws.length) | 0], life: 1 };
       }
-      if (m.note >= 0) this.grow(m.note, m.accHit);
+      if (m.note >= 0) { this.grow(m.note, m.accHit); this.lastNote = m.note; }
     }
 
     // ------------------------------------------------------------------------------------------- particles ---
@@ -459,10 +470,73 @@
       if (rnd() < 0.15) this.flyers.push({ s: "0X" + hex2((rnd() * 256) | 0) + hex2((rnd() * 256) | 0), x: (rnd() - 0.5) * 50, y: (rnd() - 0.5) * 30, z: 60, c: CYAN });
     }
     terminal() {
-      const x = 4, y0 = H - 9 - this.term.length * 7;
+      const x = this.view[0] + 4, y0 = H - 9 - this.term.length * 7;
       this.rect(x - 2, y0 - 2, 82, this.term.length * 7 + 3, [0, 8, 0], 0.55);
       this.term.forEach((l, i) => this.text3(l.slice(0, 20), x, y0 + i * 7, i === this.term.length - 1 ? [160, 255, 160] : [40, 200, 80]));
       if (Math.floor(this.t * 3) % 2) this.rect(x + Math.min(20, this.term[this.term.length - 1].length) * 4, y0 + (this.term.length - 1) * 7, 3, 5, [160, 255, 160]);
+    }
+
+
+    // ------------------------------------------------------------------------------------ three more scenes ---
+    // HYPERSPACE: stars streaming out of the middle, faster with the tempo and on the kick, coloured by the filter
+    hyperspace() {
+      const v = this.v, B = this.buf, cx = W / 2, cy = H / 2, sh = this.slotShift();
+      this.fade(0.55 - this.kick * 0.2);
+      for (let i = 0; i < N * 3; i += 3) { B[i] += 2; B[i + 2] += 6; }
+      const speed = (0.25 + this.hooks.params().tempo / 300 + this.kick * 0.9) * this.dt * (this.vj.speed || 1);
+      for (const s of this.stars) {
+        s.z -= speed;
+        if (s.z <= 0.02) { s.x = rnd() * 2 - 1; s.y = rnd() * 2 - 1; s.z = 1; }
+        const k = 1 / s.z, x = cx + s.x * k * 40, y = cy + s.y * k * 26, x2 = cx + s.x * (1 / (s.z + speed * 3)) * 40, y2 = cy + s.y * (1 / (s.z + speed * 3)) * 26;
+        if (x < -4 || x > W + 4 || y < -4 || y > H + 4) { s.z = 1; continue; }
+        this.line(x2, y2, x, y, pal(sh + s.z * 120 + v.cut * 90), Math.min(1, (1 - s.z) * 1.6), false);
+      }
+      this.flower(cx, cy, 8 + this.kick * 3 + (v.env || 0) * 3);
+    }
+    // ACID RAIN: rain over a skyline whose windows light with the steps, lightning on the claps and accents
+    rain() {
+      const v = this.v, B = this.buf, t = this.t, sh = this.slotShift(), fl = Math.max(this.clap, this.accent * 0.6);
+      for (let y = 0; y < H; y++) { const q = y / H, r = 10 + 20 * q + fl * 120, g = 6 + 14 * q + fl * 120, b = 22 + 40 * q + fl * 150;
+        for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = r; B[i + 1] = g; B[i + 2] = b; } }
+      if (fl > 0.6) { let x = W * (0.3 + 0.4 * sn(this.bar * 1.7)), y = 0; while (y < 90) { const nx = x + (rnd() - 0.5) * 10, ny = y + 4 + rnd() * 5; this.line(x, y, nx, ny, WHITE, fl, true); x = nx; y = ny; } }
+      // the skyline
+      for (let bI = 0, x = 0; x < W; bI++) {
+        const w = 10 + ((bI * 37) % 13), h = 30 + ((bI * 53) % 40) + (bI % 5 === 2 ? 20 : 0), top = H - 10 - h;
+        this.rect(x, top, w - 1, h, [12, 8, 24]);
+        for (let wy = top + 3; wy < H - 14; wy += 5) for (let wx = x + 2; wx < x + w - 3; wx += 3) {
+          const lit = ((wx * 7 + wy * 13 + this.lastStep * 5 + bI) % 11) < 2 + Math.round(v.cut * 4);
+          if (lit) this.set(wx, wy, pal(sh + wx * 2 + wy), 0.85);
+        }
+        x += w;
+      }
+      this.rect(0, H - 10, W, 10, [20, 14, 34]);
+      // the rain, leaning with the tilt
+      const lean = 0.35 + this.tilt[0] * 0.8, sp = (1.1 + this.hat * 0.8) * this.dt * (this.vj.speed || 1);
+      for (const d of this.drops) {
+        d.y += d.v * sp; d.x += d.v * sp * lean * (H / W);
+        if (d.y > 1) { d.y -= 1; d.x = rnd(); if (rnd() < 0.3) this.parts.push({ k: 2, x: d.x * W, y: H - 10, vx: 0, vy: -6, life: 0.2, c: CYAN }); }
+        if (d.x > 1) d.x -= 1; if (d.x < 0) d.x += 1;
+        const x = d.x * W, y = d.y * H; this.line(x, y, x - lean * 3, y - 4, [120, 170, 255], 0.55, false);
+      }
+      this.flower(W - 40, 26 + Math.sin(t) * 2, 10);
+    }
+    // SPIRAL: arms turning on the beat, as many as the note, twisted by the resonance
+    spiral() {
+      const v = this.v, B = this.buf, t = this.t * (0.6 + this.kick * 0.3), cx = W / 2, cy = H / 2, sh = this.slotShift();
+      const arms = 3 + (((this.lastNote || 36) % 5) | 0), tw = 0.04 + (v.reso || 0.5) * 0.08, pulse = this.kick * 40;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const dx = x - cx, dy = (y - cy) * 1.25, r = this.dist[y * W + x], a = Math.atan2(dy, dx);
+        const f = sn(a * arms + r * tw * 6 - t * 3) * 0.5 + 0.5, ring = sn(r * 0.18 - t * 5) * 0.5 + 0.5;
+        const c = (f * 120 + r * 0.6 + sh + ring * 40 + pulse) | 0, i = (y * W + x) * 3, k = f > 0.55 ? 1 : 0.18 + ring * 0.2;
+        B[i] = PAL[(c & 255) * 3] * k; B[i + 1] = PAL[(c & 255) * 3 + 1] * k; B[i + 2] = PAL[(c & 255) * 3 + 2] * k;
+      }
+      this.flower(cx, cy, 10 + this.kick * 4);
+    }
+    // the VJ's words: big, scrolling across the middle, in the acid colours
+    banner() {
+      const s = String(this.vj.text).toUpperCase().slice(0, 40) + "   ", k = 3, w = s.length * 6 * k;
+      const off = ((this.t * (30 + this.hooks.params().tempo / 3)) % (w + W)) | 0, y = ((H - 7 * k) / 2 + Math.sin(this.t * 2) * 4) | 0;
+      for (let rep = -1; rep <= 1; rep++) { const x = W - off + rep * (w + W * 0); if (x > -w && x < W) this.text5(s, x, y, k, pal(this.t * 160 + this.slotShift()), true); }
     }
 
     // ------------------------------------------------------------------------------------------ pixel 3D ---
@@ -743,17 +817,20 @@
         requestAnimationFrame(this.loop);
         return;
       }
-      const playing = this.hooks.playing(), bpm = this.hooks.params().tempo;
-      this.scroll += playing ? dt * (bpm / 60) : dt * 0.12;
+      const playing = this.hooks.playing(), bpm = this.hooks.params().tempo, sp = this.vj.speed || 1;
+      this.t += dt * (sp - 1);                             // (the VJ's speed: everything that moves by time)
+      this.scroll += (playing ? dt * (bpm / 60) : dt * 0.12) * sp;
       const d = (k) => Math.pow(k, dt);
       this.kick *= d(0.004); this.snare *= d(0.01); this.clap *= d(0.01); this.hat *= d(0.002); this.accent *= d(0.05);
       this.flash *= d(0.0015); this.shake *= d(0.0005); this.sceneLabel -= dt;
       if (!playing) { this.v = { ...this.v, cut: this.hooks.params().cutoff, reso: this.hooks.params().reso }; }
-      [this.warehouse, this.cyberspace, this.tunnel, this.voxelScene, this.plasma, this.mainframe, this.garden, this.feedback][this.scene].call(this);
-      if (HACKER[this.scene]) this.terminal();
-      this.particles(dt);
-      this.words(dt);
-      this.hud(playing);
+      [this.warehouse, this.cyberspace, this.tunnel, this.voxelScene, this.plasma, this.mainframe, this.garden, this.feedback,
+       this.hyperspace, this.rain, this.spiral][this.scene].call(this);
+      if (HACKER[this.scene] && this.vj.hud) this.terminal();
+      if (this.vj.parts) this.particles(dt * sp); else this.parts.length = 0;
+      if (this.vj.words) this.words(dt); else this.word = null;
+      if (this.vj.text) this.banner();
+      if (this.vj.hud) this.hud(playing);
       this.post();
       requestAnimationFrame(this.loop);
     }
@@ -778,27 +855,29 @@
     hud(playing) {
       const v = this.v, p = this.hooks.pattern(), B = this.buf;
       for (let y = 0; y < 8; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] *= 0.35; B[i + 1] *= 0.35; B[i + 2] *= 0.35; }
-      this.text3(Math.round(this.hooks.params().tempo) + " BPM", 2, 1, CYAN);
+      const [v0, v1] = this.view, vc = (v0 + v1) >> 1;
+      if (v1 - v0 >= 200) this.text3(Math.round(this.hooks.params().tempo) + " BPM", v0 + 2, 1, CYAN);
       const nm = String((this.hooks.name && this.hooks.name()) || "").toUpperCase().slice(0, 10), lab = nm || "P" + ((this.hooks.slot() | 0) + 1);
-      this.text3(lab, W - 2 - lab.length * 4, 1, YEL);   // (the pattern's name, or its number)
-      for (let s = 0; s < 16; s++) {
-        const x = ((W - 112) >> 1) + s * 7, on = p.bass[s].on, now = s === v.step, c = now ? YEL : on ? (p.bass[s].acc ? PINK : LIME) : [70, 50, 90];
-        if (s < p.len) { this.rect(x, 2, 5, 2, c); if (now) this.rect(x, 4, 5, 1, c); }
+      if (v1 - v0 >= 170) this.text3(lab, v1 - 2 - lab.length * 4, 1, YEL);   // (the pattern's name, or its number)
+      const n = Math.min(p.len, 32), big = n <= 16, sw = big ? 7 : 3, ww = big ? 5 : 2, x0 = vc - ((n * sw) >> 1);
+      for (let s = 0; s < n; s++) {
+        const x = x0 + s * sw, on = p.bass[s].on, now = s === v.step, c = now ? YEL : on ? (p.bass[s].acc ? PINK : LIME) : [70, 50, 90];
+        this.rect(x, 2, ww, 2, c); if (now) this.rect(x, 4, ww, 1, c);
       }
       if (this.fx) {                                     // the punch-ins held, named
         const names = FXNAME.filter((_, b) => (this.fx >> b) & 1).join(" + "), s = names.length > 58 ? names.slice(0, 58) : names;
-        this.rect(W / 2 - s.length * 2 - 3, 11, s.length * 4 + 5, 9, INK, 0.75); this.text3(s, W / 2 - s.length * 2, 13, Math.floor(this.t * 8) % 2 ? YEL : WHITE);
+        this.rect(vc - s.length * 2 - 3, 11, s.length * 4 + 5, 9, INK, 0.75); this.text3(s, vc - s.length * 2, 13, Math.floor(this.t * 8) % 2 ? YEL : WHITE);
       }
-      if (this.sceneLabel > 0) { const s = SCENES[this.scene], a = Math.min(1, this.sceneLabel * 2); this.rect(W / 2 - s.length * 2 - 3, H - 12, s.length * 4 + 5, 9, INK, 0.7 * a); this.text3(s, W / 2 - s.length * 2, H - 10, YEL, a); }
+      if (this.sceneLabel > 0) { const s = SCENES[this.scene], a = Math.min(1, this.sceneLabel * 2); this.rect(vc - s.length * 2 - 3, H - 12, s.length * 4 + 5, 9, INK, 0.7 * a); this.text3(s, vc - s.length * 2, H - 10, YEL, a); }
       else if (!playing) {                               // big, and breathing with the Play button (1.8 s)
         const a = 0.55 + 0.45 * Math.cos((this.t / 1.8) * TAU), k = 2, s = "PRESS PLAY";
-        this.text5(s, ((W - s.length * 6 * k) / 2) | 0, H - 19, k, [YEL[0] * a, YEL[1] * a, YEL[2] * a], true);
+        this.text5(s, (vc - (s.length * 6 * k) / 2) | 0, H - 19, k, [YEL[0] * a, YEL[1] * a, YEL[2] * a], true);
       }
       if (this.pad) {                                    // the rave mode's squelch pad: where the finger is
-        const [px, py] = this.pad, x = px * W, y = py * H;
+        const [px, py] = this.pad, x = v0 + px * (v1 - v0), y = py * H;
         this.line(x, 9, x, H - 1, LIME, 0.35); this.line(0, y, W - 1, y, LIME, 0.35);
         this.disc(x, y, 4, LIME, 0.9);
-        this.text3("CUT " + Math.round(px * 100), 2, H - 16, LIME); this.text3("RES " + Math.round((1 - py) * 100), 2, H - 9, LIME);
+        this.text3("CUT " + Math.round(px * 100), v0 + 2, H - 16, LIME); this.text3("RES " + Math.round((1 - py) * 100), v0 + 2, H - 9, LIME);
       }
     }
     // the picture goes through what the sound goes through: REPEAT / ROLL freeze it and tear it in time; REVERSE turns
@@ -820,14 +899,31 @@
       const fr = !calm && this.accent > 0.3 ? 1 + (this.accent > 0.7 ? 1 : 0) : 0, fl = calm ? 0 : this.flash * 0.65;
       const inv = has(3) ? 0.9 : 0, tape = has(4) ? this.tape : 1, lp = held(5), hp = held(6), crush = has(7), echo = has(9);
       const gate = has(8) ? ((this.scroll * 4) % 1 < 0.5 ? 1 : (calm ? 0.35 : 0.04)) : 1;
-      const sag = (1 - tape) * 14, blk = crush ? 4 : 1, L = this.lastOut;
+      // the VJ: mirrors, a kaleidoscope, a zoom on the kick, bigger pixels, a wider colour split, trails, the hue
+      const VJ = this.vj, mir = VJ.mirror | 0, zm = 1 + (calm ? 0 : VJ.zoom * this.kick * 0.3), pix = Math.max(1, VJ.pix | 0);
+      const fr2 = fr + Math.round((calm ? 0 : VJ.rgb) * 4), trl = Math.min(0.95, VJ.trails || 0), scanOn = VJ.scan !== false;
+      const hu = (VJ.hue || 0) * TAU, ch = Math.cos(hu), shh = Math.sin(hu), hueOn = Math.abs(VJ.hue || 0) > 0.002 && Math.abs((VJ.hue || 0) - 1) > 0.002;
+      // (the hue turned round the grey axis: a rotation matrix)
+      const k3 = (1 - ch) / 3, s3 = Math.sqrt(1 / 3) * shh, h00 = ch + k3, h01 = k3 - s3, h02 = k3 + s3, h10 = k3 + s3, h11 = ch + k3, h12 = k3 - s3, h20 = k3 - s3, h21 = k3 + s3, h22 = ch + k3;
+      const cx0 = (this.view[0] + this.view[1]) / 2, cy0 = H / 2, kRot = this.t * 0.25, wedge = Math.PI / 3;
+      const sag = (1 - tape) * 14, blk = Math.max(crush ? 4 : 1, pix), L = this.lastOut;
       for (let y = 0; y < H; y++) {
-        const scan = y & 1 ? 0.86 : 1, ys = crush ? y - (y % blk) : y;
-        let yy = clamp(Math.round(ys - sy - sag * (y / H)), 0, H - 1);
+        const scan = scanOn && y & 1 ? 0.86 : 1, yb = blk > 1 ? y - (y % blk) : y;
         const ro = this.rowOff[y];
         for (let x = 0; x < W; x++) {
-          const xs = crush ? x - (x % blk) : x, xx = clamp(xs - sx + ro, 0, W - 1), p = yy * W + xx, o = (y * W + x) * 4, q = (y * W + x) * 3;
-          let r = B[(yy * W + clamp(xx + fr, 0, W - 1)) * 3], g = B[p * 3 + 1], b = B[(yy * W + clamp(xx - fr, 0, W - 1)) * 3 + 2];
+          const xb = blk > 1 ? x - (x % blk) : x;
+          let mx = xb, my = yb;
+          if (mir === 1 || mir === 2) { if (mx > cx0) mx = 2 * cx0 - mx; if (mir === 2 && my > cy0) my = 2 * cy0 - my; }
+          else if (mir === 3) {                          // six mirrored wedges, turning slowly
+            const dx = mx - cx0, dy = (my - cy0) * 1.3, r0 = Math.sqrt(dx * dx + dy * dy);
+            let an = Math.atan2(dy, dx) + kRot; an = ((an % (2 * wedge)) + 2 * wedge) % (2 * wedge); if (an > wedge) an = 2 * wedge - an;
+            mx = cx0 + Math.cos(an - kRot) * r0; my = cy0 + (Math.sin(an - kRot) * r0) / 1.3;
+          }
+          if (zm !== 1) { mx = cx0 + (mx - cx0) / zm; my = cy0 + (my - cy0) / zm; }
+          const yy = clamp(Math.round(my - sy - sag * (y / H)), 0, H - 1);
+          const xs = Math.round(mx), xx = clamp(xs - sx + ro, 0, W - 1), p = yy * W + xx, o = (y * W + x) * 4, q = (y * W + x) * 3;
+          let r = B[(yy * W + clamp(xx + fr2, 0, W - 1)) * 3], g = B[p * 3 + 1], b = B[(yy * W + clamp(xx - fr2, 0, W - 1)) * 3 + 2];
+          if (hueOn) { const r1 = r * h00 + g * h01 + b * h02, g1 = r * h10 + g * h11 + b * h12; b = r * h20 + g * h21 + b * h22; r = r1; g = g1; }
           if (inv) { r += (255 - r * 1.1 - r) * inv; g += (255 - g * 1.1 - g) * inv; b += (255 - b * 1.1 - b) * inv; }
           if (tape < 1) { const m = (r + g + b) / 3; r = (r + (m - r) * (1 - tape)) * tape; g = (g + (m - g) * (1 - tape)) * tape; b = (b + (m - b) * (1 - tape)) * tape; }
           if (lp) { r *= 1 - lp * 0.6; g *= 1 - lp * 0.5; b = b * (1 - lp * 0.2) + 30 * lp; }
@@ -836,6 +932,7 @@
           const v = V[y * W + x] * scan * gate;
           r = r * v + (255 - r * v) * fl; g = g * v + (255 - g * v) * fl; b = b * v + (255 - b * v) * fl;
           if (echo) { r = Math.max(r, L[q] * 0.82); g = Math.max(g, L[q + 1] * 0.82); b = Math.max(b, L[q + 2] * 0.82); }
+          else if (trl > 0) { r = Math.max(r, L[q] * trl); g = Math.max(g, L[q + 1] * trl); b = Math.max(b, L[q + 2] * trl); }
           L[q] = r; L[q + 1] = g; L[q + 2] = b;
           D[o] = r; D[o + 1] = g; D[o + 2] = b; D[o + 3] = 255;
         }
@@ -845,8 +942,10 @@
         for (let x = (W - w) >> 1; x < (W + w) >> 1; x++) for (const yy of [y - 1, y, y + 1]) { const o = (yy * W + x) * 4; D[o] = D[o + 1] = D[o + 2] = 255; }
       }
       this.g.putImageData(this.img, 0, 0);
+      if (this.onFrame) this.onFrame(this.img);              // (the projector's window gets a copy)
     }
   }
   globalThis.AcidRave = Rave;
   globalThis.AcidRave.SCENES = SCENES;
+  globalThis.AcidRave.VJ0 = VJ0;
 })();

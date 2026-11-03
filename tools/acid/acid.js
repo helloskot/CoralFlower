@@ -6,14 +6,37 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const NOTE = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B", "C"];
-  const LANES = [["Kick", "#FFE100"], ["Snare", "#FF8A1F"], ["Clap", "#FF2FB4"], ["Hat", "#2BF0FF"], ["Open hat", "#B4FF2B"]];
+  const LANES = [["Kick", "#FFE100"], ["Snare", "#FF8A1F"], ["Clap", "#FF2FB4"], ["Hat", "#2BF0FF"], ["Open hat", "#B4FF2B"],
+                 ["Tom", "#B98CFF"], ["Rim", "#FF9BD5"], ["Cowbell", "#FFC94D"]];
+  const MAXS = 32;                                        // (steps in a pattern at most: two pages of 16)
   const STORE = "acid-flower-v1";
 
   // ------------------------------------------------------------------------------------------ the patterns ---
   const rest = () => ({ on: false, note: 0, oct: 0, acc: false, slide: false });
   const b = (note, oct = 0, f = "") => ({ on: true, note, oct, acc: f.includes("a"), slide: f.includes("s") });
-  const grid = (spec) => LANES.map((_, l) => { const r = new Array(16).fill(false); for (const s of spec[l] || []) r[s] = true; return r; });
-  const ALL16 = [...Array(16).keys()];
+  const grid = (spec) => LANES.map((_, l) => { const r = new Array(MAXS).fill(false); for (const s of spec[l] || []) { r[s] = true; if (s < 16) r[s + 16] = true; } return r; });
+  const ALL16 = [...Array(16).keys()], ALL32 = [...Array(MAXS).keys()];
+  // a pattern, filled out to today's shape: 32 steps of bass and lead (each with its chance and repeats), 8 drums with
+  // their chance and repeats per step, each track's own length (0: the pattern's), the motion (knob moves)
+  const cl = (v, a, b2, d) => { v = Number(v); return Number.isFinite(v) ? Math.max(a, Math.min(b2, Math.round(v))) : d; };
+  const padA = (a, n, f) => { a = Array.isArray(a) ? a.slice(0, n) : []; while (a.length < n) a.push(f(a.length)); return a; };
+  const stepOK = (x) => (x && typeof x === "object" ? { on: !!x.on, note: cl(x.note, 0, 12, 0), oct: cl(x.oct, -1, 1, 0), acc: !!x.acc, slide: !!x.slide,
+    prob: cl(x.prob, 0, 100, 100), rat: cl(x.rat, 1, 4, 1) } : rest());
+  const normPat = (p) => {
+    p = p && typeof p === "object" ? p : {};
+    const was = Array.isArray(p.bass) ? p.bass.length : 16;
+    p.len = cl(p.len, 1, MAXS, 16);
+    p.bass = padA(p.bass, MAXS, (i) => (was <= 16 && i >= 16 && Array.isArray(p.bass) ? rest() : rest())).map(stepOK);
+    p.lead = padA(p.lead, MAXS, rest).map(stepOK);
+    p.drums = padA(p.drums, LANES.length, () => []).map((r) => padA(r, MAXS, () => false).map(Boolean));
+    p.dp = padA(p.dp, LANES.length, () => []).map((r) => padA(r, MAXS, () => 100).map((v) => cl(v, 0, 100, 100)));
+    p.dr = padA(p.dr, LANES.length, () => []).map((r) => padA(r, MAXS, () => 1).map((v) => cl(v, 1, 4, 1)));
+    p.dlen = padA(p.dlen, LANES.length, () => 0).map((v) => cl(v, 0, MAXS, 0));
+    p.llen = cl(p.llen, 0, MAXS, 0);
+    if (p.motion && typeof p.motion === "object") { for (const k of Object.keys(p.motion)) if (!Array.isArray(p.motion[k])) delete p.motion[k]; }
+    else delete p.motion;
+    return p;
+  };
   const STARTERS = [   // (written for Acid Flower: originals)
     { len: 16, bass: [b(0, 0, "a"), b(0), b(0, 1, "s"), b(0), rest(), b(3, 0, "a"), b(0), b(7, 0, "s"), b(8), b(7), b(0, 1, "a"), rest(), b(0), b(10, -1, "s"), b(0), b(3, 0, "a")],
       drums: grid([[0, 4, 8, 12], [], [4, 12], ALL16.filter((s) => s % 4 !== 2), [2, 6, 10, 14]]) },
@@ -24,28 +47,44 @@
     { len: 16, bass: [b(0, 0, "s"), b(7, 0, "s"), b(0, 1, "a"), rest(), b(0), b(0, 0, "a"), b(12, 0, "s"), b(10), rest(), b(0, 0, "a"), b(3, 0, "s"), b(0), b(7, 0, "a"), b(0), b(5, 0, "s"), b(3)],
       drums: grid([[0, 6, 8, 14], [], [4, 12], ALL16, []]) },
   ];
-  const blank = () => ({ len: 16, bass: ALL16.map(rest), drums: grid([[0, 4, 8, 12]]) });
+  const blank = () => normPat({ len: 16, drums: grid([[0, 4, 8, 12]]) });
+  const empty = () => normPat({ len: 16 });
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const DEF_PARAMS = { cutoff: 0.32, reso: 0.72, env: 0.6, decay: 0.42, accent: 0.65, drive: 0.3, delay: 0.18, volume: 0.8,
-                       drums: 0.8, wave: 0, tempo: 124, swing: 0.54, tune: 0 };
-  const fresh = () => ({ slots: [...STARTERS.map(clone), blank(), blank(), blank(), blank()], cur: 0, params: { ...DEF_PARAMS } });
-  const valid = (s) => s && Array.isArray(s.slots) && s.slots.length === 8 && s.slots.every((p) => p && Array.isArray(p.bass) && p.bass.length === 16 &&
-                       Array.isArray(p.drums) && p.drums.length === LANES.length);
+                       drums: 0.8, wave: 0, tempo: 124, swing: 0.54, tune: 0, verb: 0.12, pump: 0, lead: 0.6, leadWave: 1,
+                       dk: LANES.map(() => [0, 0.5, 0.8]) };
+  const fresh = () => ({ slots: [...STARTERS.map((p) => normPat(clone(p))), blank(), blank(), blank(), blank()], cur: 0, params: clone(DEF_PARAMS) });
+  const valid = (s) => s && Array.isArray(s.slots) && s.slots.length === 8 && s.slots.every((p) => p && Array.isArray(p.bass) && Array.isArray(p.drums));
+  const fixAll = (s) => {                                 // (patterns saved by an older version: filled out)
+    s.slots = s.slots.map(normPat);
+    s.cur = cl(s.cur, 0, 7, 0);
+    s.params = { ...clone(DEF_PARAMS), ...s.params };
+    s.params.dk = padA(s.params.dk, LANES.length, () => [0, 0.5, 0.8]).map((d) => [cl(d && d[0], -12, 12, 0), Math.max(0, Math.min(1, Number(d && d[1]) >= 0 ? +d[1] : 0.5)), Math.max(0, Math.min(1, Number(d && d[2]) >= 0 ? +d[2] : 0.8))]);
+    if (!Array.isArray(s.song)) s.song = [];
+    return s;
+  };
   let S;
   try { S = JSON.parse(localStorage.getItem(STORE)); } catch { S = null; }
   if (!valid(S)) S = fresh();
-  S.params = { ...DEF_PARAMS, ...S.params };
+  fixAll(S);
   let saveT = 0;
   const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch {} }, 250); };
   const pat = () => S.slots[S.cur];
-  const used = (p) => p.bass.some((s) => s.on) || p.drums.some((r, l) => r.some(Boolean) && !(l === 0 && r.filter(Boolean).length === 4 && [0, 4, 8, 12].every((i) => r[i])) );
+  const used = (p) => p.bass.some((s) => s.on) || (p.lead || []).some((s) => s.on) ||
+    p.drums.some((r, l) => r.slice(0, 16).some(Boolean) && !(l === 0 && r.slice(0, 16).filter(Boolean).length === 4 && [0, 4, 8, 12].every((i) => r[i])));
+  // the editor's view: which melodic track (the bass or the lead), which page of 16 steps
+  let track = "bass", page = 0, pageT = 0;
+  const trk = () => pat()[track];
+  const trkLen = (p = pat()) => (track === "lead" ? p.llen || p.len : p.len);
+  const laneLen = (l, p = pat()) => p.dlen[l] || p.len;
+  const stp = (col) => page * 16 + col;                   // (a column's step on this page)
 
   // --------------------------------------------------------------------------------------------- the sound ---
   let ctx = null, node = null, playing = false, nextSlot = -1, nextAuto = false, barN = 0;
   const playHooks = [];                                   // (things that follow Play: the screen staying awake)
   const buzz = (ms = 8) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch {} };   // (a tick, where the device has one)
   const post = (m) => node && node.port.postMessage(m);
-  const sendParams = () => post({ type: "params", params: S.params });
+  const sendParams = () => { post({ type: "params", params: S.params }); if (typeof recordMotion === "function") recordMotion(); };
   const sendPattern = (atBar = false) => post({ type: "pattern", pattern: pat(), atBar });
   const wake = () => { if (ctx && ctx.state !== "running" && ctx.state !== "closed") ctx.resume().catch(() => {}); };
   for (const t of ["pointerdown", "keydown"]) addEventListener(t, wake, true);
@@ -92,6 +131,8 @@
       $("gate").hidden = true;
       boot.stop();
       fromLink();
+      setTimeout(backupNudge, 4000);
+      watchSound();
       try { if (!localStorage.getItem("acid-flower-tour")) setTimeout(() => tour(0), 700); } catch {}
     } catch (err) {
       $("start").textContent = "Couldn’t start: " + err.message;
@@ -109,7 +150,7 @@
       if (nextAuto) { nextSlot = -1; nextAuto = false; sendPattern(); drawSlots(); }   // (a chain's next: stopping stays put)
       else { S.cur = nextSlot; nextSlot = -1; drawAll(); sendPattern(); }
     }
-    if (!on) markStep(-1);
+    if (!on) markStep(null);
     playHooks.forEach((f) => f(on));
   };
 
@@ -188,20 +229,24 @@
     return ALL16.map((s) => {
       const d = document.createElement("div");
       d.className = "dr" + (Math.floor(s / 4) % 2 ? " q" : "");
-      d.dataset.lane = l; d.dataset.s = s; d.style.setProperty("--c", col);
+      d.dataset.lane = l; d.dataset.s = s; d.style.setProperty("--c", col); d.setAttribute("role", "button");
       drumsEl.appendChild(d);
       return d;
     });
   });
   const drawBass = () => {
-    const p = pat();
-    cols.forEach((c, i) => {
-      const s = p.bass[i];
+    const p = pat(), steps = p[track], len = trkLen(p);
+    bassEl.classList.toggle("is-lead", track === "lead");
+    cols.forEach((c, col) => {
+      const i = stp(col), s = steps[i];
+      c.el.querySelector(".st__n").textContent = i + 1;
       c.el.classList.toggle("is-on", s.on);
-      c.el.classList.toggle("is-out", i >= p.len);
+      c.el.classList.toggle("is-out", i >= len);
+      c.note.dataset.prob = s.on && s.prob < 100 ? s.prob + "%" : "";
+      c.note.dataset.rat = s.on && s.rat > 1 ? "\u00d7" + s.rat : "";
       c.pill.textContent = s.on ? NOTE[s.note] + (s.note === 12 ? "′" : "") : "rest";
       c.note.style.setProperty("--h", String(s.on ? s.note / 12 : 0.5));
-      c.note.setAttribute("aria-label", "Step " + (i + 1) + ": " + (s.on ? NOTE[s.note] : "rest"));
+      c.note.setAttribute("aria-label", (track === "lead" ? "Lead" : "Bass") + " step " + (i + 1) + ": " + (s.on ? NOTE[s.note] + (s.acc ? ", accent" : "") + (s.slide ? ", slide" : "") + (s.prob < 100 ? ", " + s.prob + "% chance" : "") + (s.rat > 1 ? ", repeats " + s.rat : "") : "rest") + ". Drag to change, tap to rest, hold for more.");
       c.oct.textContent = s.oct > 0 ? "Up" : s.oct < 0 ? "Down" : "";
       c.oct.classList.toggle("is-up", s.oct > 0); c.oct.classList.toggle("is-dn", s.oct < 0);
       c.oct.setAttribute("aria-pressed", String(s.oct !== 0));
@@ -211,7 +256,21 @@
   };
   const drawDrums = () => {
     const p = pat();
-    cells.forEach((row, l) => row.forEach((d, s) => { d.classList.toggle("is-on", p.drums[l][s]); d.classList.toggle("is-out", s >= p.len); }));
+    cells.forEach((row, l) => row.forEach((d, col) => {
+      const s = stp(col), v = p.drums[l][s];
+      d.classList.toggle("is-on", v); d.classList.toggle("is-out", s >= laneLen(l, p));
+      d.dataset.prob = v && p.dp[l][s] < 100 ? p.dp[l][s] + "%" : "";
+      d.dataset.rat = v && p.dr[l][s] > 1 ? "\u00d7" + p.dr[l][s] : "";
+      d.setAttribute("aria-pressed", String(v)); d.setAttribute("aria-label", LANES[l][0] + ", step " + (s + 1));
+    }));
+    drumsEl.querySelectorAll(".dr__name").forEach((n) => { const l = +n.dataset.lane; n.dataset.len = p.dlen[l] ? String(p.dlen[l]) : ""; });
+  };
+  // the pages: 1-16 and 17-32, when anything is longer than 16
+  const drawPager = () => {
+    const p = pat(), long = p.len > 16 || p.llen > 16 || p.dlen.some((v) => v > 16);
+    $("pager").hidden = !long;
+    if (!long && page) page = 0;
+    $("pager").querySelectorAll("button").forEach((b2, i) => b2.setAttribute("aria-pressed", String(i === page)));
   };
   const drawSlots = () => {
     document.querySelectorAll(".slot[data-slot]").forEach((e) => {
@@ -226,10 +285,11 @@
     drawStatus();
   };
   const drawAll = () => {
-    drawBass(); drawDrums(); drawSlots(); drawXY(); strips.forEach(drawOne);
-    $("len").textContent = pat().len;
+    drawPager(); drawBass(); drawDrums(); drawSlots(); drawXY(); strips.forEach(drawOne);
+    const p = pat();
+    $("len").textContent = tab() === "drums" ? (p.dlen.every((v) => v === p.dlen[0]) ? p.dlen[0] || p.len : "mix") : trkLen(p);
     $("tune").textContent = (S.params.tune > 0 ? "+" : "") + (S.params.tune ? S.params.tune : "C");
-    $("wave").querySelector("b").textContent = S.params.wave ? "Square" : "Saw";
+    $("wave").querySelector("b").textContent = (track === "lead" ? S.params.leadWave : S.params.wave) ? "Square" : "Saw";
   };
   for (const box of [$("slots"), $("raveSlots")]) for (let i = 0; i < 8; i++) {   // (the bar's, and rave mode's)
     const e = document.createElement("button");
@@ -239,8 +299,8 @@
   const edited = () => { commit(); sendPattern(); save(); drawSlots(); };
   const audition = (i) => {
     if (playing) return;
-    const s = pat().bass[i];
-    if (s.on) post({ type: "audition", note: 36 + S.params.tune + s.note + 12 * s.oct, acc: s.acc });
+    const s = trk()[i];
+    if (s.on) post({ type: "audition", note: (track === "lead" ? 48 : 36) + S.params.tune + s.note + 12 * s.oct, acc: s.acc, voice: track });
   };
 
   // ---------------------------------------------------------------------------------------------- touch ---
@@ -260,22 +320,35 @@
     if (t.classList.contains("st__t") || t.classList.contains("dr") || t.classList.contains("st__note")) begin();   // (one gesture, one undo)
     if (t.classList.contains("st__t")) {
       buzz();
-      const s = pat().bass[+t.dataset.s];
+      const i = stp(+t.dataset.s), s = trk()[i];
       if (t.dataset.t === "oct") s.oct = s.oct === 0 ? 1 : s.oct === 1 ? -1 : 0;
       else s[t.dataset.t] = !s[t.dataset.t];
       if (!s.on) s.on = true;
-      drawBass(); edited(); audition(+t.dataset.s);
+      drawBass(); edited(); audition(i);
       return;
     }
-    if (t.classList.contains("dr__name")) { post({ type: "hit", lane: +t.dataset.lane }); return; }
+    if (t.classList.contains("dr__name")) {             // a tap hears it; a hold opens its knobs
+      const l = +t.dataset.lane;
+      post({ type: "hit", lane: l });
+      ptr.set(e.pointerId, { kind: "slot", hold: setTimeout(() => { ptr.delete(e.pointerId); buzz(15); openLane(l); }, 480) });
+      try { app.setPointerCapture(e.pointerId); } catch {}
+      return;
+    }
     if (t.classList.contains("dr")) {
-      const l = +t.dataset.lane, s = +t.dataset.s, v = !pat().drums[l][s];
+      const l = +t.dataset.lane, s = stp(+t.dataset.s), v = !pat().drums[l][s];
       pat().drums[l][s] = v; buzz();
-      ptr.set(e.pointerId, { kind: "dr", v, last: t });
+      const q = { kind: "dr", v, last: t };
+      q.hold = setTimeout(() => {                         // a hold: the step stays on, and its menu opens
+        if (q.last !== t) return;
+        ptr.delete(e.pointerId); pat().drums[l][s] = true; drawDrums(); edited(); buzz(15); openStep("drum", l, s);
+      }, 480);
+      ptr.set(e.pointerId, q);
       drawDrums(); edited();
       if (v && !playing) post({ type: "hit", lane: l });
     } else if (t.classList.contains("st__note")) {
-      ptr.set(e.pointerId, { kind: "note", i: +t.dataset.s, y0: e.clientY, acc: 0, moved: false, px: Math.max(7, (t.clientHeight * 0.74) / 12) });
+      const q = { kind: "note", i: stp(+t.dataset.s), y0: e.clientY, acc: 0, moved: false, px: Math.max(7, (t.clientHeight * 0.74) / 12) };
+      q.hold = setTimeout(() => { if (q.moved) return; ptr.delete(e.pointerId); buzz(15); openStep(track, 0, q.i); }, 480);
+      ptr.set(e.pointerId, q);
     } else if (t.classList.contains("xy")) {
       ptr.set(e.pointerId, { kind: "xy", el: t, x0: e.clientX, y0: e.clientY, moved: false });
       t.classList.add("is-on"); trail.length = 0;
@@ -307,15 +380,15 @@
     if (p.kind === "xy") { if (Math.abs(e.clientX - p.x0) + Math.abs(e.clientY - p.y0) > 10) p.moved = true; moveXY(p.el, e); }
     else if (p.kind === "dr") {                         // painting across the steps
       const el = document.elementFromPoint(e.clientX, e.clientY), d = el && el.closest && el.closest(".dr");
-      if (d && d !== p.last) { p.last = d; pat().drums[+d.dataset.lane][+d.dataset.s] = p.v; drawDrums(); edited(); }
+      if (d && d !== p.last) { p.last = d; clearTimeout(p.hold); pat().drums[+d.dataset.lane][stp(+d.dataset.s)] = p.v; drawDrums(); edited(); }
     } else if (p.kind === "note") {
       const dy = p.y0 - e.clientY;
-      if (Math.abs(dy) > 8) p.moved = true;
+      if (Math.abs(dy) > 8) { p.moved = true; clearTimeout(p.hold); }
       if (!p.moved) return;
       const steps = Math.trunc(dy / p.px);
       if (steps) {
         p.y0 -= steps * p.px;
-        const s = pat().bass[p.i];
+        const s = trk()[p.i];
         s.on = true;
         s.note = Math.max(0, Math.min(12, s.note + steps));
         drawBass(); edited(); audition(p.i);
@@ -350,8 +423,9 @@
       if (!p.moved && !p.repeated && e.type === "pointerup" && p.side) { setParam(p.k, S.params[p.k] + p.side * spec(p.k).unit); drawStrip(p.el); }   // the arrows step
       else if (!p.moved && e.type === "pointerup" && p.k === "tempo" && !p.side) tapTempo(p.t0, p.el);   // the middle: tap tempo
     }
+    if (p.kind === "dr" || p.kind === "note") clearTimeout(p.hold);
     if (p.kind === "note" && !p.moved && e.type === "pointerup") {   // a tap: rest, or back on
-      const s = pat().bass[p.i];
+      const s = trk()[p.i];
       s.on = !s.on;
       drawBass(); edited(); audition(p.i);
     }
@@ -396,22 +470,34 @@
   });
   act("[data-tab]", (t) => {
     document.querySelectorAll("[data-tab]").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
-    bassEl.hidden = t.dataset.tab !== "bass";
+    if (t.dataset.tab === "lead" || t.dataset.tab === "bass") track = t.dataset.tab;
+    bassEl.hidden = t.dataset.tab !== "bass" && t.dataset.tab !== "lead";
     drumsEl.hidden = t.dataset.tab !== "drums";
     $("punch").hidden = t.dataset.tab !== "punch";
     $("latch").hidden = t.dataset.tab !== "punch";
     app.classList.toggle("is-tab-filter", t.dataset.tab === "filter");   // (short phones: the filter has its own tab)
     document.querySelector(".tools").style.visibility = t.dataset.tab === "punch" || t.dataset.tab === "filter" ? "hidden" : "";
+    drawAll();
   });
+  act("[data-page]", (x) => { page = +x.dataset.page; pageT = performance.now(); drawAll(); markStep(viz); });
   // the Filter tab only shows on short phones: on a bigger screen (a turn, an unfold) it hands back to the bass line
   addEventListener("resize", () => {
     const f = document.querySelector('[data-tab="filter"]');
     if (app.classList.contains("is-tab-filter") && !f.getClientRects().length) runAct(document.querySelector('[data-tab="bass"]'));
   });
-  const tab = () => (!bassEl.hidden ? "bass" : "drums");
-  act("#wave", () => { begin(); S.params.wave = S.params.wave ? 0 : 1; commit(); sendParams(); save(); drawAll(); });
+  function tab() { return !bassEl.hidden ? track : "drums"; }
+  act("#wave", () => { begin(); const k = track === "lead" ? "leadWave" : "wave"; S.params[k] = S.params[k] ? 0 : 1; commit(); sendParams(); save(); drawAll(); });
   act("[data-tune]", (x) => { begin(); S.params.tune = Math.max(-12, Math.min(12, S.params.tune + +x.dataset.tune)); commit(); sendParams(); save(); drawAll(); });
-  act("[data-len]", (x) => { begin(); pat().len = Math.max(1, Math.min(16, pat().len + +x.dataset.len)); edited(); drawAll(); });
+  // Len: the bass's is the pattern's (the bar it changes on); the lead's and the drums' are their own (all the drums at
+  // once here; one drum's in its menu): different lengths drift against each other
+  act("[data-len]", (x) => {
+    begin();
+    const p = pat(), d = +x.dataset.len;
+    if (tab() === "drums") { const v = Math.max(1, Math.min(MAXS, (p.dlen[0] || p.len) + d)); p.dlen = p.dlen.map(() => (v === p.len ? 0 : v)); }
+    else if (track === "lead") { const v = Math.max(1, Math.min(MAXS, (p.llen || p.len) + d)); p.llen = v === p.len ? 0 : v; }
+    else p.len = Math.max(1, Math.min(MAXS, p.len + d));
+    edited(); drawAll();
+  });
   act("#undo", () => undo());
   act("#redo", () => redo());
   act("#latch", () => setLatch(!latch));
@@ -429,28 +515,31 @@
     const dens = Math.random();
     const hat = ALL16.filter((s) => !open.includes(s) && (dens < 0.4 ? s % 2 === 1 : Math.random() < 0.8));
     const snare = Math.random() < 0.3 ? [pick([7, 15]), 12].filter((s) => !clap.includes(s)) : [];
-    return grid([kick, snare, clap, hat, open]);
+    const tom = Math.random() < 0.3 ? [pick([10, 13, 14, 15])] : [], rim = Math.random() < 0.35 ? [pick([3, 7, 11]), pick([6, 14])] : [];
+    const bell = Math.random() < 0.15 ? [pick([2, 10]), pick([5, 13])] : [];
+    return grid([kick, snare, clap, hat, open, tom, rim, bell]);
   };
-  act("#random", () => {
+  const doRandom = () => {
     begin();
-    if (tab() === "bass") {
-      const sc = pick(SCALES);
-      pat().bass = ALL16.map(() => randStep(sc));
-      pat().bass[0] = { on: true, note: 0, oct: 0, acc: true, slide: false };
-    } else pat().drums = randomDrums();
-    edited(); drawAll(); toast("A new " + (tab() === "bass" ? "bass line" : "beat"), "Undo", undo);
-  });
+    if (tab() !== "drums") {
+      const sc = pick(SCALES), half = ALL16.map(() => stepOK(randStep(sc)));
+      if (track === "bass") half[0] = stepOK({ on: true, note: 0, oct: 0, acc: true, slide: false });
+      else half.forEach((x, i) => { if (Math.random() < 0.45) x.on = false; x.oct = Math.min(1, x.oct); });
+      pat()[track] = [...half, ...half.map((x) => ({ ...x }))];
+    } else { const g = randomDrums(); pat().drums = g; }
+    edited(); drawAll(); toast("A new " + (tab() === "drums" ? "beat" : tab() === "lead" ? "lead line" : "bass line") + " (hold Random for styles)", "Undo", undo);
+  };
   act("#mutate", () => {
     begin();
-    if (tab() === "bass") {
+    if (tab() !== "drums") {
       const sc = pick(SCALES);
       for (let n = 0; n < 3; n++) {
-        const i = Math.floor(Math.random() * pat().len), s = pat().bass[i], r = randStep(sc), f = pick(["note", "oct", "acc", "slide", "on"]);
+        const i = Math.floor(Math.random() * trkLen()), s = trk()[i], r = randStep(sc), f = pick(["note", "oct", "acc", "slide", "on"]);
         s[f] = r[f];
         if (f === "note") s.on = true;
       }
     } else {
-      for (let n = 0; n < 2; n++) { const l = pick([1, 3, 4, 2]), s = Math.floor(Math.random() * 16); pat().drums[l][s] = !pat().drums[l][s]; }
+      for (let n = 0; n < 2; n++) { const l = pick([1, 3, 4, 2, 5, 6, 7]), s = Math.floor(Math.random() * laneLen(l)); pat().drums[l][s] = !pat().drums[l][s]; }
     }
     edited(); drawAll();
   });
@@ -463,8 +552,8 @@
     }
     clearTimeout(clearT); el.classList.remove("is-armed"); el.querySelector("span").textContent = "Clear";
     begin();
-    if (tab() === "bass") pat().bass = ALL16.map(rest);
-    else pat().drums = grid([]);
+    if (tab() !== "drums") pat()[track] = ALL32.map(rest);
+    else { pat().drums = grid([]); pat().dp = pat().dp.map((r) => r.map(() => 100)); pat().dr = pat().dr.map((r) => r.map(() => 1)); }
     edited(); drawAll(); toast("Cleared", "Undo", undo);
   });
 
@@ -522,17 +611,28 @@
   // ------------------------------------------------------------------------------------------ the display ---
   // the pixel rave is rave.js; here: the playhead on the editor, the queued pattern taking over at the bar, the drums'
   // names lighting as they hit
-  const markStep = (s) => {
-    cols.forEach((c, i) => c.el.classList.toggle("is-now", i === s));
-    cells.forEach((row) => row.forEach((d, i) => d.classList.toggle("is-now", i === s)));
-  };
+  // the playhead: the bass at the pattern's step; the lead and each drum at their own (their lengths can differ)
+  function markStep(m) {
+    const p = pat(), on = m && m.step >= 0, a = on ? (m.abs >= 0 ? m.abs : m.step) : -1;
+    const ps = !on ? -1 : track === "lead" ? a % (p.llen || p.len) : m.step;
+    cols.forEach((c, col) => c.el.classList.toggle("is-now", stp(col) === ps));
+    cells.forEach((row, l) => { const dp = on ? a % laneLen(l, p) : -1; row.forEach((d, col) => d.classList.toggle("is-now", stp(col) === dp)); });
+  }
   let viz = { step: -1 }, lastStep = -2;
   const rave = new globalThis.AcidRave($("viz"), { pattern: () => pat(), params: () => S.params, slot: () => S.cur, playing: () => playing, name: () => pat().name || "" });
   const onViz = (m) => {
     viz = m;
+    if (m.p && playing && !motionOn && hasMotion() && !ptr.size) {   // (motion playing back: the knobs follow it)
+      let ch = false;
+      for (const k of ["cutoff", "reso", "env"]) if (Math.abs(S.params[k] - m.p[k]) > 1e-4) { S.params[k] = m.p[k]; ch = true; }
+      if (ch) { drawXY(); drawKey("env"); }
+    }
     rave.event(m);
     if (m.step !== lastStep) {
-      lastStep = m.step; markStep(m.step);
+      lastStep = m.step;
+      // the page follows the playhead (unless a page was picked in the last few seconds)
+      if (m.step >= 0 && !$("pager").hidden && performance.now() - pageT > 4000) { const pg = m.step >= 16 ? 1 : 0; if (pg !== page) { page = pg; drawAll(); } }
+      markStep(m);
       // the Play buttons pulse on the beat, harder on the bar's first
       if (m.step >= 0 && m.step % 4 === 0) for (const b of [$("play"), $("ravePlay")]) {
         b.classList.remove("beat", "down"); void b.offsetWidth; b.classList.add("beat"); if (m.step === 0) b.classList.add("down");
@@ -549,13 +649,19 @@
   // the display fills its box: the picture is 150 pixels tall and as wide as the box asks (240 to 560), so a wide
   // screen gets more rave instead of black bars; past that it is fitted, never cropped
   const vizEl = $("viz");
+  // the VJ's settings (the panel is further down): saved on the device
+  const VJS = (() => { const d = { ...globalThis.AcidRave.VJ0, fill: true, rec: "sound" }; try { return { ...d, ...JSON.parse(localStorage.getItem("acid-flower-vj") || "{}"), text: "" }; } catch { return d; } })();
+  // rave mode, Fill: the picture covers the screen (cropped at the sides when the screen is narrower than 240 x 150;
+  // the readouts move in to what shows); Fit, a fold, or the editor: the whole picture, fitted
   const fitViz = () => {
     vizEl.style.width = ""; vizEl.style.height = "";
     const r = vizEl.getBoundingClientRect();
     if (r.width < 8 || r.height < 8) return;
     rave.setWidth((150 * r.width) / r.height);
-    const k = Math.min(r.width / rave.W, r.height / 150);
-    vizEl.style.width = Math.floor(rave.W * k) + "px"; vizEl.style.height = Math.floor(150 * k) + "px";
+    const folded = /fold-/.test(document.documentElement.className), fill = app.classList.contains("is-rave") && VJS.fill && !folded;
+    const k = fill ? Math.max(r.width / rave.W, r.height / 150) : Math.min(r.width / rave.W, r.height / 150);
+    vizEl.style.width = (fill ? Math.ceil(rave.W * k) : Math.floor(rave.W * k)) + "px"; vizEl.style.height = (fill ? Math.ceil(150 * k) : Math.floor(150 * k)) + "px";
+    if (fill) { const vis = r.width / k; rave.setView((rave.W - vis) / 2, (rave.W + vis) / 2); }
   };
   if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fitViz)).observe(document.querySelector(".rave"));
   addEventListener("resize", () => requestAnimationFrame(fitViz));
@@ -571,7 +677,7 @@
   const poke = () => {
     app.classList.remove("rave-idle");
     clearTimeout(idleT);
-    if (raving()) idleT = setTimeout(() => { if (!vTouch.size && $("raveScenes").hidden) app.classList.add("rave-idle"); else poke(); }, 3000);
+    if (raving()) idleT = setTimeout(() => { if (!vTouch.size && $("raveScenes").hidden && $("vjPanel").hidden) app.classList.add("rave-idle"); else poke(); }, 3000);
   };
   for (const t of ["pointerdown", "pointermove"]) raveEl.addEventListener(t, () => { if (raving()) poke(); }, true);
   addEventListener("keydown", () => { if (raving()) poke(); }, true);
@@ -579,7 +685,7 @@
   function drawStatus() {
     if (!raving()) return;
     const p = pat();
-    $("raveStatus").textContent = (p.name || "P" + (S.cur + 1)).toUpperCase() + (playing ? "  \u00b7  BAR " + Math.max(1, barN) : "  \u00b7  STOPPED") +
+    $("raveStatus").textContent = (songText() ? songText() + "  \u00b7  " : "") + (p.name || "P" + (S.cur + 1)).toUpperCase() + (playing ? "  \u00b7  BAR " + Math.max(1, barN) : "  \u00b7  STOPPED") +
       (nextSlot >= 0 ? "  \u00b7  NEXT " + (nextSlot + 1) : "");
   }
   // full screen, where the browser has it (not iPhone: there, Add to Home Screen is the full screen)
@@ -611,7 +717,7 @@
     app.classList.toggle("is-rave", on);
     $("raveBtn").setAttribute("aria-pressed", String(on));
     rave.setPad(null); closeScenes();
-    if (on) poke(); else { setFull(false); clearTimeout(idleT); app.classList.remove("rave-idle"); }
+    if (on) poke(); else { setFull(false); clearTimeout(idleT); app.classList.remove("rave-idle"); $("vjPanel").hidden = true; $("raveVJ").setAttribute("aria-pressed", "false"); }
     drawStatus();
     requestAnimationFrame(fitViz);
   };
@@ -633,7 +739,7 @@
   // the picture: one finger plays the filter (out of rave mode: a tap is the next scene); two fingers make a gesture,
   // decided when the first of them lifts
   let solo = null, g2 = null;
-  const at = (ev) => { const r = vizEl.getBoundingClientRect(); return [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)]; };
+  const at = (ev) => { const r = (raving() && VJS.fill ? raveEl : vizEl).getBoundingClientRect(); return [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)]; };
   const padAt = (ev) => { const [x, y] = at(ev); S.params.cutoff = x; S.params.reso = 1 - y; sendParams(); save(); drawXY(); rave.setPad(x, y); };
   vizEl.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -686,13 +792,14 @@
   const menu = $("menu"), msg = (t) => ($("msg").textContent = t);
   $("menuBtn").addEventListener("click", () => { msg(""); menu.showModal ? menu.showModal() : menu.setAttribute("open", ""); });
   menu.addEventListener("click", (e) => { if (e.target === menu) menu.close(); });
-  const PREF_DEF = { latency: "interactive", scenes: "auto", motion: matchMedia("(prefers-reduced-motion: reduce)").matches ? "calm" : "full" };
+  const PREF_DEF = { latency: "interactive", scenes: "auto", motion: matchMedia("(prefers-reduced-motion: reduce)").matches ? "calm" : "full", text: "normal" };
   const applyPrefs = () => {
     document.querySelectorAll(".seg[data-pref]").forEach((s) => s.querySelectorAll("button").forEach((x) =>
       x.setAttribute("aria-pressed", String(x.dataset.v === pref(s.dataset.pref, PREF_DEF[s.dataset.pref])))));
     rave.auto = pref("scenes", PREF_DEF.scenes) === "auto";
     rave.calm = pref("motion", PREF_DEF.motion) === "calm";
     app.classList.toggle("is-calm", rave.calm);
+    document.documentElement.classList.toggle("is-large", pref("text", PREF_DEF.text) === "large");
   };
   document.querySelectorAll(".seg[data-pref]").forEach((s) => s.addEventListener("click", (e) => {
     const x = e.target.closest("button");
@@ -714,7 +821,7 @@
   $("export").onclick = async () => {
     const name = `acid-flower-${stamp()}.json`;
     const file = new File([JSON.stringify({ app: "acid-flower", version: 1, ...S }, null, 1)], name, { type: "application/json" });
-    if (await saveFile(file, "Acid Flower patterns")) msg("Saved: " + name);
+    if (await saveFile(file, "Acid Flower patterns")) { msg("Saved: " + name); S.edits = 0; S.backupAt = Date.now(); save(); }
   };
   $("import").onclick = () => $("importFile").click();
   $("importFile").onchange = async (e) => {
@@ -750,8 +857,10 @@
     random: [["............", ".WWWWWWWWW..", ".W.......WW.", ".W.P...P.WW.", ".W.......WW.", ".W...P...WW.", ".W.......WW.", ".W.P...P.WW.", ".W.......WW.", ".WWWWWWWWWW.", "..WWWWWWWWW.", "............"], { W: "#F4F1FF", P: "#FF2FB4" }],
     mutate: [["............", ".....Y......", ".....Y......", "...Y.Y.Y....", "....YYY.....", "..YYYWYYY...", "....YYY.....", "...Y.Y.Y.L..", ".....Y...L..", ".....Y.LLLLL", ".........L..", ".........L.."], { Y: "#FFE100", W: "#FFFFFF", L: "#B4FF2B" }],
     clear: [["............", ".PP......PP.", ".PPP....PPP.", "..PPP..PPP..", "...PPPPPP...", "....PPPP....", "....PPPP....", "...PPPPPP...", "..PPP..PPP..", ".PPP....PPP.", ".PP......PP.", "............"], { P: "#FF6FAE" }],
+    lead: [["............", "........PP..", ".......P.P..", "......P..P..", ".....P...P..", "....P....P..", "...P.....P..", "..P......P..", ".P.......PPP", "P........PPP", ".........PP.", "............"], { P: "#FF2FB4" }],
     undo: [["............", "...C........", "..CC........", ".CCCCCCCC...", "..CC.....C..", "...C......C.", "..........C.", "..........C.", ".........C..", "....CCCCC...", "............", "............"], { C: "#2BF0FF" }],
     redo: [["............", "........C...", "........CC..", "...CCCCCCCC.", "..C.....CC..", ".C......C...", ".C..........", ".C..........", "..C.........", "...CCCCC....", "............", "............"], { C: "#2BF0FF" }],
+    vj: [["............", ".M.......M..", ".MM.....MM..", ".M.M...M.M..", ".M..M.M..M..", ".M...M...M..", "............", "..CCCCCCCC..", ".C........C.", ".C.YY..YY.C.", ".C........C.", "..CCCCCCCC.."], { M: "#FF2FB4", C: "#2BF0FF", Y: "#FFE100" }],
     lock: [["............", "....YYYY....", "...Y....Y...", "...Y....Y...", "...Y....Y...", "..YYYYYYYY..", "..YYYYYYYY..", "..YYY..YYY..", "..YYY..YYY..", "..YYYYYYYY..", "..YYYYYYYY..", "............"], { Y: "#FFE100" }],
     full: [["............", ".WWWW..WWWW.", ".W........W.", ".W........W.", ".W........W.", "............", "............", ".W........W.", ".W........W.", ".W........W.", ".WWWW..WWWW.", "............"], { W: "#F4F1FF" }],
     tilt: [["..AAAAAA....", ".A......A...", "A........A.A", "A.........AA", "........AAA.", "............", ".CCCCCCCCCC.", ".C........C.", ".C.DDDDDD.CC", ".C........C.", ".CCCCCCCCCC.", "............"], { C: "#2BF0FF", A: "#9FF8FF", D: "#1A8F99" }],
@@ -762,7 +871,7 @@
     g.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col[ch]}"/>`; }));
     return `<svg class="pix" viewBox="0 0 12 12" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
   };
-  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"], ["#raveTilt", "tilt"], ["#raveLock", "lock"], ["#raveFull", "full"]]) {
+  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="lead"]', "lead"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"], ["#raveTilt", "tilt"], ["#raveLock", "lock"], ["#raveFull", "full"], ["#raveVJ", "vj"]]) {
     const el = document.querySelector(sel);
     el.innerHTML = iconSvg(name) + `<span>${el.textContent}</span>`;
   }
@@ -885,6 +994,137 @@
   applyFold();
 
 
+
+
+  // ------------------------------------------------------------------------------------------- motion ---
+  // Motion on, while it plays: the knobs you move are written into the pattern at the step they move on, and play back
+  // with it (the worklet sets them at each step). Hold Motion to clear them.
+  const MOT = ["cutoff", "reso", "env", "decay", "accent", "drive", "delay"];
+  let motionOn = false, motLast = null, motBegun = false;
+  function recordMotion() {
+    if (!motionOn || !playing || !viz || viz.step < 0) { motLast = null; return; }
+    const p = pat(), st = viz.step;
+    if (!motLast) { motLast = {}; MOT.forEach((k) => (motLast[k] = S.params[k])); return; }
+    let ch = false;
+    for (const k of MOT) if (Math.abs(S.params[k] - motLast[k]) > 1e-4) {
+      if (!motBegun) { begin(); motBegun = true; }
+      p.motion = p.motion || {};
+      const lane = (p.motion[k] = p.motion[k] || new Array(MAXS).fill(null));
+      lane[st] = Math.round(S.params[k] * 1000) / 1000; motLast[k] = S.params[k]; ch = true;
+    }
+    if (ch) { sendPattern(); save(); drawMotion(); }
+  }
+  const hasMotion = (p = pat()) => !!(p.motion && Object.values(p.motion).some((a) => a.some((v) => v != null)));
+  function drawMotion() { const b2 = $("motionBtn"); b2.setAttribute("aria-pressed", String(motionOn)); b2.classList.toggle("has-motion", hasMotion()); }
+  { const mb = $("motionBtn"); let hold = 0, held = false;
+    mb.addEventListener("pointerdown", (e) => { e.preventDefault(); held = false; hold = setTimeout(() => {
+      held = true; buzz(15);
+      if (!hasMotion()) { toast("No motion in this pattern yet"); return; }
+      begin(); delete pat().motion; commit(); sendPattern(); save(); drawMotion(); toast("Motion cleared", "Undo", undo);
+    }, 550); });
+    mb.addEventListener("pointerup", () => { clearTimeout(hold); if (held) return;
+      motionOn = !motionOn; motLast = null; if (!motionOn && motBegun) { commit(); motBegun = false; }
+      drawMotion(); toast(motionOn ? (playing ? "Motion: move the knobs, they're recorded" : "Motion: press Play, then move the knobs") : "Motion off" + (hasMotion() ? ": it plays back" : "")); });
+    mb.addEventListener("pointercancel", () => clearTimeout(hold));
+    mb.addEventListener("click", (e) => { if (e.detail === 0) { motionOn = !motionOn; drawMotion(); } }); }
+  playHooks.push((on) => { motLast = null; if (!on && motBegun) { commit(); motBegun = false; } });
+  drawMotion();
+
+  // ------------------------------------------------------------------------------------------- sounds ---
+  // presets for the knobs: built in, and four of yours (saved on this device)
+  const SOUNDK = ["cutoff", "reso", "env", "decay", "accent", "drive", "delay", "verb", "pump", "lead", "wave", "leadWave"];
+  const SOUNDS = [
+    ["Classic", {}],
+    ["Rubber", { cutoff: 0.22, reso: 0.6, env: 0.78, decay: 0.58, accent: 0.5, drive: 0.15, delay: 0.1, verb: 0.08, wave: 0 }],
+    ["Screamer", { cutoff: 0.45, reso: 0.93, env: 0.92, decay: 0.33, accent: 0.92, drive: 0.78, delay: 0.22, verb: 0.1, wave: 0 }],
+    ["Deep", { cutoff: 0.17, reso: 0.48, env: 0.34, decay: 0.72, accent: 0.3, drive: 0.08, delay: 0.32, verb: 0.38, pump: 0.45, wave: 1 }],
+    ["Square", { cutoff: 0.3, reso: 0.82, env: 0.6, decay: 0.4, accent: 0.72, drive: 0.42, delay: 0.16, verb: 0.1, wave: 1 }],
+    ["Pumping", { cutoff: 0.36, reso: 0.75, env: 0.62, decay: 0.45, accent: 0.6, drive: 0.35, delay: 0.25, verb: 0.2, pump: 0.75, wave: 0 }],
+  ];
+  const mine = () => { try { const a = JSON.parse(localStorage.getItem("acid-flower-sounds")); return Array.isArray(a) ? padA(a, 4, () => null) : [null, null, null, null]; } catch { return [null, null, null, null]; } };
+  const grabSound = () => { const o = {}; SOUNDK.forEach((k) => (o[k] = S.params[k])); o.dk = clone(S.params.dk); return o; };
+  const putSound = (o, name) => {
+    const was = grabSound();
+    SOUNDK.forEach((k) => { if (o[k] != null) S.params[k] = o[k]; });
+    if (o.dk) S.params.dk = clone(o.dk);
+    sendParams(); save(); drawAll();
+    toast(name + " loaded", "Undo", () => putSound(was, "The sound before"));
+  };
+  function drawSounds() {
+    $("soundBuilt").innerHTML = SOUNDS.map(([n], i) => `<button type="button" data-b="${i}">${n}</button>`).join("");
+    $("soundMine").innerHTML = mine().map((o, i) => `<div class="lrow"><span>${o ? o.name : "Empty " + (i + 1)}</span><div class="menu__row">` +
+      `<button type="button" data-load="${i}" ${o ? "" : "disabled"}>Load</button><button type="button" data-save="${i}">Save here</button></div></div>`).join("");
+  }
+  onPress($("soundBtn"), () => { drawSounds(); show($("soundMenu")); });
+  $("soundMenu").addEventListener("click", (e) => {
+    if (e.target === $("soundMenu")) return $("soundMenu").close();
+    const b2 = e.target.closest("button"); if (!b2) return;
+    if (b2.dataset.b != null) { const [n, o] = SOUNDS[+b2.dataset.b]; const base = {}; SOUNDK.forEach((k) => (base[k] = DEF_PARAMS[k])); putSound({ ...base, ...o, dk: o.dk || DEF_PARAMS.dk }, n); }
+    else if (b2.dataset.load != null) { const o = mine()[+b2.dataset.load]; if (o) putSound(o, o.name); }
+    else if (b2.dataset.save != null) {
+      const i = +b2.dataset.save, a = mine(), name = (window.prompt("A name for this sound:", (a[i] && a[i].name) || "Sound " + (i + 1)) || "").slice(0, 16);
+      if (!name) return;
+      a[i] = { ...grabSound(), name }; try { localStorage.setItem("acid-flower-sounds", JSON.stringify(a)); } catch {}
+      drawSounds(); toast("Saved as " + name);
+    }
+  });
+  $("soundMenu").addEventListener("close", () => {});
+
+  // ------------------------------------------------------------------------------------- a step's menu ---
+  // hold a note or a drum step: its chance (how often it plays) and its repeats (a ratchet)
+  const show = (m) => { if (m.showModal) m.showModal(); else m.setAttribute("open", ""); };
+  for (const id of ["stepMenu", "laneMenu"]) $(id).addEventListener("click", (e) => { if (e.target === $(id)) $(id).close(); });
+  let stepSel = null;
+  function openStep(kind, lane, i) {
+    stepSel = { kind, lane, i, slot: S.cur };
+    $("stepTitle").textContent = (kind === "drum" ? LANES[lane][0] : kind === "lead" ? "Lead" : "Bass") + " · step " + (i + 1);
+    drawStepSheet(); show($("stepMenu"));
+  }
+  const stepGet = () => { const p = S.slots[stepSel.slot], q = stepSel; return q.kind === "drum" ? { prob: p.dp[q.lane][q.i], rat: p.dr[q.lane][q.i] } : p[q.kind][q.i]; };
+  const stepSet = (k, v) => {
+    const p = S.slots[stepSel.slot], q = stepSel;
+    begin();
+    if (q.kind === "drum") { (k === "prob" ? p.dp : p.dr)[q.lane][q.i] = v; p.drums[q.lane][q.i] = true; }
+    else { p[q.kind][q.i][k] = v; p[q.kind][q.i].on = true; }
+    edited(); drawAll(); drawStepSheet();
+  };
+  function drawStepSheet() {
+    const g = stepGet();
+    $("stepProb").innerHTML = [100, 75, 50, 25, 10].map((v) => `<button type="button" data-v="${v}" aria-pressed="${g.prob === v}">${v === 100 ? "Always" : v + "%"}</button>`).join("");
+    $("stepRat").innerHTML = [1, 2, 3, 4].map((v) => `<button type="button" data-v="${v}" aria-pressed="${g.rat === v}">${v === 1 ? "Once" : "×" + v}</button>`).join("");
+  }
+  $("stepProb").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) stepSet("prob", +b2.dataset.v); });
+  $("stepRat").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) stepSet("rat", +b2.dataset.v); });
+
+  // ------------------------------------------------------------------------------------- a drum's menu ---
+  // hold a drum's name: its tune, decay and level (the kit's, in every pattern) and its length (this pattern's)
+  let laneSel = 0;
+  const LROWS = [["tune", "Tune"], ["decay", "Decay"], ["level", "Level"], ["len", "Length"]];
+  function openLane(l) {
+    laneSel = l;
+    $("laneTitle").textContent = LANES[l][0]; $("laneTitle").style.color = LANES[l][1];
+    drawLaneSheet(); show($("laneMenu"));
+  }
+  function drawLaneSheet() {
+    const d = S.params.dk[laneSel], p = pat();
+    const val = { tune: (d[0] > 0 ? "+" : "") + d[0], decay: Math.round(d[1] * 10), level: Math.round(d[2] * 10), len: p.dlen[laneSel] || p.len + " (the pattern's)" };
+    $("laneRows").innerHTML = LROWS.map(([k, name]) => `<div class="lrow"><span>${name}</span><div class="stepper"><button type="button" data-k="${k}" data-d="-1" aria-label="${name} down">&minus;</button>` +
+      `<span class="stepper__v"><b>${val[k]}</b></span><button type="button" data-k="${k}" data-d="1" aria-label="${name} up">+</button></div></div>`).join("");
+  }
+  $("laneRows").addEventListener("click", (e) => {
+    const b2 = e.target.closest("button[data-k]"); if (!b2) return;
+    const k = b2.dataset.k, dir = +b2.dataset.d, d = S.params.dk[laneSel], p = pat();
+    if (k === "len") { begin(); const v = Math.max(1, Math.min(MAXS, (p.dlen[laneSel] || p.len) + dir)); p.dlen[laneSel] = v === p.len ? 0 : v; edited(); drawAll(); }
+    else {
+      if (k === "tune") d[0] = Math.max(-12, Math.min(12, d[0] + dir));
+      else { const j = k === "decay" ? 1 : 2; d[j] = Math.max(0, Math.min(1, Math.round((d[j] + dir * 0.1) * 10) / 10)); }
+      sendParams(); save(); post({ type: "hit", lane: laneSel });
+    }
+    drawLaneSheet();
+  });
+  $("laneHear").addEventListener("click", () => post({ type: "hit", lane: laneSel }));
+  $("laneReset").addEventListener("click", () => { S.params.dk[laneSel] = [0, 0.5, 0.8]; sendParams(); save(); drawLaneSheet(); post({ type: "hit", lane: laneSel }); });
+
   // =============================================================================================== comforts ===
   // ------------------------------------------------------------------------------------------- the toast ---
   let toastT = 0;
@@ -902,14 +1142,14 @@
   // every change to the patterns (and the key and the wave) can be undone: a gesture or a button is one step
   const hist = { undo: [], redo: [] };
   let pend = null;
-  const snap = () => JSON.stringify({ slots: S.slots, tune: S.params.tune, wave: S.params.wave });
+  const snap = () => JSON.stringify({ slots: S.slots, tune: S.params.tune, wave: S.params.wave, tempo: S.params.tempo, song: S.song });
   function begin() { pend = snap(); }
   function commit() {
     if (pend == null) return;
-    if (pend !== snap()) { hist.undo.push(pend); if (hist.undo.length > 100) hist.undo.shift(); hist.redo.length = 0; }
+    if (pend !== snap()) { hist.undo.push(pend); if (hist.undo.length > 100) hist.undo.shift(); hist.redo.length = 0; S.edits = (S.edits || 0) + 1; }
     pend = null; drawHist();
   }
-  const restore = (j) => { const d = JSON.parse(j); S.slots = d.slots; S.params.tune = d.tune; S.params.wave = d.wave; sendParams(); sendPattern(); save(); drawAll(); };
+  const restore = (j) => { const d = JSON.parse(j); S.slots = d.slots; S.params.tune = d.tune; S.params.wave = d.wave; if (d.tempo) S.params.tempo = d.tempo; if (d.song) S.song = d.song; sendParams(); sendPattern(); save(); drawAll(); };
   function undo() { if (!hist.undo.length) return; hist.redo.push(snap()); restore(hist.undo.pop()); drawHist(); toast("Undone", "Redo", redo); }
   function redo() { if (!hist.redo.length) return; hist.undo.push(snap()); restore(hist.redo.pop()); drawHist(); toast("Redone", "Undo", undo); }
   function drawHist() { $("undo").disabled = !hist.undo.length; $("redo").disabled = !hist.redo.length; }
@@ -925,6 +1165,7 @@
     save(); drawAll();
   }
   function queueFollow() {                                // a bar begins: a chained pattern lines up its next
+    if (S.songOn && S.song.length) return songStep();
     const nx = pat().next;
     if (!playing || nextSlot >= 0 || nx == null || nx < 0 || nx > 7 || nx === S.cur) return;
     nextSlot = nx; nextAuto = true;
@@ -968,7 +1209,7 @@
   });
   $("slotClear").addEventListener("click", () => {
     const i = sheetSlot;
-    begin(); S.slots[i] = { len: 16, bass: ALL16.map(rest), drums: grid([]), name: S.slots[i].name }; commit();
+    begin(); S.slots[i] = Object.assign(empty(), { name: S.slots[i].name }); commit();
     if (i === S.cur) sendPattern();
     save(); drawAll(); $("slotMenu").close();
     toast("Pattern " + (i + 1) + " cleared", "Undo", undo);
@@ -978,11 +1219,47 @@
   // a pattern and the sound it was made with, in the link itself: #p=1.<bass>.<drums>.<len>.<tempo>.<swing>.<key>.
   // <wave>.<cutoff>.<reso>.<env>.<decay>.<accent>.<drive>.<delay>.<name>; opening it puts it in a free slot
   const KN = ["cutoff", "reso", "env", "decay", "accent", "drive", "delay"];
-  const encode = (p) => {
-    const P = S.params, h2 = (v) => v.toString(16).padStart(2, "0"), pc = (v) => Math.round(v * 100);
-    const bass = p.bass.map((s) => h2(s.on ? 1 + s.note + 13 * (s.oct + 1) + (s.acc ? 40 : 0) + (s.slide ? 80 : 0) : 0)).join("");
-    const drums = p.drums.map((r) => r.reduce((a, v, i) => a | (v ? 1 << i : 0), 0).toString(16).padStart(4, "0")).join("");
-    return ["1", bass, drums, p.len, Math.round(P.tempo), pc(P.swing), P.tune, P.wave, ...KN.map((k) => pc(P[k])), encodeURIComponent(p.name || "")].join(".");
+  const h2 = (v) => v.toString(16).padStart(2, "0"), pc = (v) => Math.round(v * 100);
+  const stepCode = (x) => h2(x.on ? 1 + x.note + 13 * (x.oct + 1) + (x.acc ? 40 : 0) + (x.slide ? 80 : 0) : 0);
+  const stepFrom = (v) => {
+    if (!v) return rest();
+    if (v > 159) throw new Error("step");
+    const slide = v >= 80; if (slide) v -= 80;
+    const acc = v >= 40; if (acc) v -= 40;
+    v -= 1;
+    if (v < 0 || v > 38) throw new Error("step");
+    return { on: true, note: v % 13, oct: Math.floor(v / 13) - 1, acc, slide };
+  };
+  // version 2 (today's patterns: 32 steps, the lead, eight drums, chance, repeats, lengths, the drums' knobs):
+  // #p=2z.<base64url of deflated JSON>, or 2.<base64url of JSON> where the browser can't deflate
+  const b64 = (u8) => { let t = ""; for (const c of u8) t += String.fromCharCode(c); return btoa(t).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+  const unb64 = (t) => Uint8Array.from(atob(t.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+  const pipe = async (u8, how) => new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(how)).arrayBuffer());
+  const encode = async (p) => {
+    const P = S.params, sparse = (rows, dflt) => { const o = []; rows.forEach((r, l) => r.forEach((v, i) => { if (v !== dflt && i < MAXS) o.push(l, i, v); })); return o; };
+    const pr = (steps) => { const o = []; steps.forEach((x, i) => { if (x.on && (x.prob < 100 || x.rat > 1)) o.push(i, x.prob, x.rat); }); return o; };
+    const d = { l: p.len, ll: p.llen, b: p.bass.map(stepCode).join(""), bp: pr(p.bass), d: p.lead.map(stepCode).join(""), dq: pr(p.lead),
+      k: p.drums.map((r) => (r.reduce((a, v, i) => (v ? a + 2 ** i : a), 0)).toString(36)), kp: sparse(p.dp, 100), kr: sparse(p.dr, 1), kl: p.dlen,
+      n: p.name || "", P: [Math.round(P.tempo), pc(P.swing), P.tune, P.wave, P.leadWave, ...KN.map((k) => pc(P[k])), pc(P.verb), pc(P.pump), pc(P.lead)], K: P.dk };
+    const u8 = new TextEncoder().encode(JSON.stringify(d));
+    try { if (window.CompressionStream) return "2z." + b64(await pipe(u8, new CompressionStream("deflate-raw"))); } catch {}
+    return "2." + b64(u8);
+  };
+  const decode2 = async (c) => {
+    const [v, body] = [c.slice(0, c.indexOf(".")), c.slice(c.indexOf(".") + 1)];
+    let u8 = unb64(body);
+    if (v === "2z") u8 = await pipe(u8, new DecompressionStream("deflate-raw"));
+    const d = JSON.parse(new TextDecoder().decode(u8));
+    const steps = (str, pr) => { const o = []; for (let i = 0; i < MAXS; i++) o.push(stepFrom(parseInt(str.substr(i * 2, 2), 16) || 0)); for (let j = 0; j + 2 < (pr || []).length; j += 3) if (o[pr[j]]) { o[pr[j]].prob = pr[j + 1]; o[pr[j]].rat = pr[j + 2]; } return o; };
+    const rows = (dflt, sp) => { const r = LANES.map(() => new Array(MAXS).fill(dflt)); for (let j = 0; j + 2 < (sp || []).length; j += 3) if (r[sp[j]]) r[sp[j]][sp[j + 1]] = sp[j + 2]; return r; };
+    const pattern = { len: d.l, llen: d.ll, bass: steps(d.b, d.bp), lead: steps(d.d, d.dq), drums: LANES.map((_, l) => { const m = parseInt((d.k || [])[l] || "0", 36); return ALL32.map((i) => Math.floor(m / 2 ** i) % 2 === 1); }),
+      dp: rows(100, d.kp), dr: rows(1, d.kr), dlen: d.kl, name: String(d.n || "").slice(0, 10) };
+    const q = d.P || [], n = (i, df, lo, hi) => { const x = Number(q[i]); return Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : df; };
+    const params = { tempo: n(0, 124, 60, 180), swing: n(1, 54, 50, 75) / 100, tune: n(2, 0, -12, 12) | 0, wave: n(3, 0, 0, 1) | 0, leadWave: n(4, 1, 0, 1) | 0 };
+    KN.forEach((k, j) => { params[k] = n(5 + j, DEF_PARAMS[k] * 100, 0, 100) / 100; });
+    params.verb = n(12, 12, 0, 100) / 100; params.pump = n(13, 0, 0, 100) / 100; params.lead = n(14, 60, 0, 100) / 100;
+    if (Array.isArray(d.K)) params.dk = fixAll({ slots: [], params: { dk: d.K } }).params.dk;
+    return { pattern: normPat(pattern), params };
   };
   const decode = (c) => {
     const f = c.split(".");
@@ -1006,24 +1283,24 @@
     try { name = decodeURIComponent(f.slice(15).join(".")).slice(0, 10); } catch {}
     return { pattern: { len: n(3, 16, 1, 16) | 0, bass, drums, name }, params };
   };
-  function fromLink() {
+  async function fromLink() {
     const m = location.hash.match(/^#p=(.+)$/);
     if (!m) return;
     let d = null;
-    try { d = decode(m[1]); } catch { d = null; }
+    try { d = /^2z?\./.test(m[1]) ? await decode2(m[1]) : decode(m[1]); } catch { d = null; }
     try { history.replaceState(null, "", location.pathname + location.search); } catch {}
     if (!d) { toast("That link isn’t an Acid Flower pattern."); return; }
     begin();
     let i = S.slots.findIndex((p) => !used(p));
     if (i < 0) i = S.cur;
-    S.slots[i] = d.pattern; S.cur = i; nextSlot = -1;
+    S.slots[i] = normPat(d.pattern); S.cur = i; nextSlot = -1;
     Object.assign(S.params, d.params);
     commit(); sendParams(); sendPattern(); save(); drawAll();
     toast("A shared pattern" + (d.pattern.name ? " (" + d.pattern.name + ")" : "") + " is in slot " + (i + 1) + ": press Play", "Undo", undo, 7000);
   }
   addEventListener("hashchange", () => { if ($("gate").hidden) fromLink(); });
   $("slotShare").addEventListener("click", async () => {
-    const p = S.slots[sheetSlot], url = location.origin + location.pathname + "#p=" + encode(p);
+    const p = S.slots[sheetSlot], url = location.origin + location.pathname + "#p=" + (await encode(p));
     const title = "Acid Flower: " + (p.name || "pattern " + (sheetSlot + 1));
     try { if (navigator.share) { await navigator.share({ title, text: "An acid line I made in Acid Flower:", url }); return; } }
     catch (err) { if (err && err.name === "AbortError") return; }
@@ -1032,7 +1309,7 @@
 
   // ---------------------------------------------------------------------------------------- recording ---
   // Rec: everything the machine plays (effects and all) into a file; when it stops, Save hands it to the share sheet
-  let rec = null, recDest = null, recT = 0, recStart = 0;
+  let rec = null, recDest = null, recT = 0, recStart = 0, recVideo = null;
   const recMime = () => ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"].find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
   const clock = (s) => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
   const drawRec = () => {
@@ -1044,13 +1321,27 @@
     if (on) {
       if (!node || !window.MediaRecorder) { toast("This browser can’t record. Try Safari 14.5 or later, or Chrome."); return; }
       if (!recDest) { recDest = ctx.createMediaStreamDestination(); node.connect(recDest); }
-      const type = recMime(), chunks = [];
+      // with the picture: the rave, drawn big with crisp pixels into a canvas that is filmed, with the sound alongside
+      const video = VJS.rec === "video" && HTMLCanvasElement.prototype.captureStream;
+      let stream = recDest.stream, type = recMime();
+      if (video) {
+        const vc = document.createElement("canvas"), sc = Math.max(1, Math.round(1280 / rave.W));
+        vc.width = (rave.W * sc) & ~1; vc.height = (150 * sc) & ~1;
+        const g = vc.getContext("2d");
+        recVideo = vc;
+        const draw = () => { if (recVideo !== vc) return; g.imageSmoothingEnabled = false; g.drawImage(vizEl, 0, 0, vc.width, vc.height); requestAnimationFrame(draw); };
+        draw();
+        stream = vc.captureStream(30); recDest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
+        type = ["video/mp4;codecs=avc1,mp4a.40.2", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find((t) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+      }
+      const chunks = [];
       let r;
-      try { r = new MediaRecorder(recDest.stream, type ? { mimeType: type } : undefined); } catch (err) { toast("Can’t record: " + err.message); return; }
+      try { r = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 6e6 } : undefined); } catch (err) { recVideo = null; toast("Can’t record: " + err.message); return; }
       r.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
       r.onstop = () => {
         const secs = (performance.now() - recStart) / 1000, t = r.mimeType || type || "audio/webm";
-        const ext = /mp4|aac|m4a/.test(t) ? "m4a" : /ogg/.test(t) ? "ogg" : "webm";
+        const vid = /^video/.test(t), ext = vid ? (/mp4/.test(t) ? "mp4" : "webm") : /mp4|aac|m4a/.test(t) ? "m4a" : /ogg/.test(t) ? "ogg" : "webm";
+        recVideo = null;
         const file = new File([new Blob(chunks, { type: t })], `acid-flower-${stamp()}-${String(Date.now()).slice(-4)}.${ext}`, { type: t.split(";")[0] });
         drawRec();
         toast("Recorded " + clock(secs), "Save", () => saveFile(file, "Acid Flower recording"), 15000);
@@ -1065,6 +1356,392 @@
     drawRec(); buzz(12);
   };
   for (const id of ["rec", "raveRec"]) onPress($(id), () => setRec(!(rec && rec.state === "recording")));
+
+
+  // ------------------------------------------------------------------------------------------- styles ---
+  // hold Random: a whole pattern in a style (the bass, sometimes a lead, the drums with their chances and rolls, a tempo)
+  const STYLES = [
+    ["chicago", "Classic Chicago", "Warm and bouncy, 122 BPM, the one that started it"],
+    ["hard", "Hard acid", "Fast and relentless: accents, octave jumps, rolls"],
+    ["minimal", "Minimal", "Few notes, lots of space, hats by chance"],
+    ["deep", "Deep", "Low, sliding, a lead on top, a pumping kick"],
+    ["wonky", "Wonky", "Tracks of different lengths drifting against each other"],
+  ];
+  const gen = (style) => {
+    const R = Math.random, P = { chicago: { d: 0.7, a: 0.3, sl: 0.22, o: 0.15, bpm: [120, 126] }, hard: { d: 0.9, a: 0.45, sl: 0.25, o: 0.3, bpm: [138, 150] },
+      minimal: { d: 0.4, a: 0.22, sl: 0.15, o: 0.08, bpm: [122, 128] }, deep: { d: 0.55, a: 0.2, sl: 0.38, o: 0.05, bpm: [116, 122] }, wonky: { d: 0.65, a: 0.35, sl: 0.25, o: 0.2, bpm: [124, 132] } }[style];
+    const sc = style === "minimal" ? [0, 0, 0, 7, 12] : style === "deep" ? [0, 3, 5, 7, 10] : pick(SCALES);
+    const line = (dens, lo) => ALL16.map((i) => stepOK({ on: i === 0 || R() < dens, note: i === 0 || R() < 0.4 ? 0 : pick(sc), oct: R() < P.o ? 1 : lo && R() < 0.35 ? -1 : 0,
+      acc: i % 4 === 0 ? R() < P.a * 1.6 : R() < P.a, slide: R() < P.sl }));
+    const bass = line(P.d, style === "deep");
+    const k = [0, 4, 8, 12], hat = [], open = [2, 6, 10, 14], clap = [4, 12], snare = [], tom = [], rim = [], bell = [];
+    if (style === "hard") { k.push(pick([3, 7, 11, 14, 15])); ALL16.forEach((i) => hat.push(i)); snare.push(15); }
+    else if (style === "minimal") { ALL16.forEach((i) => { if (i % 2) hat.push(i); }); rim.push(pick([3, 7]), pick([10, 11, 14])); clap.length = 0; clap.push(12); }
+    else if (style === "deep") { ALL16.forEach((i) => { if (i % 4 !== 0) hat.push(i); }); clap.length = 0; clap.push(12); tom.push(pick([13, 14, 15])); }
+    else { ALL16.forEach((i) => { if (i % 4 !== 2 && R() < 0.85) hat.push(i); }); if (R() < 0.3) bell.push(pick([3, 11]), pick([6, 14])); }
+    const p = normPat({ len: 16, bass: [...bass, ...bass.map((x) => ({ ...x }))], drums: grid([k, snare, clap, hat, style === "minimal" ? [] : open, tom, rim, bell]) });
+    if (style === "hard") { p.dr[1][15] = 4; p.dr[1][31] = 4; p.dr[3].forEach((_, i) => { if (i % 8 === 7) p.dr[3][i] = 2; }); }
+    if (style === "minimal") p.dp[3].forEach((_, i) => { p.dp[3][i] = i % 4 === 3 ? 100 : 50; });
+    if (style === "deep") { const ld = line(0.3, false); ld.forEach((x) => { x.slide = R() < 0.5; x.acc = false; }); p.lead = [...ld, ...ld.map((x) => ({ ...x }))]; p.dp[3].forEach((_, i) => { p.dp[3][i] = 75; }); }
+    if (style === "wonky") { p.dlen[3] = pick([12, 10, 14]); p.dlen[6] = pick([5, 7]); p.drums[6][0] = p.drums[6][3] = true; p.llen = 0; const ld = line(0.4, false); p.lead = [...ld, ...ld.map((x) => ({ ...x }))]; p.llen = pick([12, 13, 15]); }
+    p.bass.forEach((x, i) => { if (style === "minimal" && i % 4 && R() < 0.4) x.prob = 50; });
+    return { p, tempo: Math.round(P.bpm[0] + R() * (P.bpm[1] - P.bpm[0])) };
+  };
+  $("genList").innerHTML = STYLES.map(([id, name, what]) => `<button type="button" data-style="${id}"><b>${name}</b><small>${what}</small></button>`).join("");
+  $("genList").addEventListener("click", (e) => {
+    const b2 = e.target.closest("button[data-style]"); if (!b2) return;
+    const { p, tempo } = gen(b2.dataset.style), name = pat().name, next = pat().next;
+    begin(); S.slots[S.cur] = Object.assign(p, { name, next }); S.params.tempo = tempo; commit();
+    sendParams(); sendPattern(); save(); drawAll(); $("genMenu").close();
+    toast(STYLES.find((x) => x[0] === b2.dataset.style)[1] + " at " + tempo + " BPM", "Undo", undo);
+  });
+  $("genMenu").addEventListener("click", (e) => { if (e.target === $("genMenu")) $("genMenu").close(); });
+  { const rb = $("random"); let hold = 0, held = false;
+    rb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); held = false; hold = setTimeout(() => { held = true; buzz(15); show($("genMenu")); }, 480); });
+    rb.addEventListener("pointerup", () => { clearTimeout(hold); if (!held) doRandom(); });
+    rb.addEventListener("pointercancel", () => clearTimeout(hold));
+    rb.addEventListener("click", (e) => { if (e.detail === 0) doRandom(); });
+    rb.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); if (e.pointerType !== "touch") show($("genMenu")); }); }
+
+  // --------------------------------------------------------------------------------------------- song ---
+  // patterns in order, each a number of times, round and round; Play starts it from the top
+  let songI = 0, songLoop = 0, songPend = -1;
+  function songStep() {                                   // (a pattern's loop begins)
+    if (songPend >= 0 && S.song[songPend] && S.cur === S.song[songPend].slot) { songI = songPend; songLoop = 0; songPend = -1; }
+    songLoop++;
+    const e = S.song[songI] || S.song[0];
+    if (songLoop >= e.reps && songPend < 0) {
+      songPend = (songI + 1) % S.song.length;
+      const slot = S.song[songPend].slot;
+      if (slot !== S.cur) { nextSlot = slot; nextAuto = true; post({ type: "pattern", pattern: S.slots[slot], atBar: true }); }
+    }
+    drawSlots();
+  }
+  playHooks.unshift((on) => {
+    if (!on || !S.songOn || !S.song.length) return;
+    songI = 0; songLoop = 0; songPend = -1; nextSlot = -1;
+    S.cur = S.song[0].slot; sendPattern(); drawAll();
+  });
+  const songText = () => (S.songOn && S.song.length ? "SONG " + (songI + 1) + "/" + S.song.length : "");
+  function drawSong() {
+    $("songOn").querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(+b2.dataset.v === (S.songOn ? 1 : 0))));
+    $("songList").innerHTML = S.song.map((e, i) => `<li class="lrow"><span>${i + 1}.</span><div class="stepper"><button type="button" data-i="${i}" data-f="slot" data-d="-1" aria-label="Earlier pattern">&minus;</button>` +
+      `<span class="stepper__v"><small>Pattern</small><b>${e.slot + 1}${S.slots[e.slot].name ? " " + S.slots[e.slot].name : ""}</b></span><button type="button" data-i="${i}" data-f="slot" data-d="1" aria-label="Later pattern">+</button></div>` +
+      `<div class="stepper"><button type="button" data-i="${i}" data-f="reps" data-d="-1" aria-label="Fewer times">&minus;</button><span class="stepper__v"><small>Times</small><b>×${e.reps}</b></span>` +
+      `<button type="button" data-i="${i}" data-f="reps" data-d="1" aria-label="More times">+</button></div><button type="button" class="song__x" data-i="${i}" data-f="del" aria-label="Remove">✕</button></li>`).join("") ||
+      `<li class="sheet__hint">Nothing yet: add a pattern.</li>`;
+  }
+  $("songMenu").addEventListener("click", (e) => {
+    if (e.target === $("songMenu")) return $("songMenu").close();
+    const b2 = e.target.closest("button"); if (!b2) return;
+    if (b2.parentElement && b2.parentElement.id === "songOn") { S.songOn = b2.dataset.v === "1"; save(); drawSong(); drawSlots(); return; }
+    if (b2.id === "songAdd") { begin(); const last = S.song[S.song.length - 1]; S.song.push({ slot: last ? (last.slot + 1) % 8 : S.cur, reps: last ? last.reps : 2 }); commit(); save(); drawSong(); return; }
+    if (b2.id === "songMidi") { if (!S.song.length) return toast("Add patterns to the song first"); saveMidi(S.song.map((x) => [S.slots[x.slot], x.reps]), "song"); return; }
+    const i = +b2.dataset.i, f = b2.dataset.f, d = +b2.dataset.d;
+    if (!S.song[i]) return;
+    begin();
+    if (f === "del") S.song.splice(i, 1);
+    else if (f === "slot") S.song[i].slot = (S.song[i].slot + d + 8) % 8;
+    else if (f === "reps") S.song[i].reps = Math.max(1, Math.min(16, S.song[i].reps + d));
+    commit(); save(); drawSong();
+  });
+  $("songBtn").addEventListener("click", () => { menu.close(); drawSong(); show($("songMenu")); });
+
+  // ---------------------------------------------------------------------------------------- MIDI files ---
+  // a pattern (four times round) or the song as a Standard MIDI File: the bass on channel 1, the lead on 2, the drums on
+  // 10 (General MIDI's notes), with the swing, the accents (louder), the slides (legato) and the repeats; chance plays all
+  const GM = [36, 38, 39, 42, 46, 45, 37, 56];
+  const vlq = (n) => { const o = [n & 127]; while ((n >>= 7)) o.unshift((n & 127) | 128); return o; };
+  const smfTrack = (evs) => {
+    evs.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+    const out = []; let t = 0;
+    for (const [tick, , bytes] of evs) { out.push(...vlq(Math.max(0, tick - t)), ...bytes); t = Math.max(t, tick); }
+    out.push(0, 0xff, 0x2f, 0);
+    return [0x4d, 0x54, 0x72, 0x6b, (out.length >>> 24) & 255, (out.length >>> 16) & 255, (out.length >>> 8) & 255, out.length & 255, ...out];
+  };
+  const toMidi = (list) => {
+    const Q = 96, ST = 24, P = S.params, swing = Math.round((Math.max(0.5, Math.min(0.75, P.swing)) - 0.5) * 2 * ST);
+    const usq = Math.round(60000000 / P.tempo);
+    const meta = [[0, 0, [0xff, 0x51, 3, (usq >> 16) & 255, (usq >> 8) & 255, usq & 255]], [0, 0, [0xff, 0x03, 11, ...new TextEncoder().encode("Acid Flower")]]];
+    const tr = [[], [], []];
+    let base = 0;
+    const note = (k, ch, n, at, len, vel) => { tr[k].push([at, 1, [0x90 | ch, n & 127, vel]], [at + Math.max(1, len), 0, [0x80 | ch, n & 127, 0]]); };
+    const voice = (k, ch, steps, len, root, a, t0, st) => {
+      const x = steps[a % len]; if (!x || !x.on) return;
+      const n = root + P.tune + x.note + 12 * x.oct, rat = x.rat || 1, sl = x.slide && rat === 1;
+      for (let r = 0; r < rat; r++) note(k, ch, n, t0 + Math.round((r * st) / rat), sl ? st + 3 : Math.round((st / rat) * 0.55), x.acc ? 120 : 88);
+    };
+    for (const [p, loops] of list) {
+      const total = p.len * loops;
+      for (let a = 0; a < total; a++) {
+        const t0 = base + a * ST + (a % 2 ? swing : 0), st = ST - (a % 2 ? swing : -swing) * 0;
+        voice(1, 0, p.bass, p.len, 36, a % p.len, t0, ST);
+        voice(2, 1, p.lead, p.llen || p.len, 48, a, t0, ST);
+        for (let l = 0; l < LANES.length; l++) {
+          const dl = p.dlen[l] || p.len, i = a % dl;
+          if (!p.drums[l][i]) continue;
+          const rat = p.dr[l][i] || 1;
+          for (let r = 0; r < rat; r++) note(0, 9, GM[l], t0 + Math.round((r * ST) / rat), 6, r ? 80 : 100);
+        }
+        void st;
+      }
+      base += total * ST;
+    }
+    const tracks = [smfTrack(meta), smfTrack([[0, 0, [0xff, 0x03, 4, 68, 114, 117, 109]], ...tr[0]]), smfTrack([[0, 0, [0xff, 0x03, 4, 66, 97, 115, 115]], ...tr[1]]), smfTrack([[0, 0, [0xff, 0x03, 4, 76, 101, 97, 100]], ...tr[2]])];
+    const head = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, tracks.length, 0, Q];
+    return new Uint8Array([...head, ...tracks.flat()]);
+  };
+  function saveMidi(list, name) {
+    const file = new File([toMidi(list)], `acid-flower-${(name || "pattern").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.mid`, { type: "audio/midi" });
+    saveFile(file, "Acid Flower MIDI");
+  }
+  $("slotMidi").addEventListener("click", () => { const p = S.slots[sheetSlot]; saveMidi([[p, 4]], p.name || "pattern-" + (sheetSlot + 1)); });
+
+
+  // --------------------------------------------------------------------------------------------- MIDI ---
+  // Web MIDI, where the browser has it (Chrome, Edge, Opera, Android; not Safari, so not iPad or iPhone): keys play the
+  // lead or the bass (or hold the punch-ins and pick the scenes, for a VJ set), knobs learnt to any control, program
+  // changes pick the patterns, the clock in (follow) and out (lead)
+  const CTRL = {};                                          // what a knob can turn: { name, get, set } (the VJ adds its own)
+  for (const [k, name] of [["cutoff", "Cutoff"], ["reso", "Resonance"], ["env", "Env mod"], ["decay", "Decay"], ["accent", "Accent"], ["drive", "Drive"],
+    ["delay", "Delay"], ["verb", "Verb"], ["pump", "Pump"], ["lead", "Lead level"], ["drums", "Drums level"]])
+    CTRL[k] = { name, get: () => S.params[k], set: (v) => { S.params[k] = v; sendParams(); save(); drawXY(); drawKey(k); } };
+  CTRL.tempo = { name: "Tempo", get: () => (S.params.tempo - 60) / 120, set: (v) => { setParam("tempo", Math.round(60 + v * 120)); drawKey("tempo"); } };
+  const MIDI_DEF = { cutoff: 74, reso: 71, env: 16, decay: 17, accent: 18, drive: 19, delay: 20, verb: 21, pump: 22, lead: 23 };
+  const MP = (() => { try { return { keys: "lead", follow: false, send: false, inId: "all", outId: "", map: { ...MIDI_DEF }, ...JSON.parse(localStorage.getItem("acid-flower-midi") || "{}") }; } catch { return { keys: "lead", follow: false, send: false, inId: "all", outId: "", map: { ...MIDI_DEF } }; } })();
+  const saveMP = () => { try { localStorage.setItem("acid-flower-midi", JSON.stringify(MP)); } catch {} };
+  let midi = null, learning = null, clockT = [], clockNext = 0, clockTimer = 0;
+  const midiOK = !!navigator.requestMIDIAccess;
+  const midiMsg = (t) => { $("midiMsg").textContent = t; };
+  function drawMidi() {
+    $("midiStatus").textContent = !midiOK ? "This browser has no MIDI. Safari (and so every browser on iPad and iPhone) leaves it out; Chrome or Edge on a computer, or Chrome on Android, have it."
+      : midi ? (midi.inputs.size ? "Listening to " + [...midi.inputs.values()].map((x) => x.name).join(", ") + "." : "MIDI is on, but nothing is plugged in yet.")
+      : "Plug in a keyboard or a controller, then turn MIDI on (the browser asks first).";
+    $("midiOn").hidden = !midiOK || !!midi;
+    $("midiBody").hidden = !midi;
+    if (!midi) return;
+    $("midiIn").innerHTML = `<option value="all">Everything</option>` + [...midi.inputs.values()].map((x) => `<option value="${x.id}">${x.name}</option>`).join("");
+    $("midiIn").value = MP.inId === "all" || midi.inputs.has(MP.inId) ? MP.inId : "all";
+    $("midiOut").innerHTML = `<option value="">Nowhere</option>` + [...midi.outputs.values()].map((x) => `<option value="${x.id}">${x.name}</option>`).join("");
+    $("midiOut").value = midi.outputs.has(MP.outId) ? MP.outId : "";
+    for (const [id, v] of [["midiKeys", MP.keys], ["midiFollow", MP.follow ? "1" : "0"], ["midiSend", MP.send ? "1" : "0"]])
+      $(id).querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(b2.dataset.v === v)));
+    $("midiMap").innerHTML = Object.entries(CTRL).map(([k, c]) => `<div class="lrow"><span>${c.name}</span><span class="midi__cc">${MP.map[k] != null ? "CC " + MP.map[k] : "—"}</span>` +
+      `<button type="button" data-learn="${k}" aria-pressed="${learning === k}">${learning === k ? "Turn a knob…" : "Learn"}</button>${MP.map[k] != null ? `<button type="button" data-forget="${k}" aria-label="Forget">✕</button>` : ""}</div>`).join("");
+  }
+  const hook = () => { for (const i of midi.inputs.values()) i.onmidimessage = (MP.inId === "all" || MP.inId === i.id) ? onMidi : null; };
+  async function midiStart() {
+    try { midi = await navigator.requestMIDIAccess({ sysex: false }); } catch (err) { $("midiStatus").textContent = "MIDI wasn’t allowed (" + (err.message || err.name) + "). Allow it in the browser’s site settings, then try again."; return; }
+    midi.onstatechange = () => { hook(); drawMidi(); };
+    hook(); drawMidi(); clockLoop();
+    try { localStorage.setItem("acid-flower-midi-on", "1"); } catch {}
+  }
+  const outPort = () => (midi && MP.outId ? midi.outputs.get(MP.outId) : null);
+  const VJN = { punch: 48, scene: 60 };                    // (C2.. the punch-ins, C3.. the scenes, in MIDI note numbers)
+  function onMidi(e) {
+    const d = e.data, st = d[0] & 0xf0;
+    if (d[0] === 0xf8) {                                   // the clock: 24 a beat
+      if (!MP.follow) return;
+      clockT.push(e.timeStamp); if (clockT.length > 49) clockT.shift();
+      if (clockT.length >= 25) { const bpm = 60000 / (((clockT[clockT.length - 1] - clockT[0]) / (clockT.length - 1)) * 24); if (Math.abs(bpm - S.params.tempo) > 0.4) { S.params.tempo = Math.max(60, Math.min(180, Math.round(bpm * 10) / 10)); sendParams(); drawKey("tempo"); } }
+      return;
+    }
+    if (d[0] === 0xfa || d[0] === 0xfb) { if (MP.follow) { clockT = []; if (playing) setPlaying(false); setPlaying(true); } return; }
+    if (d[0] === 0xfc) { if (MP.follow && playing) setPlaying(false); return; }
+    if (st === 0xb0) {                                     // a knob
+      const cc = d[1], v = d[2] / 127;
+      if (learning) { for (const k of Object.keys(MP.map)) if (MP.map[k] === cc) delete MP.map[k]; MP.map[learning] = cc; midiMsg(CTRL[learning].name + " is CC " + cc); learning = null; saveMP(); drawMidi(); return; }
+      for (const [k, c] of Object.entries(MP.map)) if (c === cc && CTRL[k]) CTRL[k].set(v);
+      return;
+    }
+    if (st === 0xc0) { if (d[1] < 8) pickSlot(d[1]); return; }   // a program change: a pattern
+    if (st === 0x90 || st === 0x80) {
+      const n = d[1], on = st === 0x90 && d[2] > 0;
+      if (MP.keys === "vj") {
+        if (n >= VJN.punch && n < VJN.punch + 12) { fxHold(n - VJN.punch, "m" + n, on); return; }
+        if (on && n >= VJN.scene && n < VJN.scene + rave.sceneCount()) { rave.go(n - VJN.scene); drawScenes(); return; }
+        if (on && n === VJN.scene + 12) { rave.next(); drawScenes(); return; }
+        return;
+      }
+      post({ type: "live", on, note: n, acc: d[2] > 110, voice: MP.keys });
+      if (on) rave.event({ ...viz, note: n, accHit: d[2] > 110, hits: 0 });
+    }
+  }
+  // the clock out: scheduled ahead with timestamps (steady, however busy the page is), lined up with the sound's latency
+  function clockLoop() {
+    clearInterval(clockTimer);
+    clockTimer = setInterval(() => {
+      const o = outPort();
+      if (!o || !MP.send) { clockNext = 0; return; }
+      const now = performance.now(), lat = ctx ? ((ctx.outputLatency || 0) + (ctx.baseLatency || 0)) * 1000 : 0, per = 60000 / (S.params.tempo * 24);
+      if (!clockNext || clockNext < now) clockNext = now + lat;
+      while (clockNext < now + 120) { try { o.send([0xf8], clockNext); } catch {} clockNext += per; }
+    }, 25);
+  }
+  playHooks.push((on) => { const o = outPort(); if (o && MP.send) try { o.send([on ? 0xfa : 0xfc]); } catch {} });
+  $("midiOn").addEventListener("click", midiStart);
+  $("midiBtn").addEventListener("click", () => { menu.close(); drawMidi(); show($("midiMenu")); });
+  $("midiMenu").addEventListener("click", (e) => {
+    if (e.target === $("midiMenu")) return $("midiMenu").close();
+    const b2 = e.target.closest("button"); if (!b2) return;
+    const seg = b2.parentElement && b2.parentElement.id;
+    if (seg === "midiKeys") MP.keys = b2.dataset.v;
+    else if (seg === "midiFollow") MP.follow = b2.dataset.v === "1";
+    else if (seg === "midiSend") { MP.send = b2.dataset.v === "1"; clockLoop(); }
+    else if (b2.dataset.learn) { learning = learning === b2.dataset.learn ? null : b2.dataset.learn; midiMsg(learning ? "Now turn a knob for " + CTRL[learning].name : ""); }
+    else if (b2.dataset.forget) delete MP.map[b2.dataset.forget];
+    else return;
+    saveMP(); drawMidi();
+  });
+  $("midiIn").addEventListener("change", () => { MP.inId = $("midiIn").value; saveMP(); hook(); });
+  $("midiOut").addEventListener("change", () => { MP.outId = $("midiOut").value; saveMP(); clockLoop(); });
+  try { if (midiOK && localStorage.getItem("acid-flower-midi-on") === "1" && navigator.permissions) navigator.permissions.query({ name: "midi" }).then((r) => { if (r.state === "granted") midiStart(); }).catch(() => {}); } catch {}
+
+
+  // ----------------------------------------------------------------------------------------------- VJ ---
+  // rave mode's VJ panel: Fill or Fit, the hue, the speed, mirrors and a kaleidoscope, trails, a zoom on the kick, the
+  // colour split, bigger pixels, a strobe, what shows, scrolling words, Auto VJ, what Rec records; a second screen
+  const saveVJ = () => { try { const { text, ...keep } = VJS; localStorage.setItem("acid-flower-vj", JSON.stringify(keep)); } catch {} };
+  const applyVJ = () => {
+    for (const k of Object.keys(rave.vj)) if (VJS[k] !== undefined) rave.vj[k] = VJS[k];
+    const P = $("vjPanel");
+    P.querySelectorAll(".seg[data-vj]").forEach((sg) => sg.querySelectorAll("button").forEach((b2) => {
+      const k = sg.dataset.vj, v = VJS[k], want = typeof v === "boolean" ? (v ? "1" : "0") : String(v);
+      b2.setAttribute("aria-pressed", String(b2.dataset.v === want));
+    }));
+    P.querySelectorAll("[data-show]").forEach((b2) => b2.setAttribute("aria-pressed", String(VJS[b2.dataset.show] !== false)));
+    P.querySelectorAll("input[data-vj]").forEach((i) => { if (document.activeElement !== i) i.value = VJS[i.dataset.vj] == null ? "" : VJS[i.dataset.vj]; });
+    requestAnimationFrame(fitViz);
+  };
+  const setVJ = (k, v) => { VJS[k] = v; saveVJ(); applyVJ(); };
+  $("vjPanel").addEventListener("click", (e) => {
+    const b2 = e.target.closest("button"); if (!b2) return;
+    const sg = b2.closest(".seg[data-vj]");
+    if (sg) { const k = sg.dataset.vj, v = b2.dataset.v; setVJ(k, k === "fill" || k === "auto" ? v === "1" : k === "rec" ? v : +v); }
+    else if (b2.dataset.show) setVJ(b2.dataset.show, VJS[b2.dataset.show] === false);
+  });
+  $("vjPanel").addEventListener("input", (e) => { const i = e.target.closest("input[data-vj]"); if (!i) return; setVJ(i.dataset.vj, i.type === "range" ? +i.value : i.value); });
+  for (const t of ["pointerdown", "pointermove", "keydown"]) $("vjPanel").addEventListener(t, (e) => { e.stopPropagation(); poke(); });   // (the panel's own touches)
+  const openVJ = (on) => { $("vjPanel").hidden = !on; $("raveVJ").setAttribute("aria-pressed", String(on)); closeScenes(); applyVJ(); poke(); };
+  onPress($("raveVJ"), () => openVJ($("vjPanel").hidden));
+  $("vjClose").addEventListener("click", () => openVJ(false));
+  $("vjReset").addEventListener("click", () => { const keep = { fill: VJS.fill, rec: VJS.rec }; Object.assign(VJS, globalThis.AcidRave.VJ0, keep); saveVJ(); applyVJ(); });
+  // Auto VJ: every 4 bars, a new look
+  rave.onAuto = () => {
+    const R = Math.random;
+    Object.assign(VJS, { hue: R() < 0.3 ? 0 : Math.round(R() * 100) / 100, mirror: pick([0, 0, 1, 2, 3]), trails: R() < 0.5 ? 0 : Math.round((0.5 + R() * 0.4) * 100) / 100,
+      zoom: R() < 0.5 ? 0 : 0.6, rgb: R() < 0.6 ? 0 : 0.5, pix: pick([1, 1, 1, 2, 3]) });
+    if (R() < 0.4) rave.next();
+    applyVJ();
+  };
+  // MIDI can turn the VJ's knobs too
+  for (const [k, name, lo, hi] of [["hue", "VJ hue", 0, 1], ["trails", "VJ trails", 0, 0.95], ["zoom", "VJ kick zoom", 0, 1], ["rgb", "VJ colour split", 0, 1]])
+    CTRL["vj_" + k] = { name, get: () => VJS[k], set: (v) => { VJS[k] = lo + v * (hi - lo); applyVJ(); } };
+  CTRL.vj_mirror = { name: "VJ mirror", get: () => VJS.mirror / 3, set: (v) => { VJS.mirror = Math.round(v * 3); applyVJ(); } };
+  // the second screen: a window that shows every frame (30 a second), for a projector
+  let bc = null, outAlive = 0, lastOut = 0;
+  const openOut = () => {
+    if (!window.BroadcastChannel) { toast("This browser can’t open a second screen."); return; }
+    if (!bc) {
+      bc = new BroadcastChannel("acid-flower-vj");
+      bc.onmessage = (e) => { if (e.data && e.data.hello) outAlive = performance.now(); if (e.data && e.data.bye) outAlive = 0; };
+      rave.onFrame = (img) => {
+        const now = performance.now();
+        if (!outAlive || now - outAlive > 4000 || now - lastOut < 32) return;
+        lastOut = now; bc.postMessage({ w: img.width, h: img.height, d: img.data });
+      };
+    }
+    outAlive = performance.now();
+    const w = window.open("vj.html", "acid-flower-vj", "popup,width=960,height=600");
+    if (!w) toast("The window was blocked: allow pop-ups for this site, then try again.");
+  };
+  $("vjOut").addEventListener("click", openOut);
+  applyVJ();
+
+
+  // ------------------------------------------------------------------------------------------ pocket jam ---
+  // shake to mutate (the motion sensor), and the light filter (the front camera's brightness: the frames stay here,
+  // sampled at 16 x 12 and thrown away)
+  let shakeOn = false, shakeT = 0, lastAcc = null;
+  const onShake = (e) => {
+    const a = e.accelerationIncludingGravity || e.acceleration; if (!a || a.x == null) return;
+    if (lastAcc) {
+      const d = Math.abs(a.x - lastAcc.x) + Math.abs(a.y - lastAcc.y) + Math.abs(a.z - lastAcc.z), now = performance.now();
+      if (d > 28 && now - shakeT > 900) { shakeT = now; runAct($("mutate")); buzz(30); rave.burst && rave.burst(); }
+    }
+    lastAcc = { x: a.x, y: a.y, z: a.z };
+  };
+  const setShake = async (on) => {
+    if (on) {
+      try {
+        if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === "function" && (await DeviceMotionEvent.requestPermission()) !== "granted") { msg("Shake needs motion access."); on = false; }
+        else if (!("DeviceMotionEvent" in window)) { msg("This device has no motion sensor."); on = false; }
+      } catch (err) { msg("Shake isn’t available here: " + err.message); on = false; }
+    }
+    shakeOn = on; lastAcc = null;
+    if (on) addEventListener("devicemotion", onShake); else removeEventListener("devicemotion", onShake);
+    $("shakeSeg").querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(b2.dataset.v === (on ? "1" : "0"))));
+  };
+  let light = null;
+  const setLight = async (on) => {
+    if (light) { clearInterval(light.t); light.stream.getTracks().forEach((t) => t.stop()); light = null; }
+    if (on) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 160, height: 120 }, audio: false });
+        const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.srcObject = stream; await v.play();
+        const c = document.createElement("canvas"); c.width = 16; c.height = 12; const g = c.getContext("2d", { willReadFrequently: true });
+        let lo = 255, hi = 0;
+        light = { stream, t: setInterval(() => {
+          g.drawImage(v, 0, 0, 16, 12); const d = g.getImageData(0, 0, 16, 12).data; let sum = 0;
+          for (let i = 0; i < d.length; i += 4) sum += d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+          const L = sum / (d.length / 4); lo = Math.min(lo + 0.05, L); hi = Math.max(hi - 0.05, L);   // (the range it has seen, slowly forgetting)
+          const x = hi - lo > 8 ? (L - lo) / (hi - lo) : 0.5;
+          S.params.cutoff += (clamp01(0.1 + x * 0.8) - S.params.cutoff) * 0.5; sendParams(); drawXY();
+        }, 60) };
+      } catch (err) { msg("The light filter needs the camera: " + (err.message || err.name)); on = false; }
+    }
+    $("lightSeg").querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(b2.dataset.v === (on ? "1" : "0"))));
+  };
+  $("shakeSeg").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) setShake(b2.dataset.v === "1"); });
+  $("lightSeg").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) setLight(b2.dataset.v === "1"); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && light) setLight(false); });
+  setShake(false); setLight(false);
+
+  // ------------------------------------------------------------------------------------ no sound? help ---
+  // if the sound stops (another app took it, a call, Bluetooth gone, the iPad asleep), a button to bring it back
+  function watchSound() {
+    setInterval(() => {
+      const bad = ctx && !document.hidden && $("gate").hidden && ctx.state !== "running";
+      $("noSound").hidden = !bad;
+    }, 1000);
+  }
+  $("noSound").addEventListener("click", async () => {
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
+    try { await ctx.resume(); } catch {}
+    setTimeout(() => {
+      if (ctx.state === "running") { $("noSound").hidden = true; toast("Sound back"); }
+      else toast("Still nothing: close other apps playing sound, check the volume (and, on an iPhone, the silent switch), then reopen Acid Flower.", null, null, 9000);
+    }, 500);
+  });
+
+  // ------------------------------------------------------------------------------------ the backup nudge ---
+  // the patterns live only on this device: after a lot of changes and a week without a copy, a reminder
+  function backupNudge() {
+    const week = 7 * 864e5, now = Date.now();
+    if ((S.edits || 0) < 25 || now - (S.backupAt || 0) < week || now - (S.nudgedAt || 0) < 3 * 864e5) return;
+    S.nudgedAt = now; save();
+    toast("Your patterns live only on this device. Keep a copy?", "Save", () => $("export").click(), 12000);
+  }
+
+  // -------------------------------------------------------------------------------------- the keyboard ---
+  // a step focused with Tab: Enter or Space toggles it (a note rests or comes back; a drum step on or off)
+  for (const el of [bassEl, drumsEl]) el.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const t = e.target;
+    if (t.classList.contains("st__note")) { e.preventDefault(); e.stopPropagation(); begin(); const i = stp(+t.dataset.s), x = trk()[i]; x.on = !x.on; drawBass(); edited(); audition(i); }
+    else if (t.classList.contains("dr")) { e.preventDefault(); e.stopPropagation(); begin(); const l = +t.dataset.lane, i = stp(+t.dataset.s); pat().drums[l][i] = !pat().drums[l][i]; drawDrums(); edited(); }
+  });
+  document.querySelectorAll(".st__note, .dr").forEach((el) => { el.tabIndex = 0; if (el.classList.contains("st__note")) el.setAttribute("role", "button"); });
 
   // ---------------------------------------------------------------------------------- latch, tap tempo ---
   let latch = false;
@@ -1139,5 +1816,5 @@
   $("tourAgain").addEventListener("click", () => { menu.close(); setTimeout(() => tour(0), 200); });
   addEventListener("resize", () => { if (tourI >= 0) tour(tourI); });
 
-  window.acid = { state: () => S, locked: () => locked, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
+  window.acid = { state: () => S, VJS, applyVJ, ctx: () => ctx, onMidi: (d) => onMidi({ data: d, timeStamp: performance.now() }), onMidiAt: (d, t) => onMidi({ data: d, timeStamp: t }), clockLoop, CTRL, MP, toMidi, gen, songPos: () => [songI, songLoop], locked: () => locked, decode2, normPat, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
 })();

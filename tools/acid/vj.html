@@ -1,0 +1,53 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Acid Flower's second screen: the rave, for a projector or a TV. acid.js sends every frame over a BroadcastChannel;
+     this window only shows them, big, with its pixels crisp. Tap for full screen; double-tap to fill or fit. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Acid Flower: the screen</title>
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  body { display: grid; place-items: center; }
+  canvas { width: 100vw; height: 100vh; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; }
+  body.fill canvas { object-fit: cover; }
+  p { position: fixed; inset: auto 0 6vh; margin: 0; text-align: center; font: 16px ui-monospace, Menlo, monospace; color: #B4FF2B; letter-spacing: .1em; }
+  p[hidden] { display: none; }
+</style>
+</head>
+<body class="fill">
+<canvas id="c" width="240" height="150"></canvas>
+<p id="hint">WAITING FOR ACID FLOWER&#8230; (KEEP ITS RAVE OPEN)</p>
+<script>
+"use strict";
+(() => {
+  const cv = document.getElementById("c"), g = cv.getContext("2d"), hint = document.getElementById("hint");
+  const bc = new BroadcastChannel("acid-flower-vj");
+  let img = null, last = 0;
+  bc.onmessage = (e) => {
+    const m = e.data;
+    if (!m || !m.d) return;
+    if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; img = null; }
+    if (!img) img = g.createImageData(m.w, m.h);
+    img.data.set(m.d); g.putImageData(img, 0, 0);
+    last = performance.now(); hint.hidden = true;
+  };
+  setInterval(() => { bc.postMessage({ hello: 1 }); if (performance.now() - last > 2500) hint.hidden = false; }, 1000);
+  bc.postMessage({ hello: 1 });
+  addEventListener("beforeunload", () => bc.postMessage({ bye: 1 }));
+  let tapT = 0;
+  addEventListener("pointerup", () => {
+    const now = performance.now();
+    if (now - tapT < 350) { document.body.classList.toggle("fill"); tapT = 0; return; }
+    tapT = now;
+    const d = document.documentElement;
+    if (!document.fullscreenElement && d.requestFullscreen) d.requestFullscreen().catch(() => {});
+  });
+})();
+</script>
+</body>
+</html>

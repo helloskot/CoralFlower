@@ -158,14 +158,11 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .gate.is-on .gate__power { display: none; }
 /* the pixel icons on the tabs and buttons */
 .pix { flex: 0 0 auto; image-rendering: pixelated; }
-.tabs button, .rave-btn, .tilt-btn { display: inline-flex; align-items: center; gap: 8px; }
-/* the power-on: the boot's own pixel picture, the whole screen */
+.tabs button, .rave-btn, /* the power-on: the boot's own pixel picture, the whole screen */
 .gate__boot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; }
 .gate { background: #000; touch-action: none; }
 .gate p { text-shadow: 0 1px 6px #000; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.tilt-btn { flex-basis: auto; padding: 0 14px; font-size: 14px; color: var(--cyan); letter-spacing: .06em; text-transform: uppercase; }
-.tilt-btn[aria-pressed="true"] { background: var(--cyan); color: var(--black); }
 .gate__card img { image-rendering: pixelated; animation: bob .5s ease-in-out infinite alternate; }
 @keyframes bob { to { transform: translateY(-8px); } }
 .gate h2, .menu h2 { font-weight: 400; font-size: clamp(34px, 6vw, 60px); letter-spacing: .04em; }
@@ -246,12 +243,12 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .app { --gap: 5px; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(110px, .8fr) minmax(150px, .85fr) minmax(320px, 1.9fr);
          grid-template-areas: "bar" "rave" "perf" "edit"; }
   .bar { flex-wrap: wrap; row-gap: 5px; }
-  .logo span, .rave-btn span, .tilt-btn span { display: none; }
+  .logo span, .rave-btn span { display: none; }
   .logo { padding: 0 2px; }
   .play { padding: 0 12px; min-height: 40px; }
   .strip--bar { flex: 1 1 0; min-width: 0; padding: 2px 24px; }
   .strip--bar .strip__l, .strip--bar .strip__r { width: 22px; }
-  .rave-btn, .tilt-btn, .menu-btn { padding: 0 9px; flex: 0 0 auto; }
+  .rave-btn, .menu-btn { padding: 0 9px; flex: 0 0 auto; }
   .slots { flex: 1 1 100%; order: 9; min-height: 36px; }
   .strip { padding: 3px 6px; }
   .strip em { font-size: 15px; }
@@ -274,12 +271,12 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 @media (max-height: 500px) and (orientation: landscape) {
   .app { --gap: 5px; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); grid-template-rows: 40px minmax(0, 1fr) minmax(0, 1fr);
          grid-template-areas: "bar bar" "rave edit" "perf edit"; }
-  .logo span, .rave-btn span, .tilt-btn span { display: none; }
+  .logo span, .rave-btn span { display: none; }
   .play { padding: 0 12px; font-size: 13px; }
   .strip--bar { flex-basis: 92px; padding: 1px 22px; }
   .strip--bar b { font-size: 9px; } .strip--bar em { font-size: 13px; }
   .strip--bar .strip__l, .strip--bar .strip__r { width: 20px; }
-  .rave-btn, .tilt-btn, .menu-btn { padding: 0 9px; flex: 0 0 auto; }
+  .rave-btn, .menu-btn { padding: 0 9px; flex: 0 0 auto; }
   .slot { font-size: 13px; }
   .perf { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
   .strip { padding: 2px 6px; } .strip b { font-size: 9px; } .strip em { font-size: 13px; }
@@ -454,7 +451,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .xy__trail i { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--pink); opacity: 0; pointer-events: none; }
 .xy.is-trail-off .xy__trail i { transition: opacity .6s ease-out; }
 
-/* phones: the tools on one row (icons), Rave and Tilt captioned, the steps in two rows of 8 each with its names */
+/* phones: the tools on one row (icons), Rave captioned, the steps in two rows of 8 each with its names */
 @media (max-width: 600px) and (orientation: portrait) {
   .bass { grid-template-columns: auto repeat(8, minmax(0, 1fr)); }
   .st--lab2 { display: grid; }
@@ -467,13 +464,11 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .tool--lab { padding: 0 8px; }
   .stepper button { min-width: 28px; }
   .stepper span { min-width: 2.2em; }
-  .rave-btn, .tilt-btn { flex-direction: column; justify-content: center; gap: 3px; }
-  .rave-btn span, .tilt-btn span { display: block; font-size: 9px; letter-spacing: .06em; }
+  .rave-btn,   .rave-btn span { display: block; font-size: 9px; letter-spacing: .06em; }
   .logo { display: none; }                  /* (the Home Screen icon is the logo; the bar needs the room) */
   .strip--bar { flex: 1 1 0; padding: 2px 21px; }
   .strip--bar .strip__l, .strip--bar .strip__r { width: 20px; font-size: 12px; }
-  .rave-btn, .tilt-btn { padding: 0 6px; }
-  .xy__val { font-size: 10px; top: 6px; right: 8px; }
+  .rave-btn,   .xy__val { font-size: 10px; top: 6px; right: 8px; }
 }
 @media (max-width: 360px) and (orientation: portrait) {
   .tools { gap: 3px; }
@@ -491,9 +486,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .tool--danger.is-armed span { display: inline; }
   .tool--icon { padding: 0 7px; }
   .stepper__v small, .tool--lab small { font-size: 7px; }
-  .rave-btn, .tilt-btn { flex-direction: column; justify-content: center; gap: 1px; }
-  .rave-btn span, .tilt-btn span { display: block; font-size: 8px; letter-spacing: .04em; }
-  .rave-btn .pix, .tilt-btn .pix { width: 16px; height: 16px; }
+  .rave-btn,   .rave-btn span { display: block; font-size: 8px; letter-spacing: .04em; }
+  .rave-btn .pix { width: 16px; height: 16px; }
   .strip--bar { flex-basis: 100px; padding: 1px 26px; }
   .strip--bar .strip__l, .strip--bar .strip__r { width: 24px; font-size: 12px; }
   .xy__val { font-size: 9px; top: 4px; right: 6px; }
@@ -511,8 +505,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 /* (book: each page is a phone's width; its bar and tools as on a phone) */
 :root.fold-lr .strip--bar { flex: 1 1 0; min-width: 0; padding: 2px 26px; }
 :root.fold-lr .strip--bar .strip__l, :root.fold-lr .strip--bar .strip__r { width: 24px; font-size: 12px; }
-:root.fold-lr .rave-btn, :root.fold-lr .tilt-btn { flex-direction: column; justify-content: center; gap: 2px; padding: 0 8px; flex: 0 0 auto; }
-:root.fold-lr .rave-btn span, :root.fold-lr .tilt-btn span { display: block; font-size: 9px; letter-spacing: .06em; }
+:root.fold-lr .rave-btn, :root.fold-lr :root.fold-lr .rave-btn span { display: block; font-size: 9px; letter-spacing: .06em; }
 :root.fold-lr .tools { flex-wrap: nowrap; gap: 4px; }
 :root.fold-lr .tool--icon span { display: none; }
 :root.fold-lr .tool--danger.is-armed span { display: inline; }
@@ -619,7 +612,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 @media (max-width: 1199px) and (min-width: 601px) and (min-height: 501px) { .rec span { display: none; } .rec { padding: 0 13px; } }
 
 /* ============================================================================================ rave mode ===
- * Along the top: where the set is (the pattern, the bar, what is next), the patterns, the tempo, Tilt, Lock, full
+ * Along the top: where the set is (the pattern, the bar, what is next), the patterns, the tempo, Lock, full
  * screen; along the bottom: the punch-ins and Play, Rec, Latch, Scene, Done (a little apart). They fade after 3 s
  * without a touch; a REC dot stays. Hold Scene for all the scenes. */
 .rave__top, .rave__recdot, .rave__hint, .rave__scenes { display: none; }
@@ -636,7 +629,6 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .rave__i { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: rgba(18, 10, 28, .75); box-shadow: inset 0 0 0 1.5px var(--line);
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .rave__i span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-#raveTilt[aria-pressed="true"] { background: var(--cyan); }
 #raveLock[aria-pressed="true"] { background: var(--yellow); }
 #raveFull[aria-pressed="true"] { background: var(--cell-hi); box-shadow: inset 0 0 0 2px var(--text); }
 .rave__i[aria-pressed="true"] .pix { filter: brightness(0); }
@@ -732,15 +724,12 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 @media (max-width: 1199px) { .hist .tool span { display: none; } }
 @media (max-width: 1199px) and (min-width: 601px) { .hist .tool { padding: 0 10px; } }
 
-/* the knobs: eight strips, Motion and Sounds; three across (four on a phone) */
+/* the knobs: nine strips and Sounds; three across (four on a phone) */
 .strips { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); }
 .strip[data-p="verb"] { --c: #B98CFF; } .strip[data-p="pump"] { --c: var(--orange); } .strip[data-p="lead"] { --c: var(--pink); }
 .knobbtn { position: relative; display: grid; place-items: center; align-content: center; gap: 4px; min-height: 0; min-width: 0; border-radius: var(--r); background: var(--panel);
   box-shadow: inset 0 0 0 1.5px var(--line); color: var(--muted); font-size: clamp(10px, 1.1vw, 13px); letter-spacing: .07em; text-transform: uppercase; }
 .knobbtn i { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 2px #FF5A6E; }
-#motionBtn.has-motion i { background: #FF5A6E; }
-#motionBtn[aria-pressed="true"] { background: #FF3B55; color: var(--black); box-shadow: none; }
-#motionBtn[aria-pressed="true"] i { box-shadow: inset 0 0 0 2px var(--black); background: var(--black); animation: recblink 1s steps(2) infinite; }
 #soundBtn { color: var(--yellow); }
 .sound__list button { min-width: 0; flex: 1 1 30%; }
 .sound__mine { display: grid; gap: 4px; }

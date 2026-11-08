@@ -17,7 +17,7 @@
   const grid = (spec) => LANES.map((_, l) => { const r = new Array(MAXS).fill(false); for (const s of spec[l] || []) { r[s] = true; if (s < 16) r[s + 16] = true; } return r; });
   const ALL16 = [...Array(16).keys()], ALL32 = [...Array(MAXS).keys()];
   // a pattern, filled out to today's shape: 32 steps of bass and lead (each with its chance and repeats), 8 drums with
-  // their chance and repeats per step, each track's own length (0: the pattern's), the motion (knob moves)
+  // their chance and repeats per step, each track's own length (0: the pattern's)
   const cl = (v, a, b2, d) => { v = Number(v); return Number.isFinite(v) ? Math.max(a, Math.min(b2, Math.round(v))) : d; };
   const padA = (a, n, f) => { a = Array.isArray(a) ? a.slice(0, n) : []; while (a.length < n) a.push(f(a.length)); return a; };
   const stepOK = (x) => (x && typeof x === "object" ? { on: !!x.on, note: cl(x.note, 0, 12, 0), oct: cl(x.oct, -1, 1, 0), acc: !!x.acc, slide: !!x.slide,
@@ -33,8 +33,7 @@
     p.dr = padA(p.dr, LANES.length, () => []).map((r) => padA(r, MAXS, () => 1).map((v) => cl(v, 1, 4, 1)));
     p.dlen = padA(p.dlen, LANES.length, () => 0).map((v) => cl(v, 0, MAXS, 0));
     p.llen = cl(p.llen, 0, MAXS, 0);
-    if (p.motion && typeof p.motion === "object") { for (const k of Object.keys(p.motion)) if (!Array.isArray(p.motion[k])) delete p.motion[k]; }
-    else delete p.motion;
+    delete p.motion;                                      // (knob moves recorded by an older version: no longer played)
     return p;
   };
   const STARTERS = [   // (written for Acid Flower: originals)
@@ -86,7 +85,7 @@
   const playHooks = [];                                   // (things that follow Play: the screen staying awake)
   const buzz = (ms = 8) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch {} };   // (a tick, where the device has one)
   const post = (m) => node && node.port.postMessage(m);
-  const sendParams = () => { post({ type: "params", params: S.params }); if (typeof recordMotion === "function") recordMotion(); };
+  const sendParams = () => post({ type: "params", params: S.params });
   const sendPattern = (atBar = false) => post({ type: "pattern", pattern: pat(), atBar });
   const wake = () => { if (ctx && ctx.state !== "running" && ctx.state !== "closed") ctx.resume().catch(() => {}); };
   for (const t of ["pointerdown", "keydown"]) addEventListener(t, wake, true);
@@ -709,11 +708,6 @@
   const rave = new globalThis.AcidRave($("viz"), { pattern: () => pat(), params: () => S.params, slot: () => S.cur, playing: () => playing, name: () => pat().name || "" });
   const onViz = (m) => {
     viz = m;
-    if (m.p && playing && !motionOn && hasMotion() && !ptr.size) {   // (motion playing back: the knobs follow it)
-      let ch = false;
-      for (const k of ["cutoff", "reso", "env"]) if (Math.abs(S.params[k] - m.p[k]) > 1e-4) { S.params[k] = m.p[k]; ch = true; }
-      if (ch) { drawXY(); drawKey("env"); }
-    }
     rave.event(m);
     if (m.step !== lastStep) {
       lastStep = m.step;
@@ -754,7 +748,7 @@
   addEventListener("resize", () => requestAnimationFrame(fitViz));
   fitViz();
   // rave mode: the display fills the screen, and the whole of it is the squelch pad. Along the top: where the set is,
-  // the patterns, the tempo, Tilt, Lock, full screen; along the bottom: the punch-ins, Play, Rec, Latch, the scene,
+  // the patterns, the tempo, Lock, full screen, VJ; along the bottom: the punch-ins, Play, Rec, Latch, the scene,
   // Done. Two fingers on the picture: swipe for a scene, pinch for the squelch (env mod), tap for Latch, swipe down to
   // leave. The controls fade after 3 s without a touch.
   const raving = () => app.classList.contains("is-rave");
@@ -951,7 +945,7 @@
     sp.addEventListener("keydown", (e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); setH($("viz").closest(".rave").getBoundingClientRect().height + (e.key === "ArrowDown" ? 24 : -24)); } }); }
   // ------------------------------------------------------------------------------------------- the icons ---
   // pixel icons, 12 x 12, drawn as crisp SVG: the bass line a squelching saw, the drums a drum and its sticks, the
-  // punch-ins a lightning bolt, the rave a smiley, the tilt an iPad leaning
+  // punch-ins a lightning bolt, the rave a smiley
   const ICONS = {
     bass: [["............", "............", "....L.....L.", "...LL....LL.", "..L.L...L.L.", ".L..L..L..L.", "L...L.L...L.", "....GG....GG", "....G.....G.", "............", "............", "............"], { L: "#B4FF2B", G: "#5FA81A" }],
     drums: [["S.........S.", ".S.......S..", "..S.....S...", "...S...S....", "..RRRRRRRR..", ".RWWWWWWWWR.", ".RRRRRRRRRR.", ".YYOYYOYYOY.", ".YOYYOYYOYY.", ".YYOYYOYYOY.", ".RRRRRRRRRR.", "............"], { S: "#E8D6B0", R: "#FF8A1F", W: "#FFFFFF", Y: "#FFE100", O: "#FF8A1F" }],
@@ -967,7 +961,6 @@
     vj: [["............", ".M.......M..", ".MM.....MM..", ".M.M...M.M..", ".M..M.M..M..", ".M...M...M..", "............", "..CCCCCCCC..", ".C........C.", ".C.YY..YY.C.", ".C........C.", "..CCCCCCCC.."], { M: "#FF2FB4", C: "#2BF0FF", Y: "#FFE100" }],
     lock: [["............", "....YYYY....", "...Y....Y...", "...Y....Y...", "...Y....Y...", "..YYYYYYYY..", "..YYYYYYYY..", "..YYY..YYY..", "..YYY..YYY..", "..YYYYYYYY..", "..YYYYYYYY..", "............"], { Y: "#FFE100" }],
     full: [["............", ".WWWW..WWWW.", ".W........W.", ".W........W.", ".W........W.", "............", "............", ".W........W.", ".W........W.", ".W........W.", ".WWWW..WWWW.", "............"], { W: "#F4F1FF" }],
-    tilt: [["..AAAAAA....", ".A......A...", "A........A.A", "A.........AA", "........AAA.", "............", ".CCCCCCCCCC.", ".C........C.", ".C.DDDDDD.CC", ".C........C.", ".CCCCCCCCCC.", "............"], { C: "#2BF0FF", A: "#9FF8FF", D: "#1A8F99" }],
   };
   const iconSvg = (name) => {
     const [g, col] = ICONS[name];
@@ -975,7 +968,7 @@
     g.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col[ch]}"/>`; }));
     return `<svg class="pix" viewBox="0 0 12 12" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
   };
-  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="lead"]', "lead"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#tiltBtn", "tilt"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"], ["#raveTilt", "tilt"], ["#raveLock", "lock"], ["#raveFull", "full"], ["#raveVJ", "vj"]]) {
+  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="lead"]', "lead"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"], ["#raveLock", "lock"], ["#raveFull", "full"], ["#raveVJ", "vj"]]) {
     const el = document.querySelector(sel);
     el.innerHTML = iconSvg(name) + `<span>${el.textContent}</span>`;
   }
@@ -1039,46 +1032,6 @@
   };
   $("gate").addEventListener("pointerup", gateUp); $("gate").addEventListener("pointercancel", gateUp);
 
-  // ------------------------------------------------------------------------------------------- the tilt ---
-  // lean the iPad to play the filter: left / right the cutoff, towards / away the resonance, about the way it was
-  // held when Tilt went on; the picture leans with it. (iPadOS asks first: from the tap itself, a click.)
-  let tiltOn = false, tiltZero = null, tiltS = [0, 0];
-  const tiltAxes = (e) => {
-    const ang = (screen.orientation && screen.orientation.angle != null ? screen.orientation.angle : window.orientation || 0) | 0;
-    const b = e.beta || 0, g = e.gamma || 0;
-    return ang === 90 ? [b, -g] : ang === -90 || ang === 270 ? [-b, g] : ang === 180 ? [-g, -b] : [g, b];
-  };
-  const onTilt = (e) => {
-    if (!tiltOn || e.beta == null) return;
-    const [x, y] = tiltAxes(e);
-    if (!tiltZero) tiltZero = [x, y];
-    const dx = clamp1((x - tiltZero[0]) / 28), dy = clamp1((y - tiltZero[1]) / 28);
-    tiltS[0] += (dx - tiltS[0]) * 0.35; tiltS[1] += (dy - tiltS[1]) * 0.35;
-    S.params.cutoff = clamp01(tiltBase[0] + tiltS[0] * 0.5); S.params.reso = clamp01(tiltBase[1] - tiltS[1] * 0.5);
-    rave.tilt = [tiltS[0], tiltS[1]];
-    sendParams(); save(); drawXY();
-  };
-  const clamp1 = (v) => (v < -1 ? -1 : v > 1 ? 1 : v);
-  let tiltBase = [0.5, 0.5];
-  const setTilt = (on) => {
-    tiltOn = on; tiltZero = null; tiltS = [0, 0]; rave.tilt = [0, 0];
-    tiltBase = [S.params.cutoff, S.params.reso];
-    for (const id of ["tiltBtn", "raveTilt"]) $(id).setAttribute("aria-pressed", String(on));
-  };
-  const tiltClick = async () => {
-    if (tiltOn) return setTilt(false);
-    try {
-      if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function") {
-        const r = await DeviceOrientationEvent.requestPermission();
-        if (r !== "granted") { alert("Tilt needs motion access: allow it when asked (or in Settings, Safari, Motion & Orientation Access)."); return; }
-      } else if (!("DeviceOrientationEvent" in window)) { alert("This device has no tilt sensor."); return; }
-    } catch (err) { alert("Tilt isn\u2019t available here: " + err.message); return; }
-    if (!tiltListening) { addEventListener("deviceorientation", onTilt); tiltListening = true; }
-    setTilt(true);
-  };
-  $("tiltBtn").addEventListener("click", tiltClick);
-  $("raveTilt").addEventListener("click", tiltClick);
-  let tiltListening = false;
 
   // ------------------------------------------------------------------------------------------- the fold ---
   // a foldable, half-folded: the Viewport Segments API says where its two screens are (acid.css measures them); a
@@ -1100,39 +1053,6 @@
 
 
 
-  // ------------------------------------------------------------------------------------------- motion ---
-  // Motion on, while it plays: the knobs you move are written into the pattern at the step they move on, and play back
-  // with it (the worklet sets them at each step). Hold Motion to clear them.
-  const MOT = ["cutoff", "reso", "env", "decay", "accent", "drive", "delay"];
-  let motionOn = false, motLast = null, motBegun = false;
-  function recordMotion() {
-    if (!motionOn || !playing || !viz || viz.step < 0) { motLast = null; return; }
-    const p = pat(), st = viz.step;
-    if (!motLast) { motLast = {}; MOT.forEach((k) => (motLast[k] = S.params[k])); return; }
-    let ch = false;
-    for (const k of MOT) if (Math.abs(S.params[k] - motLast[k]) > 1e-4) {
-      if (!motBegun) { begin(); motBegun = true; }
-      p.motion = p.motion || {};
-      const lane = (p.motion[k] = p.motion[k] || new Array(MAXS).fill(null));
-      lane[st] = Math.round(S.params[k] * 1000) / 1000; motLast[k] = S.params[k]; ch = true;
-    }
-    if (ch) { sendPattern(); save(); drawMotion(); }
-  }
-  const hasMotion = (p = pat()) => !!(p.motion && Object.values(p.motion).some((a) => a.some((v) => v != null)));
-  function drawMotion() { const b2 = $("motionBtn"); b2.setAttribute("aria-pressed", String(motionOn)); b2.classList.toggle("has-motion", hasMotion()); }
-  { const mb = $("motionBtn"); let hold = 0, held = false;
-    mb.addEventListener("pointerdown", (e) => { e.preventDefault(); held = false; hold = setTimeout(() => {
-      held = true; buzz(15);
-      if (!hasMotion()) { toast("No motion in this pattern yet"); return; }
-      begin(); delete pat().motion; commit(); sendPattern(); save(); drawMotion(); toast("Motion cleared", "Undo", undo);
-    }, 550); });
-    mb.addEventListener("pointerup", () => { clearTimeout(hold); if (held) return;
-      motionOn = !motionOn; motLast = null; if (!motionOn && motBegun) { commit(); motBegun = false; }
-      drawMotion(); toast(motionOn ? (playing ? "Motion: move the knobs, they're recorded" : "Motion: press Play, then move the knobs") : "Motion off" + (hasMotion() ? ": it plays back" : "")); });
-    mb.addEventListener("pointercancel", () => clearTimeout(hold));
-    mb.addEventListener("click", (e) => { if (e.detail === 0) { motionOn = !motionOn; drawMotion(); } }); }
-  playHooks.push((on) => { motLast = null; if (!on && motBegun) { commit(); motBegun = false; } });
-  drawMotion();
 
   // ------------------------------------------------------------------------------------------- sounds ---
   // presets for the knobs: built in, and four of yours (saved on this device)
@@ -2138,7 +2058,6 @@
     ['.st__note[data-s="0"]', "Drag a note up or down to change it. Tap it to rest it."],
     ['[data-tab="punch"]', "Punch: hold a pad to glitch the whole mix, let go to drop back in."],
     ["#xy", "The squelch pad: cutoff left to right, resonance bottom to top. Double-tap it to start over."],
-    ["#tiltBtn", "Tilt: lean the device to bend the filter."],
     ['.slot[data-slot="0"]', "Hold a pattern number to name it, copy it, share it, or chain it into a song."],
     ["#rec", "Rec records what you play, to save or send. Have fun!"],
   ];
@@ -2176,5 +2095,5 @@
   $("tourAgain").addEventListener("click", () => { menu.close(); setTimeout(() => tour(0), 200); });
   addEventListener("resize", () => { if (tourI >= 0) tour(tourI); });
 
-  window.acid = { state: () => S, renderAudio, sel: () => sel, clip: () => clip, studio: () => studio, kbOct: () => kbOct, VJS, applyVJ, ctx: () => ctx, onMidi: (d) => onMidi({ data: d, timeStamp: performance.now() }), onMidiAt: (d, t) => onMidi({ data: d, timeStamp: t }), clockLoop, CTRL, MP, toMidi, gen, songPos: () => [songI, songLoop], locked: () => locked, decode2, normPat, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
+  window.acid = { state: () => S, renderAudio, sel: () => sel, clip: () => clip, studio: () => studio, kbOct: () => kbOct, VJS, applyVJ, ctx: () => ctx, onMidi: (d) => onMidi({ data: d, timeStamp: performance.now() }), onMidiAt: (d, t) => onMidi({ data: d, timeStamp: t }), clockLoop, CTRL, MP, toMidi, gen, songPos: () => [songI, songLoop], locked: () => locked, decode2, normPat, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
 })();

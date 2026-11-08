@@ -15,15 +15,15 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Acid Flower">
 <meta property="og:title" content="Acid Flower">
-<meta property="og:description" content="A pocket acid house machine: squelch basslines, punch in glitchy tape-stops and stutters, and tilt your phone to bend the filter while a grinning pixel smiley-flower raves through neon cyberspace.">
+<meta property="og:description" content="A pocket acid house machine: squelch basslines, punch in glitchy tape-stops and stutters, and sweep the squelch while a grinning pixel smiley-flower raves through neon cyberspace.">
 <meta property="og:url" content="https://helloskot.github.io/CoralFlower/acid/">
 <meta property="og:image" content="https://helloskot.github.io/CoralFlower/acid/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A pixel smiley-flower over a neon grid: ACID FLOWER. Squelch, punch, tilt, rave.">
+<meta property="og:image:alt" content="A pixel smiley-flower over a neon grid: ACID FLOWER. Squelch, punch, drift, rave.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Acid Flower">
-<meta name="twitter:description" content="A pocket acid house machine: squelch basslines, punch in glitchy tape-stops and stutters, and tilt your phone to bend the filter.">
+<meta name="twitter:description" content="A pocket acid house machine: squelch basslines, punch in glitchy tape-stops and stutters, and sweep the squelch.">
 <meta name="twitter:image" content="https://helloskot.github.io/CoralFlower/acid/og-image.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -46,7 +46,6 @@
     <div class="strip strip--bar" data-p="swing" role="slider" aria-label="Swing"><b>Swing</b><em></em><i class="strip__l">&#9664;</i><i class="strip__r">&#9654;</i></div>
     <nav class="slots" id="slots" aria-label="Patterns"></nav>
     <button class="menu-btn rave-btn" id="raveBtn" type="button" aria-pressed="false" title="Rave mode: the display fills the screen, and you play the filter on it">Rave</button>
-    <button class="menu-btn tilt-btn" id="tiltBtn" type="button" aria-pressed="false" title="Tilt: lean the iPad to play the filter (left and right: cutoff; towards and away: resonance)">Tilt</button>
     <button class="menu-btn" id="menuBtn" type="button" aria-label="Menu" aria-haspopup="dialog">&#8943;</button>
   </header>
 
@@ -57,7 +56,6 @@
       <p class="rave__status" id="raveStatus" aria-live="off"></p>
       <nav class="rave__slots" id="raveSlots" aria-label="Patterns"></nav>
       <div class="strip strip--bar rave__tempo" data-p="tempo" role="slider" aria-label="Tempo"><b>BPM</b><em></em><i class="strip__l">&#9664;</i><i class="strip__r">&#9654;</i></div>
-      <button type="button" class="rave__i" id="raveTilt" aria-pressed="false" aria-label="Tilt" title="Tilt: lean the device to bend the filter">Tilt</button>
       <button type="button" class="rave__i" id="raveLock" aria-pressed="false" aria-label="Lock the picture" title="Lock: touches on the picture do nothing (for a stand, or passing it round)">Lock</button>
       <button type="button" class="rave__i" id="raveFull" aria-pressed="false" aria-label="Full screen" title="Full screen" hidden>Full</button>
       <button type="button" class="rave__i rave__vj" id="raveVJ" aria-pressed="false" aria-label="VJ" title="VJ: colours, mirrors, trails, words, a second screen">VJ</button>
@@ -113,7 +111,6 @@
       <div class="strip" data-p="pump" role="slider" aria-label="Pump: the kick ducks the bass and the lead"><b>Pump</b><em></em><span class="strip__bar"></span></div>
       <div class="strip" data-p="lead" role="slider" aria-label="Lead level"><b>Lead</b><em></em><span class="strip__bar"></span></div>
       <div class="strip" data-p="drums" role="slider" aria-label="Drums level"><b>Drums</b><em></em><span class="strip__bar"></span></div>
-      <button type="button" class="knobbtn" id="motionBtn" aria-pressed="false" title="Motion: while it plays, your knob moves are recorded into the pattern. Hold to clear them."><i aria-hidden="true"></i><span>Motion</span></button>
       <button type="button" class="knobbtn" id="soundBtn" aria-haspopup="dialog" title="Sounds: presets for the knobs"><span>Sounds</span></button>
     </div>
   </section>
@@ -321,12 +318,11 @@
     <li><b>Drums:</b> tap a step to set or clear it, or drag across steps to paint. Tap a drum’s name to hear it.</li>
     <li><b>Squelch pad:</b> cutoff left to right, resonance bottom to top. The strips do the rest: drag up or down.</li>
     <li><b>Punch:</b> hold a pad for an effect on the whole mix, let go to drop out; hold several at once. Repeats start on the beat. <b>Latch</b> makes a tap turn an effect on and another turn it off. In rave mode they run along the bottom.</li>
-    <li><b>Tilt:</b> lean the iPad to play the filter: left and right for the cutoff, towards you and away for the resonance. It takes the way you hold it when you turn it on as the middle; turn it off and on again to re-centre. The picture leans with it.</li>
     <li><b>Tempo and swing:</b> drag up or down, or tap the arrows; hold an arrow to keep going. Tap the middle of Tempo in time with the music to set it.</li>
     <li><b>Patterns:</b> 1 to 8 along the top; a dot marks the ones with something in them. While it plays, the next one blinks until the bar ends, then takes over. <b>Hold</b> a number to name the pattern, copy it, share it as a link, or chain it to another (<b>Then play</b>) to make a song.</li>
     <li><b>Lead:</b> a second line an octave up, on its own tab, with its own wave and length.</li>
     <li><b>Hold a step</b> (a note or a drum): its chance (how often it plays) and its repeats (a roll). <b>Hold a drum's name</b>: its tune, decay, level and length. Lengths up to 32 steps; tracks of different lengths drift against each other.</li>
-    <li><b>Motion:</b> on while it plays, the knobs you move are recorded into the pattern. <b>Sounds:</b> presets for the knobs. <b>Hold Random</b> for a whole pattern in a style.</li>
+    <li><b>Sounds:</b> presets for the knobs. <b>Hold Random</b> for a whole pattern in a style.</li>
     <li><b>Song</b> and <b>MIDI</b> are at the top of this menu: patterns in order; a keyboard, a controller and a clock (in Chrome, Edge or Android). A pattern or the song saves as a MIDI file.</li>
     <li><b>VJ</b> (in rave mode): colours, mirrors, trails, scrolling words, Auto VJ, a second screen for a projector, and Rec with the picture.</li>
     <li><b>On a computer:</b> a big window shows the bass, the lead, the drums and the punch-ins at once (drag the line under the display to share the space); scroll on a knob or a note to turn it; play notes on the letters A to K; <b>Keys&#8230;</b> above lists every shortcut. A pattern or the song saves as audio (with stems) from its menu.</li>
@@ -334,7 +330,7 @@
     <li><b>Rec:</b> records everything you hear, effects and all; when you stop, save it or send it.</li>
     <li><b>The squelch pad</b> stays where you leave it; double-tap it to go back to the start.</li>
     <li><b>On a keyboard:</b> Space plays, the number row holds the punch-ins (1 to 0, - and =), Shift with 1 to 8 picks a pattern, ← and → the tempo (with Shift, by 5), R the rave, ⌘Z undo.</li>
-    <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter. With two fingers: swipe left or right for another scene, pinch for more or less squelch (env mod), tap for Latch, swipe down to leave. Hold <b>Scene</b> to pick one. The patterns, the tempo and Tilt are along the top; <b>Lock</b> makes the picture ignore touches. The controls fade after a few seconds: touch to bring them back.</li>
+    <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter. With two fingers: swipe left or right for another scene, pinch for more or less squelch (env mod), tap for Latch, swipe down to leave. Hold <b>Scene</b> to pick one. The patterns and the tempo are along the top; <b>Lock</b> makes the picture ignore touches. The controls fade after a few seconds: touch to bring them back.</li>
   </ul>
   <h3>The rave</h3>
   <div class="opt"><span>Scenes<small>Warehouse, Cyberspace, Tunnel, Voxel, Plasma, Mainframe, Garden, Feedback, Hyperspace, Acid rain, Spiral</small></span>

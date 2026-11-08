@@ -222,7 +222,7 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
     ok(finite(r.L) && finite(r.R) && peak(r.L) <= 1, `all twelve held at once: finite, peak ${peak(r.L).toFixed(2)}`);
   }
 }
-{ // v2: the three new drums, each drum's knobs, chance, ratchets, track lengths, 32 steps, the lead, motion, live keys,
+{ // v2: the three new drums, each drum's knobs, chance, ratchets, track lengths, 32 steps, the lead, live keys,
   // the room and the pump
   const S = sps(120);
   const e8 = () => { const p = empty(); p.drums = Array.from({ length: 8 }, () => new Array(32).fill(false)); return p; };
@@ -277,12 +277,6 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
     a.send({ type: "params", params: { tempo: 120, swing: 0.5, delay: 0, drums: 0, leadWave: 0, lead: 1 } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
     const { L } = a.render(0.6), f = pitch(L, 3000, 9000);
     ok(Math.abs(f - 130.8) / 130.8 < 0.04, `lead: C3 sounds at ${f.toFixed(1)} Hz (130.8)`);
-  }
-  { // motion: the cutoff recorded at step 5 is there when step 5 plays
-    const a = load(), pat = e8(); pat.motion = { cutoff: new Array(32).fill(null) }; pat.motion.cutoff[4] = 0.91;
-    a.send({ type: "params", params: { tempo: 120, cutoff: 0.2 } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
-    a.render(0.4); const c1 = a.p.p.cutoff; a.render(0.2);
-    ok(Math.abs(c1 - 0.2) < 1e-9 && Math.abs(a.p.p.cutoff - 0.91) < 1e-9, `motion: the cutoff ${c1} until step 5, then ${a.p.p.cutoff}`);
   }
   { // a live key: held, then let go
     const a = load();

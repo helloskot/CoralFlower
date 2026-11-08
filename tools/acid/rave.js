@@ -79,7 +79,6 @@
   class Rave {
     constructor(canvas, hooks, opts = {}) {
       this.cv = canvas; this.g = canvas.getContext("2d"); this.hooks = hooks; this.opts = opts;
-      this.tilt = [0, 0];                                  // the iPad's tilt (-1..1 each way), when Tilt is on
       this.bootT = 0; this.ready = false; this.stopped = false;
       this.W = 0;
       this.setWidth(240);
@@ -319,7 +318,7 @@
       const beams = 4 + Math.round(cut * 6) + (this.accent > 0.3 ? 4 : 0), inten = 0.2 + 0.35 * env + 0.45 * this.accent + 0.2 * cut;
       for (let k = 0; k < beams; k++) {
         const ox = [6, W - 7, W / 2, W / 4, (3 * W) / 4][k % 5], col = [LIME, CYAN, PINK, LIME, YEL][k % 5];
-        const a = Math.PI / 2 + Math.sin(this.t * (0.7 + 0.25 * k) + k * 1.7 + this.scroll * 0.5) * (0.55 + 0.35 * reso) + [-0.4, 0.4, 0, -0.2, 0.2][k % 5] - this.tilt[0] * 0.5;
+        const a = Math.PI / 2 + Math.sin(this.t * (0.7 + 0.25 * k) + k * 1.7 + this.scroll * 0.5) * (0.55 + 0.35 * reso) + [-0.4, 0.4, 0, -0.2, 0.2][k % 5];
         this.line(ox, 0, ox + Math.cos(a) * 320, Math.sin(a) * 320, this.accent > 0.6 ? WHITE : col, inten, true);
       }
       // fog: slow bands, lit by the kick
@@ -359,7 +358,7 @@
     tunnel() {
       const v = this.v, sh = this.slotShift(), reso = v.reso, env = v.env || 0;
       this.fade(0.55);
-      const rings = 16, rot = Math.sin(this.t * 0.35) * 0.6 + reso * 0.3 * Math.sin(this.t) + this.tilt[0] * 0.8;
+      const rings = 16, rot = Math.sin(this.t * 0.35) * 0.6 + reso * 0.3 * Math.sin(this.t);
       for (let i = rings; i >= 1; i--) {
         let z = (i - ((this.scroll * 2) % 1)) / rings;
         const s = 6 / (z * z + 0.02), half = s * (1 + this.kick * 0.08), a = rot + z * 1.2 * reso;
@@ -510,8 +509,8 @@
         x += w;
       }
       this.rect(0, H - 10, W, 10, [20, 14, 34]);
-      // the rain, leaning with the tilt
-      const lean = 0.35 + this.tilt[0] * 0.8, sp = (1.1 + this.hat * 0.8) * this.dt * (this.vj.speed || 1);
+      // the rain, leaning in the wind
+      const lean = 0.35, sp = (1.1 + this.hat * 0.8) * this.dt * (this.vj.speed || 1);
       for (const d of this.drops) {
         d.y += d.v * sp; d.x += d.v * sp * lean * (H / W);
         if (d.y > 1) { d.y -= 1; d.x = rnd(); if (rnd() < 0.3) this.parts.push({ k: 2, x: d.x * W, y: H - 10, vx: 0, vy: -6, life: 0.2, c: CYAN }); }
@@ -602,7 +601,7 @@
       const v = this.v, sh = this.slotShift(), B = this.buf;
       for (let y = 0; y < H; y++) { const t = y / H, r = 4 + 30 * Math.max(0, 0.55 - Math.abs(t - 0.45)), b = 12 + 60 * Math.max(0, 0.55 - Math.abs(t - 0.45)); for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = r; B[i + 1] = 2; B[i + 2] = b; } }
       const speed = this.scroll * 6, camZ = speed, bank = Math.sin(this.t * 0.4) * 0.25 + (v.cut - 0.5) * 0.4;
-      this.cam(Math.sin(this.t * 0.3) * 3 + this.tilt[0] * 4, 7 + Math.sin(this.t * 0.5) * 1.5 - this.kick * 0.6, camZ, bank + this.tilt[0] * 0.35, -0.18 + (v.reso - 0.5) * 0.1 + this.tilt[1] * 0.15, 130);
+      this.cam(Math.sin(this.t * 0.3) * 3, 7 + Math.sin(this.t * 0.5) * 1.5 - this.kick * 0.6, camZ, bank, -0.18 + (v.reso - 0.5) * 0.1, 130);
       // the floor: a neon grid running under the city
       const gz0 = Math.floor(camZ / 4) * 4;
       for (let k = 0; k < 18; k++) { const z = gz0 + k * 4; const a = this.proj(-110, 0, z), b = this.proj(110, 0, z); if (a && b) this.line(a[0], a[1], b[0], b[1], pal(sh + 200), 0.25); }
@@ -631,7 +630,7 @@
     mainframe() {
       const v = this.v, sh = this.slotShift();
       this.fade(0.35);
-      this.cam(this.tilt[0] * 8, 2 - this.tilt[1] * 5, -34, Math.sin(this.t * 0.2) * 0.2 + this.tilt[0] * 0.25, -0.05 + this.tilt[1] * 0.15, 140);
+      this.cam(0, 2, -34, Math.sin(this.t * 0.2) * 0.2, -0.05, 140);
       for (let x = -40; x <= 40; x += 5) { const a = this.proj(x, -12, -10), b = this.proj(x, -12, 60); if (a && b) this.line(a[0], a[1], b[0], b[1], [0, 160, 60], 0.35); }
       for (let z = -10; z <= 60; z += 5) { const zz = z - ((this.scroll * 5) % 5); const a = this.proj(-40, -12, zz), b = this.proj(40, -12, zz); if (a && b) this.line(a[0], a[1], b[0], b[1], [0, 160, 60], 0.35); }
       // the core: a wire sphere turning, its radius beating
@@ -680,7 +679,7 @@
     voxelScene() {
       const v = this.v, sh = this.slotShift(), B = this.buf;
       for (let y = 0; y < H; y++) { const t = y / H, c = pal(sh + 20 + t * 40); for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = c[0] * 0.18; B[i + 1] = c[1] * 0.12; B[i + 2] = c[2] * 0.3; } }
-      const yaw = Math.sin(this.t * 0.25) * 0.5 + this.tilt[0] * 0.6;
+      const yaw = Math.sin(this.t * 0.25) * 0.5;
       this.cam(Math.sin(yaw) * -46, 16, -Math.cos(yaw) * 46 + 4, yaw, -0.32, 150);
       // the landscape: on each new step a new row from the sound
       if (v.step >= 0 && v.step !== this.tStep) {
@@ -725,7 +724,7 @@
       this.fade(t < 2.4 ? 0 : 0.45);
       if (t < 2.4) this.fill(0, 6, 2);
       // the grid: a neon floor scrolling under it all, from the BIOS on
-      this.cam(0, 6 + (this.look || 0) * 10, -40, Math.sin(t * 0.4) * 0.15 + this.tilt[0] * 0.3, -0.12 + this.tilt[1] * 0.1 - (this.look || 0) * 0.3, 140);
+      this.cam(0, 6 + (this.look || 0) * 10, -40, Math.sin(t * 0.4) * 0.15, -0.12 - (this.look || 0) * 0.3, 140);
       const gz = (t * 14) % 6, ga = clamp((t - 1.2) / 1, 0, 0.55);
       if (ga > 0) {
         for (let k = 0; k < 16; k++) { const a = this.proj(-60, -6, k * 6 - gz), b = this.proj(60, -6, k * 6 - gz); if (a && b) this.line(a[0], a[1], b[0], b[1], [255, 47, 180], ga * 0.6); }
@@ -755,7 +754,7 @@
         if (!this.dragging) { this.spin = (this.spin || 0) + (this.spinV || 0) * this.dt; this.spinV = (this.spinV || 0) * Math.pow(0.25, this.dt); }
         this.scatter = (this.scatter || 0) * Math.pow(0.12, this.dt);
         const sc2 = this.scatter;
-        const a = (1 - e) * TAU * 1.5 + Math.sin(t * 1.1) * 0.35 * e * (Math.abs(this.spinV || 0) < 0.3 ? 1 : 0.2) + this.tilt[0] * 0.6 + (this.spin || 0), ca = Math.cos(a), sa = Math.sin(a);
+        const a = (1 - e) * TAU * 1.5 + Math.sin(t * 1.1) * 0.35 * e * (Math.abs(this.spinV || 0) < 0.3 ? 1 : 0.2) + (this.spin || 0), ca = Math.cos(a), sa = Math.sin(a);
         VOX.forEach((q, i) => {
           const r0 = 55 + hash(i, 7) * 40, u = hash(i, 3) * TAU, w = (hash(i, 5) - 0.5) * Math.PI;
           const sx = Math.cos(w) * Math.cos(u) * r0, sy = Math.sin(w) * r0, sz = Math.cos(w) * Math.sin(u) * r0;

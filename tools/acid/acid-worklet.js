@@ -7,8 +7,8 @@
 // the open one), tom, rim and cowbell, each with its own tune, decay and level. Drive, a tempo-locked delay, a room
 // reverb, a pump (the kick ducking the voices), a soft limiter.
 // The clock runs here, sample-accurate, with swing: up to 32 steps, each track (the bass, the lead, every drum) with
-// its own length, so they can drift against each other; a step can play by chance and repeat (a ratchet); knob moves
-// recorded into the pattern (its motion) play back with it. The page sends the pattern, the knobs, play / stop and
+// its own length, so they can drift against each other; a step can play by chance and repeat (a ratchet). The page
+// sends the pattern, the knobs, play / stop and
 // live notes (a MIDI keyboard), and gets the step, the filter's motion, the drums' hits and a scrap of the waveform
 // back for its pixel display.
 // Punch-in effects, held from the page (a bit mask, FX below), work on the whole mix: the last 4 s of it are kept,
@@ -55,7 +55,6 @@ const DEFAULT_PARAMS = { cutoff: 0.35, reso: 0.7, env: 0.55, decay: 0.45, accent
                          verb: 0, pump: 0, lead: 0.6, leadWave: 1, dk: null };
 const LANES = 8;                                       // kick, snare, clap, closed hat, open hat, tom, rim, cowbell
 const MAXS = 32;
-const MOTION = ["cutoff", "reso", "env", "decay", "accent", "drive", "delay"];
 const clampI = (v, a, b, d) => { v = v | 0; return v < a ? (d != null && !v ? d : a) : v > b ? b : v; };
 
 // one voice: the oscillator, the ladder, the envelopes (the bass and the lead are two of these)
@@ -317,9 +316,6 @@ class AcidFlower extends AudioWorkletProcessor {
     const sw = Math.max(0.5, Math.min(0.75, this.p.swing));
     this.dur = (s % 2 === 0 ? sw : 1 - sw) * 2 * sps;
     const a = this.abs;
-    // the motion: knob moves recorded into the pattern, at this step
-    const mo = pat.motion;
-    if (mo) for (const k of MOTION) { const lane = mo[k]; if (lane && lane[s] != null) this.p[k] = lane[s]; }
     // the drums: each on its own length; by chance; ratcheted
     for (let l = 0; l < LANES; l++) {
       const row = pat.drums[l];

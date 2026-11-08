@@ -191,6 +191,7 @@ class AcidFlower extends AudioWorkletProcessor {
     this.xf = 0;                                       // 0 live .. 1 the buffer's playback
     this.lpC = 1; this.hpC = 0;                        // the sweeps' positions, 0..1
     this.svf = [new SVF(), new SVF(), new SVF(), new SVF()];
+    this.psvf = [new SVF(), new SVF()]; this.pfc = 1; this.cutPress = null;   // (the squelch pad over a repeat)
     this.crushN = 0; this.crushL = 0; this.crushR = 0; this.gateG = 1;
     this.eL = new Float32Array(Math.ceil(sr * 2.2)); this.eR = new Float32Array(Math.ceil(sr * 2.2)); this.ew = 0; this.eIn = 0;
     this.bassG = 1; this.drumsG = 1;
@@ -260,7 +261,7 @@ class AcidFlower extends AudioWorkletProcessor {
 
   // the punch-ins held change: start a loop, a reverse or a tape stop from here; the rest follow the mask by themselves
   setFx(mask) {
-    const was = this.fx;
+    const was = this.fx, hadPlay = !!this.play;
     this.fx = mask;
     const sps = (this.sr * 60) / Math.max(40, Math.min(220, this.p.tempo)) / 4, HN = this.HN;
     const div = on(mask, FX.ROLL) ? 0.5 : on(mask, FX.REP16) ? 1 : on(mask, FX.REP8) ? 2 : 0;
@@ -277,6 +278,7 @@ class AcidFlower extends AudioWorkletProcessor {
         this.play = { mode: "rep", start, len, k };
       }
     } else this.play = null;
+    if (this.play && !hadPlay) { this.cutPress = this.p.cutoff; this.pfc = 1; }   // (the squelch pad's place when a repeat began)
   }
 
   // a voice's step: by chance, ratcheted (repeated within the step), gliding from a slide before it
@@ -365,6 +367,10 @@ class AcidFlower extends AudioWorkletProcessor {
     const tapeDec = 1 / (0.75 * sr), muteK = 1 - Math.exp(-1 / (0.006 * sr));
     const bassT = on(fx, FX.BASSOUT) ? 0 : 1, drumsT = on(fx, FX.DRUMSOUT) ? 0 : 1;
     const elen = Math.min(this.eL.length - 1, Math.round(sps * 3)), echoFb = echoOn ? 0.72 : 0.55;
+    // (the squelch pad over a repeat: 1 open .. 0 closed, eight octaves down from the press; smoothed per block)
+    const pTarget = P ? Math.max(0, Math.min(1, 1 + ((p.cutoff - (this.cutPress == null ? p.cutoff : this.cutPress)) * 8.2) / 9)) : 1;
+    this.pfc += (pTarget - this.pfc) * a;
+    const pfcK = this.pfc, pF = Math.min(0.9, 2 * Math.sin((Math.PI * 18000 * Math.pow(2, (pfcK - 1) * 9)) / (2 * sr))), pQ = Math.max(0.1, 1.45 - sm.reso * 1.3);
     for (let i = 0; i < n; i++) {
       // ---- the clock
       if (this.playing) {
@@ -465,6 +471,9 @@ class AcidFlower extends AudioWorkletProcessor {
         }
       }
       this.hw = (this.hw + 1) % HN;
+      // the squelch pad over a repeat, a roll, a reverse or a tape stop: from where it was at the press, left closes a
+      // resonant lowpass over the repeated sound (right opens it back), up and down its resonance
+      if (P && pfcK < 0.995) { bL = this.psvf[0].run(bL, pF, pQ, false); bR = this.psvf[1].run(bR, pF, pQ, false); }
       this.xf += ((P ? 1 : 0) - this.xf) * xfK;
       oL += (bL - oL) * this.xf; oR += (bR - oR) * this.xf;
       // the sweeps: a lowpass closing, a highpass opening, while held; back when let go

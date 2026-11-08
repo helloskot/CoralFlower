@@ -495,8 +495,8 @@
     if (sl && e.pointerType !== "touch") openSlot(+sl.dataset.slot);   // (a right-click is a hold)
   });
   for (const t of ["gesturestart", "gesturechange", "dblclick"]) document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
-  // a keyboard: Space plays, 1 to 8 pick a pattern, the arrows the tempo, R the rave, Cmd/Ctrl Z undo (Shift: redo);
-  // the punch-ins are Shift with the number row (below)
+  // a keyboard: Space plays, Shift with 1 to 8 picks a pattern, the arrows the tempo, R the rave, Cmd/Ctrl Z undo
+  // (Shift: redo); the number row on its own holds the punch-ins (below)
   addEventListener("keydown", (e) => {
     if (document.querySelector("dialog[open]") || !$("gate").hidden) return;
     if (e.target && e.target.closest && e.target.closest("input, textarea, select")) return;
@@ -510,7 +510,7 @@
     if ((e.code === "Delete" || e.code === "Backspace") && sel) { e.preventDefault(); clearRange(); return; }
     if (pianoDown(e)) return;
     if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
-    else if (!e.shiftKey && /^Digit[1-8]$/.test(e.code)) { e.preventDefault(); pickSlot(+e.code.slice(5) - 1); }
+    else if (e.shiftKey && /^Digit[1-8]$/.test(e.code)) { e.preventDefault(); pickSlot(+e.code.slice(5) - 1); }
     else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
       e.preventDefault(); setParam("tempo", S.params.tempo + (e.code === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 5 : 1)); drawKey("tempo");
     } else if (e.code === "BracketRight" || e.code === "BracketLeft") { if (e.code === "BracketRight") rave.next(); else rave.back(); drawScenes(); }
@@ -660,7 +660,7 @@
     FXS.forEach(([a, b2, c], i) => {
       const d = document.createElement("div");
       d.className = "fxp"; d.dataset.fx = i; d.style.setProperty("--c", c); d.setAttribute("role", "button"); d.setAttribute("aria-label", a + " " + b2);
-      d.innerHTML = `<kbd>\u21e7${["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="][i]}</kbd><b>${a}</b><small>${b2}</small>`;
+      d.innerHTML = `<kbd>${["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="][i]}</kbd><b>${a}</b><small>${b2}</small>`;
       box.appendChild(d); fxEls[i].push(d);
     });
     const held = new Map();
@@ -683,7 +683,8 @@
   }
   addEventListener("keydown", (e) => {
     const i = FXKEYS.indexOf(e.code);
-    if (i < 0 || e.repeat || !e.shiftKey || e.metaKey || e.ctrlKey || $("menu").open || $("slotMenu").open) return;
+    if (i < 0 || e.repeat || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey || document.querySelector("dialog[open]")) return;
+    if (e.target && e.target.closest && e.target.closest("input, textarea, select")) return;   // (typing in a field)
     e.preventDefault();
     if (latch) { if (fxSrc[i].has("L")) fxSrc[i].delete("L"); else fxSrc[i].add("L"); fxPublish(); }
     else fxHold(i, "k", true);

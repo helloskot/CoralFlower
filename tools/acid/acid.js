@@ -795,6 +795,7 @@
   const closeScenes = () => { $("raveScenes").hidden = true; };
   $("raveSceneList").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; rave.go(+b.dataset.scene); drawScenes(); closeScenes(); });
   const setRave = (on) => {
+    if (!on && drifting()) leaveDrift();
     app.classList.toggle("is-rave", on);
     $("raveBtn").setAttribute("aria-pressed", String(on));
     rave.setPad(null); closeScenes();
@@ -822,8 +823,10 @@
   let solo = null, g2 = null;
   const at = (ev) => { const r = (raving() && VJS.fill ? raveEl : vizEl).getBoundingClientRect(); return [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)]; };
   const padAt = (ev) => { const [x, y] = at(ev); S.params.cutoff = x; S.params.reso = 1 - y; sendParams(); save(); drawXY(); rave.setPad(x, y); };
+  let dPtr = null;                                         // (Drift: a finger on the mood)
   vizEl.addEventListener("pointerdown", (e) => {
     e.preventDefault();
+    if (drifting()) { dPtr = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false }; try { vizEl.setPointerCapture(e.pointerId); } catch {} return; }
     if (!$("raveScenes").hidden) { closeScenes(); return; }
     try { vizEl.setPointerCapture(e.pointerId); } catch {}
     vTouch.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
@@ -837,6 +840,11 @@
     } else if (vTouch.size === 1 && !g2) { solo = { id: e.pointerId, t: performance.now(), was: [S.params.cutoff, S.params.reso] }; padAt(e); }
   });
   vizEl.addEventListener("pointermove", (e) => {
+    if (dPtr && dPtr.id === e.pointerId) {
+      if (Math.abs(e.clientX - dPtr.x0) + Math.abs(e.clientY - dPtr.y0) > 8) dPtr.moved = true;
+      if (dPtr.moved) { const [x, y] = at(e); DS.moodX = x; DS.moodY = 1 - y; sendDrift(); rave.setPad(x, y); }
+      return;
+    }
     const t = vTouch.get(e.pointerId);
     if (!t) return;
     t.x = e.clientX; t.y = e.clientY;
@@ -851,6 +859,12 @@
     } else if (solo && solo.id === e.pointerId && !g2) padAt(e);
   });
   const vEnd = (e) => {
+    if (dPtr && dPtr.id === e.pointerId) {
+      if (!dPtr.moved && e.type === "pointerup") { const [x] = at(e); post({ type: "drift", tap: x }); buzz(); }
+      else saveDS();
+      dPtr = null; rave.setPad(null);
+      return;
+    }
     if (!vTouch.has(e.pointerId)) return;
     vTouch.delete(e.pointerId);
     if (!raving()) { if (solo && !solo.moved && e.type === "pointerup") rave.next(); solo = null; return; }
@@ -958,6 +972,7 @@
     lead: [["............", "........PP..", ".......P.P..", "......P..P..", ".....P...P..", "....P....P..", "...P.....P..", "..P......P..", ".P.......PPP", "P........PPP", ".........PP.", "............"], { P: "#FF2FB4" }],
     undo: [["............", "...C........", "..CC........", ".CCCCCCCC...", "..CC.....C..", "...C......C.", "..........C.", "..........C.", ".........C..", "....CCCCC...", "............", "............"], { C: "#2BF0FF" }],
     redo: [["............", "........C...", "........CC..", "...CCCCCCCC.", "..C.....CC..", ".C......C...", ".C..........", ".C..........", "..C.........", "...CCCCC....", "............", "............"], { C: "#2BF0FF" }],
+    drift: [["............", "...WW.......", "..W.........", ".W..........", ".W.......B..", ".W......BBB.", "..W....BBBBB", "...WW.BBBBBB", "......BBBBBB", ".BBBBBBBBBB.", "............", "............"], { W: "#E8E4FF", B: "#B98CFF" }],
     vj: [["............", ".M.......M..", ".MM.....MM..", ".M.M...M.M..", ".M..M.M..M..", ".M...M...M..", "............", "..CCCCCCCC..", ".C........C.", ".C.YY..YY.C.", ".C........C.", "..CCCCCCCC.."], { M: "#FF2FB4", C: "#2BF0FF", Y: "#FFE100" }],
     lock: [["............", "....YYYY....", "...Y....Y...", "...Y....Y...", "...Y....Y...", "..YYYYYYYY..", "..YYYYYYYY..", "..YYY..YYY..", "..YYY..YYY..", "..YYYYYYYY..", "..YYYYYYYY..", "............"], { Y: "#FFE100" }],
     full: [["............", ".WWWW..WWWW.", ".W........W.", ".W........W.", ".W........W.", "............", "............", ".W........W.", ".W........W.", ".W........W.", ".WWWW..WWWW.", "............"], { W: "#F4F1FF" }],
@@ -968,7 +983,7 @@
     g.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col[ch]}"/>`; }));
     return `<svg class="pix" viewBox="0 0 12 12" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
   };
-  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="lead"]', "lead"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"], ["#raveLock", "lock"], ["#raveFull", "full"], ["#raveVJ", "vj"]]) {
+  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="lead"]', "lead"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ["#driftBtn", "drift"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"], ["#raveLock", "lock"], ["#raveFull", "full"], ["#raveVJ", "vj"], ["#driftDice", "random"]]) {
     const el = document.querySelector(sel);
     el.innerHTML = iconSvg(name) + `<span>${el.textContent}</span>`;
   }
@@ -1308,6 +1323,7 @@
     return { pattern: { len: n(3, 16, 1, 16) | 0, bass, drums, name }, params };
   };
   async function fromLink() {
+    if (driftFromLink()) return;
     const m = location.hash.match(/^#p=(.+)$/);
     if (!m) return;
     let d = null;
@@ -1748,14 +1764,15 @@
     if (n == null || e.shiftKey) return false;
     e.preventDefault();
     if (e.repeat || held.has(e.code)) return true;
+    if (drifting()) { post({ type: "drift", bell: 72 + 12 * kbOct + n }); held.set(e.code, null); return true; }   // (in Drift: bells)
     const voice = track === "lead" ? "lead" : "bass", note = (voice === "lead" ? 60 : 36) + 12 * kbOct + n + S.params.tune;
     held.set(e.code, { note, voice });
     post({ type: "live", on: true, note, voice, acc: false });
     rave.event({ ...viz, note, accHit: false, hits: 0 });
     return true;
   }
-  addEventListener("keyup", (e) => { const h = held.get(e.code); if (!h) return; held.delete(e.code); post({ type: "live", on: false, note: h.note, voice: h.voice }); });
-  addEventListener("blur", () => { for (const h of held.values()) post({ type: "live", on: false, note: h.note, voice: h.voice }); held.clear(); });
+  addEventListener("keyup", (e) => { if (!held.has(e.code)) return; const h = held.get(e.code); held.delete(e.code); if (h) post({ type: "live", on: false, note: h.note, voice: h.voice }); });
+  addEventListener("blur", () => { for (const h of held.values()) if (h) post({ type: "live", on: false, note: h.note, voice: h.voice }); held.clear(); });
   $("keysBtn").addEventListener("click", () => { menu.close(); show($("keysMenu")); });
   $("keysMenu").addEventListener("click", (e) => { if (e.target === $("keysMenu")) $("keysMenu").close(); });
 
@@ -2023,6 +2040,132 @@
   });
   document.querySelectorAll(".st__note, .dr").forEach((el) => { el.tabIndex = 0; if (el.classList.contains("st__note")) el.setAttribute("role", "button"); });
 
+
+  // --------------------------------------------------------------------------------------------- Drift ---
+  // the ambient mode: it plays itself (acid-worklet.js's Drift). Rave mode's picture, calm, is its mood pad: drag for
+  // dark to bright and sparse to busy, tap for a bell. The weather, the seed word (the same word, the same piece), a
+  // texture, the space and the shimmer; a sleep timer; 2, 5 or 10 minutes saved as audio; a link to share the piece.
+  const SCN = globalThis.AcidRave.SCENES, DRIFT_SC = ["AURORA", "NEBULA", "GARDEN", "ACID RAIN", "HYPERSPACE"].map((n) => SCN.indexOf(n)).filter((i) => i >= 0);
+  const SEED1 = ["night", "slow", "blue", "moss", "glass", "rain", "tide", "dust", "neon", "soft", "silver", "late", "quiet", "amber", "cloud", "velvet"];
+  const SEED2 = ["bus", "garden", "harbour", "signal", "window", "river", "orbit", "static", "lantern", "meadow", "station", "echo", "flower", "dawn", "tram", "pier"];
+  const newSeed = () => pick(SEED1) + pick(SEED2);
+  const DS = (() => { const d = { seed: "", weather: 0.25, moodX: 0.5, moodY: 0.4, texture: "none", tex: 0.6, space: 0.7, shimmer: 0.5, bpm: 72, sleep: 0 }; try { return { ...d, ...JSON.parse(localStorage.getItem("acid-flower-drift") || "{}") }; } catch { return d; } })();
+  if (!DS.seed) DS.seed = newSeed();
+  const saveDS = () => { try { localStorage.setItem("acid-flower-drift", JSON.stringify(DS)); } catch {} };
+  function drifting() { return app.classList.contains("is-drift"); }
+  const driftSet = () => ({ seed: DS.seed, weather: DS.weather, moodX: DS.moodX, moodY: DS.moodY, texture: DS.texture, tex: DS.tex, space: DS.space, shimmer: DS.shimmer, bpm: DS.bpm });
+  const sendDrift = () => post({ type: "drift", set: driftSet() });
+  // the key and the scale a seed makes (the worklet's own choice, made the same way)
+  const KEYS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"], SCALE_N = ["minor", "dorian", "lydian", "major", "minor pentatonic", "major pentatonic"];
+  const seedKey = (seed) => {
+    let h = 2166136261; for (const c of String(seed).toLowerCase()) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+    let a = h >>> 0; const r = () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    return KEYS[Math.floor(r() * 12)] + " " + SCALE_N[Math.floor(r() * 6)];
+  };
+  const weatherWord = (w) => (w < 0.2 ? "calm" : w < 0.45 ? "a breeze" : w < 0.68 ? "clouds" : w < 0.88 ? "rain" : "a storm");
+  let sleepT = 0, sleepAt = 0, fadeT = 0;
+  function drawDrift() {
+    $("driftSeed").value = document.activeElement === $("driftSeed") ? $("driftSeed").value : DS.seed;
+    for (const [id, k] of [["driftWeather", "weather"], ["driftSpace", "space"], ["driftShimmer", "shimmer"]]) if (document.activeElement !== $(id)) $(id).value = DS[k];
+    for (const [id, v] of [["driftTex", DS.texture], ["driftSleep", String(DS.sleep)]]) $(id).querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(b2.dataset.v === v)));
+    $("driftPlay").querySelector("span").textContent = playing ? "Stop" : "Play";
+    $("driftPlay").setAttribute("aria-pressed", String(playing));
+    const left = sleepAt ? Math.max(0, Math.ceil((sleepAt - Date.now()) / 60000)) : 0;
+    $("driftStatus").textContent = ("Drift · " + DS.seed + " · " + seedKey(DS.seed) + " · " + weatherWord(DS.weather) + (left ? " · sleep in " + left + " min" : "")).toUpperCase();
+  }
+  function enterDrift() {
+    if (drifting()) return;
+    setRave(true);
+    app.classList.add("is-drift"); $("driftBtn").setAttribute("aria-pressed", "true");
+    rave.calm = true; rave.driftMode = true; rave.sceneList = DRIFT_SC; rave.autoBars = 32;
+    if (!DRIFT_SC.includes(rave.scene)) rave.go(DS.texture === "rain" ? SCN.indexOf("ACID RAIN") : DRIFT_SC[0]);
+    post({ type: "drift", on: true, set: driftSet() });
+    if (!playing) setPlaying(true);
+    drawDrift(); poke();
+  }
+  function leaveDrift() {                                 // (from Done, Esc, a swipe down, R: whatever leaves rave mode)
+    if (!drifting()) return;
+    post({ type: "drift", on: false });
+    if (playing) setPlaying(false);
+    app.classList.remove("is-drift"); $("driftBtn").setAttribute("aria-pressed", "false");
+    rave.driftMode = false; rave.sceneList = null; rave.autoBars = 8; rave.calm = pref("motion", PREF_DEF.motion) === "calm";
+    if (DRIFT_SC.includes(rave.scene)) rave.go(0);
+    setSleep(0, true);
+  }
+  onPress($("driftBtn"), () => (drifting() ? setRave(false) : enterDrift()));
+  onPress($("driftDone"), () => setRave(false));
+  onPress($("driftPlay"), () => { setPlaying(!playing); drawDrift(); });
+  onPress($("driftScene"), () => { rave.next(); });
+  playHooks.push(() => { if (drifting()) drawDrift(); });
+  for (const t of ["pointerdown", "pointermove", "keydown"]) $("driftPanel").addEventListener(t, (e) => { e.stopPropagation(); poke(); });
+  const knob = (id, k) => $(id).addEventListener("input", () => { DS[k] = +$(id).value; saveDS(); sendDrift(); drawDrift(); });
+  knob("driftWeather", "weather"); knob("driftSpace", "space"); knob("driftShimmer", "shimmer");
+  $("driftTex").addEventListener("click", (e) => {
+    const b2 = e.target.closest("button"); if (!b2) return;
+    DS.texture = b2.dataset.v; saveDS(); sendDrift(); drawDrift();
+    if (DS.texture === "rain" && drifting()) rave.go(SCN.indexOf("ACID RAIN"));
+  });
+  const setSeed = (seed) => { DS.seed = String(seed || "").trim().toLowerCase().slice(0, 24) || newSeed(); saveDS(); sendDrift(); drawDrift(); };
+  $("driftSeed").addEventListener("change", () => setSeed($("driftSeed").value));
+  $("driftSeed").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("driftSeed").blur(); } });
+  onPress($("driftDice"), () => { setSeed(newSeed()); toast("A new piece: " + DS.seed); });
+  $("driftShare").addEventListener("click", async () => {
+    const url = location.origin + location.pathname + "#drift=" + encodeURIComponent(DS.seed) + "&w=" + Math.round(DS.weather * 100) + "&tx=" + DS.texture;
+    try { if (navigator.share) { await navigator.share({ title: "Acid Flower Drift: " + DS.seed, text: "An ambient piece from Acid Flower:", url }); return; } } catch (err) { if (err && err.name === "AbortError") return; }
+    try { await navigator.clipboard.writeText(url); toast("Link copied"); } catch { window.prompt("Copy this link:", url); }
+  });
+  // the sleep timer: at its end, a 30-second fade, then stop
+  function setSleep(min, quiet) {
+    clearTimeout(sleepT); clearInterval(fadeT); sleepAt = 0; DS.sleep = min; saveDS();
+    if (min > 0) { sleepAt = Date.now() + min * 60000; sleepT = setTimeout(sleepFade, min * 60000); if (!quiet) toast("Drift fades out in " + min + " minutes"); }
+    drawDrift();
+  }
+  function sleepFade() {
+    const v0 = S.params.volume, t0 = performance.now();
+    fadeT = setInterval(() => {
+      const f = Math.min(1, (performance.now() - t0) / 30000);
+      S.params.volume = v0 * (1 - f) * (1 - f); sendParams();
+      if (f >= 1) { clearInterval(fadeT); if (playing) setPlaying(false); S.params.volume = v0; sendParams(); sleepAt = 0; DS.sleep = 0; saveDS(); drawDrift(); }
+    }, 200);
+  }
+  $("driftSleep").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) setSleep(+b2.dataset.v); });
+  setInterval(() => { if (drifting() && sleepAt) drawDrift(); }, 20000);
+  // a long piece, rendered offline (faster than real time), faded at the end, saved as WAV
+  async function renderDrift(min) {
+    if (!window.OfflineAudioContext) { $("driftMsg").textContent = "This browser can’t render audio."; return; }
+    if (min >= 10 && navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) < 600) $("driftMsg").textContent = "10 minutes needs a lot of memory; on a phone, 2 or 5 is safer…";
+    const sr = 44100, secs = min * 60 + 8, code = await (await fetch("acid-worklet.js", { cache: "no-cache" })).text(), url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+    try {
+      const off = new OfflineAudioContext(2, Math.ceil(secs * sr), sr);
+      await off.audioWorklet.addModule(url);
+      const n = new AudioWorkletNode(off, "acid-flower", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { params: clone(S.params), drift: driftSet(), play: true } });
+      n.connect(off.destination);
+      for (let t = 10; t < secs - 1; t += 10) off.suspend(t).then(() => { $("driftMsg").textContent = "Rendering " + DS.seed + ": " + Math.round((100 * t) / secs) + "%"; off.resume(); }).catch(() => {});
+      $("driftMsg").textContent = "Rendering " + DS.seed + "…";
+      const buf = await off.startRendering();
+      const fade = Math.round(8 * sr);
+      for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < fade; i++) { const k = 1 - i / fade; d[d.length - fade + i] *= k * k; } }
+      const file = wavFile(buf, `acid-flower-drift-${DS.seed}-${min}min.wav`);
+      $("driftMsg").textContent = "Done: " + min + " minutes of " + DS.seed + ".";
+      await saveFile(file, "Acid Flower Drift");
+    } catch (err) { $("driftMsg").textContent = "Couldn’t render: " + err.message; }
+    URL.revokeObjectURL(url);
+  }
+  $("driftSave").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) renderDrift(+b2.dataset.v); });
+  // a link to a piece: #drift=<seed>&w=<weather>&tx=<texture>
+  function driftFromLink() {
+    const h = location.hash;
+    if (!/^#drift=/.test(h)) return false;
+    const q = new URLSearchParams(h.slice(1));
+    DS.seed = String(q.get("drift") || "").toLowerCase().slice(0, 24) || DS.seed;
+    if (q.get("w") != null) DS.weather = Math.max(0, Math.min(1, +q.get("w") / 100 || 0));
+    if (["none", "rain", "vinyl", "ocean"].includes(q.get("tx"))) DS.texture = q.get("tx");
+    saveDS();
+    try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+    enterDrift(); sendDrift(); toast("Drift: " + DS.seed);
+    return true;
+  }
+
   // ---------------------------------------------------------------------------------- latch, tap tempo ---
   let latch = false;
   function setLatch(on) {
@@ -2095,5 +2238,5 @@
   $("tourAgain").addEventListener("click", () => { menu.close(); setTimeout(() => tour(0), 200); });
   addEventListener("resize", () => { if (tourI >= 0) tour(tourI); });
 
-  window.acid = { state: () => S, renderAudio, sel: () => sel, clip: () => clip, studio: () => studio, kbOct: () => kbOct, VJS, applyVJ, ctx: () => ctx, onMidi: (d) => onMidi({ data: d, timeStamp: performance.now() }), onMidiAt: (d, t) => onMidi({ data: d, timeStamp: t }), clockLoop, CTRL, MP, toMidi, gen, songPos: () => [songI, songLoop], locked: () => locked, decode2, normPat, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
+  window.acid = { state: () => S, DS, drifting: () => drifting(), renderAudio, sel: () => sel, clip: () => clip, studio: () => studio, kbOct: () => kbOct, VJS, applyVJ, ctx: () => ctx, onMidi: (d) => onMidi({ data: d, timeStamp: performance.now() }), onMidiAt: (d, t) => onMidi({ data: d, timeStamp: t }), clockLoop, CTRL, MP, toMidi, gen, songPos: () => [songI, songLoop], locked: () => locked, decode2, normPat, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
 })();

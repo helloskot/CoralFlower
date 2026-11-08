@@ -401,6 +401,7 @@ class AcidFlower extends AudioWorkletProcessor {
     if (!D) return;
     if (m.set) { const reseed = m.set.seed != null && m.set.seed !== D.set.seed; Object.assign(D.set, m.set); if (reseed) D.reseed(D.set.seed); }
     if (m.tap != null && D.on) D.tap(m.tap);
+    if (m.bell != null && D.on) D.bell(m.bell, 0.9);        // (a key played on the keyboard)
   }
   rnd() {                                              // white noise, -1..1 (xorshift)
     let x = this.noise;

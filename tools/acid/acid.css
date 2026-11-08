@@ -158,7 +158,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .gate.is-on .gate__power { display: none; }
 /* the pixel icons on the tabs and buttons */
 .pix { flex: 0 0 auto; image-rendering: pixelated; }
-.tabs button, .rave-btn, /* the power-on: the boot's own pixel picture, the whole screen */
+.tabs button, .rave-btn { display: inline-flex; align-items: center; gap: 8px; }
+/* the power-on: the boot's own pixel picture, the whole screen */
 .gate__boot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; }
 .gate { background: #000; touch-action: none; }
 .gate p { text-shadow: 0 1px 6px #000; }
@@ -464,11 +465,13 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .tool--lab { padding: 0 8px; }
   .stepper button { min-width: 28px; }
   .stepper span { min-width: 2.2em; }
-  .rave-btn,   .rave-btn span { display: block; font-size: 9px; letter-spacing: .06em; }
+  .rave-btn { flex-direction: column; justify-content: center; gap: 3px; }
+  .rave-btn span { display: block; font-size: 9px; letter-spacing: .06em; }
   .logo { display: none; }                  /* (the Home Screen icon is the logo; the bar needs the room) */
   .strip--bar { flex: 1 1 0; padding: 2px 21px; }
   .strip--bar .strip__l, .strip--bar .strip__r { width: 20px; font-size: 12px; }
-  .rave-btn,   .xy__val { font-size: 10px; top: 6px; right: 8px; }
+  .rave-btn { padding: 0 6px; }
+  .xy__val { font-size: 10px; top: 6px; right: 8px; }
 }
 @media (max-width: 360px) and (orientation: portrait) {
   .tools { gap: 3px; }
@@ -486,7 +489,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .tool--danger.is-armed span { display: inline; }
   .tool--icon { padding: 0 7px; }
   .stepper__v small, .tool--lab small { font-size: 7px; }
-  .rave-btn,   .rave-btn span { display: block; font-size: 8px; letter-spacing: .04em; }
+  .rave-btn { flex-direction: column; justify-content: center; gap: 1px; }
+  .rave-btn span { display: block; font-size: 8px; letter-spacing: .04em; }
   .rave-btn .pix { width: 16px; height: 16px; }
   .strip--bar { flex-basis: 100px; padding: 1px 26px; }
   .strip--bar .strip__l, .strip--bar .strip__r { width: 24px; font-size: 12px; }
@@ -505,7 +509,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 /* (book: each page is a phone's width; its bar and tools as on a phone) */
 :root.fold-lr .strip--bar { flex: 1 1 0; min-width: 0; padding: 2px 26px; }
 :root.fold-lr .strip--bar .strip__l, :root.fold-lr .strip--bar .strip__r { width: 24px; font-size: 12px; }
-:root.fold-lr .rave-btn, :root.fold-lr :root.fold-lr .rave-btn span { display: block; font-size: 9px; letter-spacing: .06em; }
+:root.fold-lr .rave-btn { flex-direction: column; justify-content: center; gap: 2px; padding: 0 8px; flex: 0 0 auto; }
+:root.fold-lr .rave-btn span { display: block; font-size: 9px; letter-spacing: .06em; }
 :root.fold-lr .tools { flex-wrap: nowrap; gap: 4px; }
 :root.fold-lr .tool--icon span { display: none; }
 :root.fold-lr .tool--danger.is-armed span { display: inline; }
@@ -879,3 +884,49 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .keys dt { color: var(--yellow); white-space: nowrap; }
 .keys dd { margin: 0; color: var(--muted); line-height: 1.4; }
 .keys { width: min(40rem, 94vw); }
+
+/* ================================================================================================== Drift ===
+ * rave mode's picture, calm, with its own controls: the play, the seed, the weather, the texture, the space, the
+ * shimmer, sleep and save; they fade like rave mode's */
+.drift-btn { color: #B98CFF; }
+.drift-btn[aria-pressed="true"] { background: #B98CFF; color: var(--black); }
+.drift, .drift__status { display: none; }
+.app.is-drift .rave__top, .app.is-drift .rave__fx, .app.is-drift .rave__bar, .app.is-drift .rave__scenes, .app.is-drift .vj, .app.is-drift .rave__hint { display: none !important; }
+.app.is-drift .drift__status { display: block; position: absolute; z-index: 3; top: max(12px, env(safe-area-inset-top)); left: max(14px, env(safe-area-inset-left)); right: 14px; margin: 0;
+  font-size: 12px; letter-spacing: .12em; color: #D9D2FF; text-shadow: 0 1px 6px #000; pointer-events: none; transition: opacity .8s; }
+.app.is-drift .drift { display: grid; gap: 10px; position: absolute; z-index: 4; left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom)); max-width: 760px; margin: 0 auto; padding: 12px 14px; border-radius: 18px;
+  background: rgba(10, 6, 24, .62); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 0 0 1.5px rgba(185, 140, 255, .25); transition: opacity .8s; touch-action: pan-y; }
+.app.is-drift.rave-idle .drift, .app.is-drift.rave-idle .drift__status { opacity: 0; pointer-events: none; }
+.drift__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.drift__play { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 12px; background: #B98CFF; color: var(--black); font-size: 15px; letter-spacing: .06em; text-transform: uppercase; }
+.drift__play i { width: 0; height: 0; border-left: 11px solid currentColor; border-top: 7px solid transparent; border-bottom: 7px solid transparent; }
+.drift__play[aria-pressed="true"] i { width: 11px; height: 11px; border: 0; background: currentColor; }
+.drift__seed { display: flex; align-items: center; gap: 6px; flex: 1 1 140px; min-width: 0; }
+.drift__seed span, .drift__lab, .drift__knob span { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #A99BD6; }
+.drift__seed input { flex: 1 1 auto; min-width: 0; font: 16px var(--font); color: var(--text); background: rgba(0, 0, 0, .35); border: 0; border-radius: 10px; padding: 9px 10px;
+  box-shadow: inset 0 0 0 1.5px rgba(185, 140, 255, .3); outline: none; text-transform: lowercase; }
+.drift__seed input:focus { box-shadow: inset 0 0 0 2px #B98CFF; }
+.drift__b { min-height: 44px; min-width: 44px; padding: 0 12px; border-radius: 12px; background: rgba(0, 0, 0, .35); box-shadow: inset 0 0 0 1.5px rgba(185, 140, 255, .3); color: #E8E4FF; font-size: 14px; }
+.drift__done { margin-left: auto; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.drift__weather { display: flex; align-items: center; gap: 12px; }
+.drift__weather input { flex: 1 1 auto; height: 36px; accent-color: #B98CFF; }
+.drift__wl, .drift__wr { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #A6E3FF; }
+.drift__wr { color: #FF9BD5; }
+.drift__knob { display: flex; align-items: center; gap: 6px; flex: 1 1 120px; }
+.drift__knob input { flex: 1 1 auto; min-width: 60px; accent-color: #B98CFF; }
+.drift .seg { background: rgba(0, 0, 0, .35); }
+.drift .seg button { min-height: 36px; padding: 0 10px; font-size: 13px; }
+.drift .seg button[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px #B98CFF; }
+.drift__msg { margin: 0; min-height: 1em; font-size: 12px; color: #B4FF2B; }
+.drift__msg:empty { display: none; }
+@media (max-height: 500px) and (orientation: landscape) {
+  .app.is-drift .drift { gap: 6px; padding: 8px 10px; max-width: none; max-height: 62vh; overflow-y: auto; overscroll-behavior: contain; }
+  .drift__play, .drift__b { min-height: 38px; }
+}
+@media (max-width: 600px) and (orientation: portrait) {
+  .drift__done { margin-left: 0; }
+  .drift__knob { flex-basis: 40%; }
+}
+.drift__b .pix { width: 18px; height: 18px; }
+#driftDice span { display: none; }

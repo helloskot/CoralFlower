@@ -74,12 +74,14 @@
     p.drums.some((r, l) => r.slice(0, 16).some(Boolean) && !(l === 0 && r.slice(0, 16).filter(Boolean).length === 4 && [0, 4, 8, 12].every((i) => r[i])));
   // the editor's view: which melodic track (the bass or the lead), which page of 16 steps
   let track = "bass", page = 0, pageT = 0;
+  let anchor = null, sel = null, clip = null;              // (the keyboard's place, its selection, what was copied)
   const trk = () => pat()[track];
   const trkLen = (p = pat()) => (track === "lead" ? p.llen || p.len : p.len);
   const laneLen = (l, p = pat()) => p.dlen[l] || p.len;
   const stp = (col) => page * 16 + col;                   // (a column's step on this page)
 
   // --------------------------------------------------------------------------------------------- the sound ---
+  let lastKnobUp = null;
   let ctx = null, node = null, playing = false, nextSlot = -1, nextAuto = false, barN = 0;
   const playHooks = [];                                   // (things that follow Play: the screen staying awake)
   const buzz = (ms = 8) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch {} };   // (a tick, where the device has one)
@@ -97,6 +99,7 @@
     try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
     ctx = new AudioContext({ latencyHint: pref("latency", "interactive") === "playback" ? "playback" : "interactive" });
     ctx.resume().catch(() => {});
+    try { const id = localStorage.getItem("acid-flower-output"); if (id && ctx.setSinkId) ctx.setSinkId(id).catch(() => {}); } catch {}
     return ctx;
   };
   const playBuf = ([l, r], offset = 0) => {
@@ -199,7 +202,13 @@
   const endTrail = () => { xy.classList.add("is-trail-off"); trail.length = 0; trailEls.forEach((d) => (d.style.opacity = "0")); };   // (it fades: acid.css)
 
   // ------------------------------------------------------------------------------------------ the editor ---
-  const bassEl = $("bass"), drumsEl = $("drums");
+  const bassEl = $("bass"), leadEl = $("lead"), drumsEl = $("drums");
+  // studio view (a big desktop window, with a mouse or a trackpad): the bass, the lead, the drums and the punch-ins all
+  // at once; the tools act on the one last touched. Anything smaller (phones, iPads) keeps the tabs.
+  const studioMQ = matchMedia("(min-width: 1400px) and (min-height: 800px) and (hover: hover) and (pointer: fine)");
+  let studio = studioMQ.matches, focusArea = "bass";
+  const melOf = (t) => (t.closest(".bass") === leadEl ? "lead" : studio ? "bass" : track);
+  const buildMel = (host) => {
   const cols = [];
   // the rows' names, once at the start of the row (a second time where a phone breaks the 16 steps into two rows of 8)
   const label = (second) => {
@@ -208,7 +217,7 @@
     d.setAttribute("aria-hidden", "true");
     d.innerHTML = `<b class="st__n">${second ? "9" : "1"}&#8594;</b><span class="st__l st__l--note"><i>Hi</i><i>Note</i><i>Lo</i></span>` +
                   `<span class="st__l">Oct</span><span class="st__l">Acc</span><span class="st__l">Slide</span>`;
-    bassEl.appendChild(d);
+    host.appendChild(d);
   };
   for (let i = 0; i < 16; i++) {
     if (i === 0 || i === 8) label(i === 8);
@@ -219,9 +228,15 @@
                   `<button type="button" class="st__t" data-t="oct" data-s="${i}" aria-label="Step ${i + 1} octave"></button>` +
                   `<button type="button" class="st__t" data-t="acc" data-s="${i}" aria-label="Step ${i + 1} accent"></button>` +
                   `<button type="button" class="st__t" data-t="slide" data-s="${i}" aria-label="Step ${i + 1} slide"></button>`;
-    bassEl.appendChild(c);
+    host.appendChild(c);
     cols.push({ el: c, note: c.querySelector(".st__note"), pill: c.querySelector(".st__pill"), oct: c.querySelector('[data-t="oct"]'), acc: c.querySelector('[data-t="acc"]'), sld: c.querySelector('[data-t="slide"]') });
   }
+  return cols;
+  };
+  // the melodic editors: the tabs' one (the bass or the lead, whichever tab), and the studio's lead
+  const eds = [{ el: bassEl, cols: buildMel(bassEl), fixed: "bass" }, { el: leadEl, cols: buildMel(leadEl), fixed: "lead" }];
+  const edTrack = (ed) => (studio ? ed.fixed : track);
+  const cols = eds[0].cols;
   const cells = LANES.map(([name, col], l) => {
     const n = document.createElement("button");
     n.type = "button"; n.className = "dr__name"; n.dataset.lane = l; n.textContent = name; n.style.setProperty("--c", col);
@@ -234,10 +249,13 @@
       return d;
     });
   });
-  const drawBass = () => {
-    const p = pat(), steps = p[track], len = trkLen(p);
-    bassEl.classList.toggle("is-lead", track === "lead");
-    cols.forEach((c, col) => {
+  const drawBass = () => { for (const ed of eds) if (ed.el === bassEl || studio) drawMel(ed); };
+  const drawMel = (ed) => {
+    const p = pat(), track = edTrack(ed), steps = p[track], len = track === "lead" ? p.llen || p.len : p.len;
+    ed.el.classList.toggle("is-lead", track === "lead");
+    ed.el.classList.toggle("is-focus", studio && focusArea === track);
+    if (studio) ed.el.querySelectorAll(".st--lab .st__n").forEach((n, k) => (n.textContent = (k ? "" : track === "lead" ? "LEAD" : "BASS")));
+    ed.cols.forEach((c, col) => {
       const i = stp(col), s = steps[i];
       c.el.querySelector(".st__n").textContent = i + 1;
       c.el.classList.toggle("is-on", s.on);
@@ -264,6 +282,7 @@
       d.setAttribute("aria-pressed", String(v)); d.setAttribute("aria-label", LANES[l][0] + ", step " + (s + 1));
     }));
     drumsEl.querySelectorAll(".dr__name").forEach((n) => { const l = +n.dataset.lane; n.dataset.len = p.dlen[l] ? String(p.dlen[l]) : ""; });
+    drumsEl.classList.toggle("is-focus", studio && focusArea === "drums");
   };
   // the pages: 1-16 and 17-32, when anything is longer than 16
   const drawPager = () => {
@@ -283,6 +302,7 @@
       e.title = (p.name ? p.name + ": " : "") + "pattern " + (i + 1) + (nx >= 0 && nx !== i ? ", then " + (nx + 1) : "") + " (hold for more)";
     });
     drawStatus();
+    drawTitle();
   };
   const drawAll = () => {
     drawPager(); drawBass(); drawDrums(); drawSlots(); drawXY(); strips.forEach(drawOne);
@@ -290,6 +310,8 @@
     $("len").textContent = tab() === "drums" ? (p.dlen.every((v) => v === p.dlen[0]) ? p.dlen[0] || p.len : "mix") : trkLen(p);
     $("tune").textContent = (S.params.tune > 0 ? "+" : "") + (S.params.tune ? S.params.tune : "C");
     $("wave").querySelector("b").textContent = (track === "lead" ? S.params.leadWave : S.params.wave) ? "Square" : "Saw";
+    $("focusLbl").textContent = studio ? "Tools: " + (tab() === "drums" ? "Drums" : tab() === "lead" ? "Lead" : "Bass") : "";
+    if (typeof drawSel === "function" && sel) drawSel();
   };
   for (const box of [$("slots"), $("raveSlots")]) for (let i = 0; i < 8; i++) {   // (the bar's, and rave mode's)
     const e = document.createElement("button");
@@ -310,13 +332,20 @@
     if (!t) return;
     e.preventDefault();
     if (t.id === "play") return setPlaying(!playing);
-    if (t.classList.contains("slot")) {                // a tap picks it; a hold opens its menu
+    if (t.classList.contains("slot")) {                // a tap picks it; a hold (or a right-click) opens its menu
       const i = +t.dataset.slot;
+      if (e.button === 2) { openSlot(i); return; }
       pickSlot(i); buzz();
-      ptr.set(e.pointerId, { kind: "slot", hold: setTimeout(() => { ptr.delete(e.pointerId); buzz(15); openSlot(i); }, 480) });
+      ptr.set(e.pointerId, { kind: "slot", i, x0: e.clientX, y0: e.clientY, mouse: e.pointerType === "mouse", hold: setTimeout(() => { ptr.delete(e.pointerId); buzz(15); openSlot(i); }, 480) });
       try { app.setPointerCapture(e.pointerId); } catch {}
       return;
     }
+    if ((t.classList.contains("st__note") || t.classList.contains("dr")) && e.pointerType === "mouse") {
+      if (e.shiftKey) { selectFrom(t, true); ptr.set(e.pointerId, { kind: "sel" }); try { app.setPointerCapture(e.pointerId); } catch {} return; }
+      clearSel(); setAnchor(t); t.focus({ preventScroll: true });
+    }
+    if (t.classList.contains("st__t") || t.classList.contains("st__note")) { track = melOf(t); setFocus(track); }
+    else if (t.classList.contains("dr") || t.classList.contains("dr__name")) setFocus("drums");
     if (t.classList.contains("st__t") || t.classList.contains("dr") || t.classList.contains("st__note")) begin();   // (one gesture, one undo)
     if (t.classList.contains("st__t")) {
       buzz();
@@ -393,21 +422,43 @@
         s.note = Math.max(0, Math.min(12, s.note + steps));
         drawBass(); edited(); audition(p.i);
       }
+    } else if (p.kind === "sel") {                       // (Shift-dragging a selection)
+      const el = document.elementFromPoint(e.clientX, e.clientY), c = el && el.closest && el.closest(".st__note, .dr");
+      if (c) selectFrom(c, true);
+    } else if (p.kind === "slot" && p.mouse) {         // (a mouse dragging a pattern number: onto another copies it)
+      if (!p.drag && Math.abs(e.clientX - p.x0) + Math.abs(e.clientY - p.y0) > 10) { p.drag = true; clearTimeout(p.hold); document.documentElement.classList.add("is-slotdrag"); }
+      if (p.drag) {
+        const el = document.elementFromPoint(e.clientX, e.clientY), d = el && el.closest && el.closest(".slot[data-slot]");
+        document.querySelectorAll(".slot.is-drop").forEach((x) => x !== d && x.classList.remove("is-drop"));
+        if (d && +d.dataset.slot !== p.i) d.classList.add("is-drop");
+      }
     } else if (p.kind === "strip") {
       const sp = spec(p.k), d = p.y - e.clientY;
       p.y = e.clientY;
       if (Math.abs(e.clientY - p.y0) + Math.abs(e.clientX - p.x0) > 8 && !p.repeated) { p.moved = true; clearTimeout(p.hold); }
       if (!p.moved) return;
       p.acc += d;
-      const n = Math.trunc(p.acc / sp.px);
-      if (n) { p.acc -= n * sp.px; setParam(p.k, S.params[p.k] + n * sp.unit); drawStrip(p.el); }
+      const px = sp.px * (e.shiftKey ? 5 : 1), n = Math.trunc(p.acc / px);   // (Shift: fine)
+      if (n) { p.acc -= n * px; setParam(p.k, S.params[p.k] + n * sp.unit); drawStrip(p.el); }
     }
   });
   const up = (e) => {
     const p = ptr.get(e.pointerId);
     if (!p) return;
     ptr.delete(e.pointerId);
-    if (p.kind === "slot") clearTimeout(p.hold);
+    if (p.kind === "slot") {
+      clearTimeout(p.hold);
+      if (p.drag) {
+        document.documentElement.classList.remove("is-slotdrag");
+        document.querySelectorAll(".slot.is-drop").forEach((x) => x.classList.remove("is-drop"));
+        const el = document.elementFromPoint(e.clientX, e.clientY), d = el && el.closest && el.closest(".slot[data-slot]"), k = d ? +d.dataset.slot : -1;
+        if (k >= 0 && k !== p.i && e.type === "pointerup") {
+          begin(); S.slots[k] = clone(S.slots[p.i]); delete S.slots[k].next; commit();
+          if (k === S.cur) sendPattern();
+          save(); drawAll(); toast("Pattern " + (p.i + 1) + " copied to " + (k + 1), "Undo", undo);
+        }
+      }
+    }
     if (p.kind === "xy") {
       p.el.classList.remove("is-on"); endTrail();
       if (!p.moved && e.type === "pointerup") {          // a double tap: the filter back where it started
@@ -422,6 +473,13 @@
       if (p.arrow) p.arrow.classList.remove("is-press");
       if (!p.moved && !p.repeated && e.type === "pointerup" && p.side) { setParam(p.k, S.params[p.k] + p.side * spec(p.k).unit); drawStrip(p.el); }   // the arrows step
       else if (!p.moved && e.type === "pointerup" && p.k === "tempo" && !p.side) tapTempo(p.t0, p.el);   // the middle: tap tempo
+      // a mouse's double-click on a knob puts it back (not tempo: its middle is tap tempo; not a finger's double tap)
+      if (!p.moved && e.type === "pointerup" && e.pointerType === "mouse" && p.k !== "tempo" && !p.side) {
+        const now = performance.now();
+        if (lastKnobUp && lastKnobUp.el === p.el && now - lastKnobUp.t < 400 && DEF_PARAMS[p.k] != null) {
+          setParam(p.k, DEF_PARAMS[p.k]); drawStrip(p.el); toast(p.el.querySelector("b").textContent + " back to " + spec(p.k).fmt(DEF_PARAMS[p.k])); lastKnobUp = null;
+        } else lastKnobUp = { el: p.el, t: now };
+      }
     }
     if (p.kind === "dr" || p.kind === "note") clearTimeout(p.hold);
     if (p.kind === "note" && !p.moved && e.type === "pointerup") {   // a tap: rest, or back on
@@ -440,11 +498,17 @@
   // a keyboard: Space plays, 1 to 8 pick a pattern, the arrows the tempo, R the rave, Cmd/Ctrl Z undo (Shift: redo);
   // the punch-ins are Shift with the number row (below)
   addEventListener("keydown", (e) => {
-    if ($("menu").open || $("slotMenu").open || !$("gate").hidden) return;
-    if (e.target && e.target.closest && e.target.closest("input, textarea")) return;
+    if (document.querySelector("dialog[open]") || !$("gate").hidden) return;
+    if (e.target && e.target.closest && e.target.closest("input, textarea, select")) return;
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.code === "KeyZ") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+    if (mod && (e.code === "KeyC" || e.code === "KeyX" || e.code === "KeyV" || e.code === "KeyA")) { if (clipKey(e)) e.preventDefault(); return; }
     if (mod || e.altKey) return;
+    if (e.key === "?") { e.preventDefault(); show($("keysMenu")); return; }
+    if (e.code === "KeyF" && e.shiftKey) { e.preventDefault(); setFull(!fsNow()); return; }
+    if (e.code === "Escape" && sel) { clearSel(); return; }
+    if ((e.code === "Delete" || e.code === "Backspace") && sel) { e.preventDefault(); clearRange(); return; }
+    if (pianoDown(e)) return;
     if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
     else if (!e.shiftKey && /^Digit[1-8]$/.test(e.code)) { e.preventDefault(); pickSlot(+e.code.slice(5) - 1); }
     else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
@@ -485,7 +549,27 @@
     const f = document.querySelector('[data-tab="filter"]');
     if (app.classList.contains("is-tab-filter") && !f.getClientRects().length) runAct(document.querySelector('[data-tab="bass"]'));
   });
-  function tab() { return !bassEl.hidden ? track : "drums"; }
+  function tab() { return studio ? (focusArea === "drums" ? "drums" : track) : !bassEl.hidden ? track : "drums"; }
+  // the studio's focus: what the tools (wave, length, mutate, random, clear) act on
+  function setFocus(area) {
+    if (!studio || area === focusArea) return;
+    focusArea = area; if (area !== "drums") track = area;
+    drawAll();
+  }
+  const applyStudio = () => {
+    studio = studioMQ.matches;
+    document.documentElement.classList.toggle("studio", studio);
+    if (studio) {
+      bassEl.hidden = false; leadEl.hidden = false; drumsEl.hidden = false; $("punch").hidden = false; $("latch").hidden = false;
+      app.classList.remove("is-tab-filter"); document.querySelector(".tools").style.visibility = "";
+      focusArea = track;
+    } else {
+      leadEl.hidden = true;
+      runAct(document.querySelector('[data-tab][aria-selected="true"]') || document.querySelector('[data-tab="bass"]'));
+    }
+    drawAll(); requestAnimationFrame(fitViz);
+  };
+  (studioMQ.addEventListener ? studioMQ.addEventListener("change", applyStudio) : studioMQ.addListener(applyStudio));
   act("#wave", () => { begin(); const k = track === "lead" ? "leadWave" : "wave"; S.params[k] = S.params[k] ? 0 : 1; commit(); sendParams(); save(); drawAll(); });
   act("[data-tune]", (x) => { begin(); S.params.tune = Math.max(-12, Math.min(12, S.params.tune + +x.dataset.tune)); commit(); sendParams(); save(); drawAll(); });
   // Len: the bass's is the pattern's (the bar it changes on); the lead's and the drums' are their own (all the drums at
@@ -614,8 +698,10 @@
   // the playhead: the bass at the pattern's step; the lead and each drum at their own (their lengths can differ)
   function markStep(m) {
     const p = pat(), on = m && m.step >= 0, a = on ? (m.abs >= 0 ? m.abs : m.step) : -1;
-    const ps = !on ? -1 : track === "lead" ? a % (p.llen || p.len) : m.step;
-    cols.forEach((c, col) => c.el.classList.toggle("is-now", stp(col) === ps));
+    for (const ed of eds) {
+      const tr = edTrack(ed), ps = !on ? -1 : tr === "lead" ? a % (p.llen || p.len) : m.step;
+      ed.cols.forEach((c, col) => c.el.classList.toggle("is-now", stp(col) === ps));
+    }
     cells.forEach((row, l) => { const dp = on ? a % laneLen(l, p) : -1; row.forEach((d, col) => d.classList.toggle("is-now", stp(col) === dp)); });
   }
   let viz = { step: -1 }, lastStep = -2;
@@ -824,17 +910,19 @@
     if (await saveFile(file, "Acid Flower patterns")) { msg("Saved: " + name); S.edits = 0; S.backupAt = Date.now(); save(); }
   };
   $("import").onclick = () => $("importFile").click();
+  const importFrom = async (f) => {
+    let d;
+    try { d = JSON.parse(await f.text()); } catch { d = null; }
+    if (!valid(d)) { msg("That file isn’t a set of Acid Flower patterns."); toast("That file isn’t a set of Acid Flower patterns."); return; }
+    if (!confirm("Replace your 8 patterns and knobs with “" + f.name + "”?")) return;
+    begin();
+    S = fixAll({ slots: d.slots, cur: d.cur, params: d.params || {}, song: d.song, songOn: !!d.songOn });
+    commit(); save(); sendParams(); sendPattern(); drawAll(); msg("Loaded " + f.name); toast("Loaded " + f.name, "Undo", undo);
+  };
   $("importFile").onchange = async (e) => {
     const f = e.target.files && e.target.files[0];
     e.target.value = "";
-    if (!f) return;
-    let d;
-    try { d = JSON.parse(await f.text()); } catch { d = null; }
-    if (!valid(d)) return msg("That file isn’t a set of Acid Flower patterns.");
-    if (!confirm("Replace your 8 patterns and knobs with “" + f.name + "”?")) return;
-    begin();
-    S = { slots: d.slots, cur: Math.max(0, Math.min(7, d.cur | 0)), params: { ...DEF_PARAMS, ...d.params } };
-    commit(); save(); sendParams(); sendPattern(); drawAll(); msg("Loaded " + f.name);
+    if (f) importFrom(f);
   };
   $("reset").onclick = () => {
     if (!confirm("Go back to the starter patterns and knobs? Your own patterns will be gone (save them first if you want them).")) return;
@@ -845,6 +933,21 @@
   if (!standalone && navigator.maxTouchPoints > 0) $("a2hs").hidden = false;
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   drawAll();
+  applyStudio();
+  // the studio's split between the display and the editor: drag it (or use the arrow keys on it); remembered
+  { const sp = $("splitter"), root = document.documentElement, KEY = "acid-flower-split";
+    const setH = (h) => { h = Math.max(160, Math.min(innerHeight * 0.62, h)); root.style.setProperty("--top-h", Math.round(h) + "px"); try { localStorage.setItem(KEY, String(Math.round(h))); } catch {} requestAnimationFrame(fitViz); };
+    try { const h = +localStorage.getItem(KEY); if (h) root.style.setProperty("--top-h", h + "px"); } catch {}
+    sp.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const top = $("viz").closest(".rave").getBoundingClientRect().top, move = (ev) => setH(ev.clientY - top - 4);
+      try { sp.setPointerCapture(e.pointerId); } catch {}
+      sp.classList.add("is-drag");
+      sp.addEventListener("pointermove", move);
+      sp.addEventListener("pointerup", () => { sp.classList.remove("is-drag"); sp.removeEventListener("pointermove", move); }, { once: true });
+    });
+    sp.addEventListener("dblclick", () => { root.style.removeProperty("--top-h"); try { localStorage.removeItem(KEY); } catch {} requestAnimationFrame(fitViz); });
+    sp.addEventListener("keydown", (e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); setH($("viz").closest(".rave").getBoundingClientRect().height + (e.key === "ArrowDown" ? 24 : -24)); } }); }
   // ------------------------------------------------------------------------------------------- the icons ---
   // pixel icons, 12 x 12, drawn as crisp SVG: the bass line a squelching saw, the drums a drum and its sticks, the
   // punch-ins a lightning bolt, the rave a smiley, the tilt an iPad leaning
@@ -1397,7 +1500,7 @@
   });
   $("genMenu").addEventListener("click", (e) => { if (e.target === $("genMenu")) $("genMenu").close(); });
   { const rb = $("random"); let hold = 0, held = false;
-    rb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); held = false; hold = setTimeout(() => { held = true; buzz(15); show($("genMenu")); }, 480); });
+    rb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); held = false; if (e.button === 2) { held = true; show($("genMenu")); return; } hold = setTimeout(() => { held = true; buzz(15); show($("genMenu")); }, 480); });
     rb.addEventListener("pointerup", () => { clearTimeout(hold); if (!held) doRandom(); });
     rb.addEventListener("pointercancel", () => clearTimeout(hold));
     rb.addEventListener("click", (e) => { if (e.detail === 0) doRandom(); });
@@ -1659,6 +1762,261 @@
   applyVJ();
 
 
+
+  // --------------------------------------------------------------------------------------- mouse, trackpad ---
+  // a scroll turns what is under the pointer: a knob, tempo or swing, a note's pitch, the squelch pad (up and down the
+  // resonance, sideways or with Shift the cutoff); a double-click puts a knob back (a mouse's: a finger's double tap
+  // stays as it was); a dropped patterns file loads
+  let wheelAcc = 0, wheelEl = null, wheelT = 0, wheelBegun = false;
+  app.addEventListener("wheel", (e) => {
+    const t = e.target.closest && e.target.closest(".strip, .st__note, .xy");
+    if (!t) return;
+    e.preventDefault();
+    if (t !== wheelEl) { wheelEl = t; wheelAcc = 0; }
+    const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY, dx = e.deltaMode === 1 ? e.deltaX * 33 : e.deltaX;
+    clearTimeout(wheelT); wheelT = setTimeout(() => { wheelEl = null; if (wheelBegun) { commit(); wheelBegun = false; } }, 500);
+    if (t.classList.contains("xy")) {
+      // up and down: the resonance; sideways (a trackpad), or Shift with a wheel: the cutoff
+      if (e.shiftKey) S.params.cutoff = clamp01(S.params.cutoff - (dy || -dx) * 0.0012);
+      else { S.params.reso = clamp01(S.params.reso - dy * 0.0012); S.params.cutoff = clamp01(S.params.cutoff + dx * 0.0012); }
+      sendParams(); save(); drawXY();
+      return;
+    }
+    wheelAcc += -dy;
+    const STEP = 40, n = Math.trunc(wheelAcc / STEP);
+    if (!n) return;
+    wheelAcc -= n * STEP;
+    if (t.classList.contains("st__note")) {
+      if (!wheelBegun) { begin(); wheelBegun = true; }
+      track = melOf(t); setFocus(track);
+      const i = stp(+t.dataset.s), x = trk()[i];
+      x.on = true; x.note = Math.max(0, Math.min(12, x.note + n));
+      drawBass(); sendPattern(); save(); drawSlots(); audition(i);
+    } else {
+      const k = t.dataset.p, sp = spec(k);
+      setParam(k, S.params[k] + n * sp.unit * (k === "tempo" || e.shiftKey ? 1 : 2)); drawStrip(t);
+    }
+  }, { passive: false });
+  let lastPtrType = "";
+  addEventListener("pointerdown", (e) => { lastPtrType = e.pointerType; }, true);
+  strips.forEach((t) => { if (!t.title) t.title = (t.getAttribute("aria-label") || "") + ": drag up or down" + (t.dataset.p === "tempo" ? ", or tap the middle in time" : "") + ", or scroll" + (t.dataset.p !== "tempo" ? "; double-click to reset" : "") + "; Shift for fine"; });
+  // a file dropped on the window: a set of patterns
+  let dragDepth = 0;
+  addEventListener("dragenter", (e) => { if ([...(e.dataTransfer && e.dataTransfer.types || [])].includes("Files")) { dragDepth++; document.documentElement.classList.add("is-filedrag"); } });
+  addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.documentElement.classList.remove("is-filedrag"); } });
+  addEventListener("dragover", (e) => { if ([...(e.dataTransfer && e.dataTransfer.types || [])].includes("Files")) e.preventDefault(); });
+  addEventListener("drop", (e) => {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    dragDepth = 0; document.documentElement.classList.remove("is-filedrag");
+    if (!f) return;
+    e.preventDefault();
+    importFrom(f);
+  });
+
+
+  // ---------------------------------------------------------------------------------------- the keyboard ---
+  // a piano on the letters (A to K, the black keys on W E T Y U; Z and X the octave) for the lead or the bass,
+  // whichever was touched last; on a step, the arrows move and change it; Shift selects; Cmd C / X / V copy, cut and
+  // paste steps, or the whole pattern
+  const PIANO = { KeyA: 0, KeyW: 1, KeyS: 2, KeyE: 3, KeyD: 4, KeyF: 5, KeyT: 6, KeyG: 7, KeyY: 8, KeyH: 9, KeyU: 10, KeyJ: 11, KeyK: 12, KeyO: 13, KeyL: 14 };
+  let kbOct = 0;
+  const held = new Map();
+  function pianoDown(e) {
+    if (e.code === "KeyZ" || e.code === "KeyX") { kbOct = Math.max(-2, Math.min(2, kbOct + (e.code === "KeyX" ? 1 : -1))); toast("Keys: octave " + (kbOct > 0 ? "+" : "") + kbOct); return true; }
+    const n = PIANO[e.code];
+    if (n == null || e.shiftKey) return false;
+    e.preventDefault();
+    if (e.repeat || held.has(e.code)) return true;
+    const voice = track === "lead" ? "lead" : "bass", note = (voice === "lead" ? 60 : 36) + 12 * kbOct + n + S.params.tune;
+    held.set(e.code, { note, voice });
+    post({ type: "live", on: true, note, voice, acc: false });
+    rave.event({ ...viz, note, accHit: false, hits: 0 });
+    return true;
+  }
+  addEventListener("keyup", (e) => { const h = held.get(e.code); if (!h) return; held.delete(e.code); post({ type: "live", on: false, note: h.note, voice: h.voice }); });
+  addEventListener("blur", () => { for (const h of held.values()) post({ type: "live", on: false, note: h.note, voice: h.voice }); held.clear(); });
+  $("keysBtn").addEventListener("click", () => { menu.close(); show($("keysMenu")); });
+  $("keysMenu").addEventListener("click", (e) => { if (e.target === $("keysMenu")) $("keysMenu").close(); });
+
+  // a cell, as a place: a melodic step { kind: "mel", tr, i } or a drum step { kind: "drum", l, i } (i: the step)
+  const cellOf = (t) => (t.classList.contains("dr") ? { kind: "drum", l: +t.dataset.lane, i: stp(+t.dataset.s) } : { kind: "mel", tr: melOf(t), i: stp(+t.dataset.s) });
+  const elOf = (c) => {
+    if (c.i < page * 16 || c.i >= page * 16 + 16) { page = c.i >= 16 ? 1 : 0; pageT = performance.now(); drawAll(); }
+    const col = c.i - page * 16;
+    if (c.kind === "drum") return drumsEl.querySelector(`.dr[data-lane="${c.l}"][data-s="${col}"]`);
+    const ed = studio && c.tr === "lead" ? leadEl : bassEl;
+    if (!studio && c.tr !== track) { track = c.tr; drawAll(); }
+    return ed.querySelector(`.st__note[data-s="${col}"]`);
+  };
+  function setAnchor(t) { anchor = cellOf(t); }
+  function selectFrom(t, extend) {
+    const c = cellOf(t);
+    if (!extend || !anchor || anchor.kind !== c.kind || (c.kind === "mel" && anchor.tr !== c.tr)) { anchor = c; }
+    sel = c.kind === "drum" ? { kind: "drum", l0: Math.min(anchor.l, c.l), l1: Math.max(anchor.l, c.l), a: Math.min(anchor.i, c.i), b: Math.max(anchor.i, c.i) }
+                            : { kind: "mel", tr: c.tr, a: Math.min(anchor.i, c.i), b: Math.max(anchor.i, c.i) };
+    drawSel();
+  }
+  function clearSel() { sel = null; drawSel(); }
+  function drawSel() {
+    for (const ed of eds) { const tr = edTrack(ed); ed.cols.forEach((c, col) => { const i = stp(col); c.note.classList.toggle("is-sel", !!sel && sel.kind === "mel" && sel.tr === tr && i >= sel.a && i <= sel.b); }); }
+    cells.forEach((row, l) => row.forEach((d, col) => { const i = stp(col); d.classList.toggle("is-sel", !!sel && sel.kind === "drum" && l >= sel.l0 && l <= sel.l1 && i >= sel.a && i <= sel.b); }));
+  }
+  function clearRange() {
+    if (!sel) return;
+    begin();
+    const p = pat();
+    for (let i = sel.a; i <= sel.b; i++) {
+      if (sel.kind === "mel") p[sel.tr][i] = rest();
+      else for (let l = sel.l0; l <= sel.l1; l++) { p.drums[l][i] = false; p.dp[l][i] = 100; p.dr[l][i] = 1; }
+    }
+    edited(); drawAll(); drawSel();
+  }
+  // Cmd A, C, X, V
+  function clipKey(e) {
+    const p = pat(), k = e.code;
+    if (k === "KeyA") {
+      if (focusInSteps() || studio) {
+        if (tab() === "drums") sel = { kind: "drum", l0: 0, l1: LANES.length - 1, a: 0, b: p.len - 1 };
+        else sel = { kind: "mel", tr: track, a: 0, b: trkLen(p) - 1 };
+        anchor = sel.kind === "drum" ? { kind: "drum", l: 0, i: 0 } : { kind: "mel", tr: track, i: 0 };
+        drawSel(); return true;
+      }
+      return false;
+    }
+    if (k === "KeyC" || k === "KeyX") {
+      if (sel && sel.kind === "mel") clip = { kind: "mel", steps: clone(p[sel.tr].slice(sel.a, sel.b + 1)) };
+      else if (sel) clip = { kind: "drum", lanes: sel.l1 - sel.l0 + 1, l0: sel.l0, rows: [...Array(sel.l1 - sel.l0 + 1).keys()].map((j) => ({
+        on: p.drums[sel.l0 + j].slice(sel.a, sel.b + 1), dp: p.dp[sel.l0 + j].slice(sel.a, sel.b + 1), dr: p.dr[sel.l0 + j].slice(sel.a, sel.b + 1) })) };
+      else clip = { kind: "pattern", p: clone(p) };
+      try { navigator.clipboard && navigator.clipboard.writeText("acid-flower:" + JSON.stringify(clip)).catch(() => {}); } catch {}
+      const what = clip.kind === "pattern" ? "the pattern" : clip.kind === "mel" ? clip.steps.length + " step" + (clip.steps.length > 1 ? "s" : "") : clip.rows[0].on.length + " step" + (clip.rows[0].on.length > 1 ? "s" : "") + " of " + clip.lanes + " drum" + (clip.lanes > 1 ? "s" : "");
+      if (k === "KeyX") { if (sel) clearRange(); else { begin(); S.slots[S.cur] = Object.assign(empty(), { name: p.name }); edited(); drawAll(); } toast("Cut " + what, "Undo", undo); }
+      else toast("Copied " + what);
+      return true;
+    }
+    if (k === "KeyV") {
+      if (!clip) { toast("Nothing copied yet"); return true; }
+      begin();
+      if (clip.kind === "pattern") { S.slots[S.cur] = Object.assign(normPat(clone(clip.p)), { name: p.name, next: p.next }); }
+      else if (clip.kind === "mel") {
+        const tr = sel && sel.kind === "mel" ? sel.tr : anchor && anchor.kind === "mel" ? anchor.tr : track === "lead" ? "lead" : "bass";
+        const at0 = sel && sel.kind === "mel" ? sel.a : anchor && anchor.kind === "mel" ? anchor.i : 0;
+        clip.steps.forEach((x, j) => { if (at0 + j < MAXS) p[tr][at0 + j] = stepOK(clone(x)); });
+        sel = { kind: "mel", tr, a: at0, b: Math.min(MAXS - 1, at0 + clip.steps.length - 1) };
+      } else {
+        const l0 = sel && sel.kind === "drum" ? sel.l0 : anchor && anchor.kind === "drum" ? anchor.l : clip.l0, at0 = sel && sel.kind === "drum" ? sel.a : anchor && anchor.kind === "drum" ? anchor.i : 0;
+        clip.rows.forEach((r, j) => { const l = l0 + j; if (l >= LANES.length) return; r.on.forEach((v, q) => { if (at0 + q < MAXS) { p.drums[l][at0 + q] = v; p.dp[l][at0 + q] = r.dp[q]; p.dr[l][at0 + q] = r.dr[q]; } }); });
+        sel = { kind: "drum", l0, l1: Math.min(LANES.length - 1, l0 + clip.lanes - 1), a: at0, b: Math.min(MAXS - 1, at0 + clip.rows[0].on.length - 1) };
+      }
+      edited(); drawAll(); drawSel(); toast("Pasted", "Undo", undo);
+      return true;
+    }
+    return false;
+  }
+  const focusInSteps = () => { const a = document.activeElement; return !!(a && a.closest && a.closest(".st__note, .dr")); };
+  // a step's own keys: arrows move (Shift: select), up and down change a note (or move between drums), Delete clears
+  function stepKey(e) {
+    const t = e.target;
+    if (!t.classList || !(t.classList.contains("st__note") || t.classList.contains("dr"))) return false;
+    const c = cellOf(t), k = e.key, p = pat();
+    const go = (n) => { const el = elOf(n); if (!el) return; el.focus({ preventScroll: true }); if (e.shiftKey) selectFrom(el, true); else { clearSel(); anchor = n; } };
+    if (k === "ArrowLeft" || k === "ArrowRight") {
+      e.preventDefault(); e.stopPropagation();
+      const len = c.kind === "drum" ? laneLen(c.l) : c.tr === "lead" ? p.llen || p.len : p.len;
+      if (!e.shiftKey && !sel) anchor = c;
+      go({ ...c, i: (c.i + (k === "ArrowRight" ? 1 : -1) + len) % len });
+      return true;
+    }
+    if (k === "ArrowUp" || k === "ArrowDown") {
+      e.preventDefault(); e.stopPropagation();
+      const d = k === "ArrowUp" ? 1 : -1;
+      if (c.kind === "drum") { go({ ...c, l: (c.l - d + LANES.length) % LANES.length }); return true; }
+      begin(); track = c.tr; const x = p[c.tr][c.i];
+      if (e.shiftKey) x.oct = Math.max(-1, Math.min(1, x.oct + d)); else x.note = Math.max(0, Math.min(12, x.note + d));
+      x.on = true; drawBass(); edited(); audition(c.i);
+      return true;
+    }
+    if (k === "Delete" || k === "Backspace") {
+      e.preventDefault(); e.stopPropagation();
+      if (sel) { clearRange(); return true; }
+      begin();
+      if (c.kind === "drum") { p.drums[c.l][c.i] = false; drawDrums(); } else { p[c.tr][c.i] = rest(); drawBass(); }
+      edited();
+      return true;
+    }
+    return false;
+  }
+
+
+  // ------------------------------------------------------------------------------------------ audio export ---
+  // a pattern (four times round) or the song, rendered offline (an OfflineAudioContext runs the same worklet, faster
+  // than real time) into WAV files: the mix, and if asked the stems (the bass, the lead, the drums, each with its sends)
+  let wavJob = null;
+  const wavFile = (buf, name) => {                         // 16-bit stereo PCM
+    const n = buf.length, L = buf.getChannelData(0), R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
+    const dv = new DataView(new ArrayBuffer(44 + n * 4)), str = (o, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
+    str(0, "RIFF"); dv.setUint32(4, 36 + n * 4, true); str(8, "WAVE"); str(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 2, true);
+    dv.setUint32(24, buf.sampleRate, true); dv.setUint32(28, buf.sampleRate * 4, true); dv.setUint16(32, 4, true); dv.setUint16(34, 16, true); str(36, "data"); dv.setUint32(40, n * 4, true);
+    for (let i = 0, o = 44; i < n; i++, o += 4) { dv.setInt16(o, Math.max(-1, Math.min(1, L[i])) * 32767, true); dv.setInt16(o + 2, Math.max(-1, Math.min(1, R[i])) * 32767, true); }
+    return new File([dv.buffer], name, { type: "audio/wav" });
+  };
+  async function renderAudio(list, name, stems) {
+    if (!window.OfflineAudioContext) { $("wavMsg").textContent = "This browser can’t render audio."; return; }
+    const sr = 44100, steps = list.reduce((n, [p, r]) => n + p.len * r, 0), secs = (steps * 60) / S.params.tempo / 4 + 2.5;
+    const code = await (await fetch("acid-worklet.js", { cache: "no-cache" })).text(), url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+    const one = async (mute) => {
+      const off = new OfflineAudioContext(2, Math.ceil(secs * sr), sr);
+      await off.audioWorklet.addModule(url);
+      const n = new AudioWorkletNode(off, "acid-flower", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
+        processorOptions: { params: clone(S.params), queue: list.map(([p, reps]) => ({ pattern: clone(p), reps })), play: true, mute } });
+      n.connect(off.destination);
+      return off.startRendering();
+    };
+    const base = "acid-flower-" + String(name).replace(/[^a-z0-9]+/gi, "-").toLowerCase(), files = [];
+    const parts = [["mix", null], ...(stems ? [["bass", { lead: 1, drums: 1 }], ["lead", { bass: 1, drums: 1 }], ["drums", { bass: 1, lead: 1 }]] : [])];
+    try {
+      for (const [part, mute] of parts) { $("wavMsg").textContent = "Rendering the " + part + "…"; files.push(wavFile(await one(mute), base + "-" + part + ".wav")); }
+    } catch (err) { $("wavMsg").textContent = "Couldn’t render: " + err.message; URL.revokeObjectURL(url); return; }
+    URL.revokeObjectURL(url);
+    $("wavMsg").textContent = "Done: " + files.length + " file" + (files.length > 1 ? "s" : "") + ", " + secs.toFixed(1) + " s each.";
+    try { if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title: "Acid Flower audio" }); return; } } catch (err) { if (err && err.name === "AbortError") return; }
+    for (const f of files) { await saveFile(f, f.name); await new Promise((r) => setTimeout(r, 350)); }   // (one download each, a moment apart)
+  }
+  const openWav = (list, name, what) => { wavJob = { list, name }; $("wavWhat").textContent = what; $("wavMsg").textContent = ""; show($("wavMenu")); };
+  $("slotWav").addEventListener("click", () => { const p = S.slots[sheetSlot], nm = p.name || "pattern-" + (sheetSlot + 1); $("slotMenu").close(); openWav([[p, 4]], nm, "Pattern " + (sheetSlot + 1) + (p.name ? " (" + p.name + ")" : "") + ", four times round."); });
+  $("songWav").addEventListener("click", () => { if (!S.song.length) return toast("Add patterns to the song first"); $("songMenu").close(); openWav(S.song.map((x) => [S.slots[x.slot], x.reps]), "song", "The song: " + S.song.map((x) => x.slot + 1 + "×" + x.reps).join(", ") + "."); });
+  $("wavMix").addEventListener("click", () => wavJob && renderAudio(wavJob.list, wavJob.name, false));
+  $("wavStems").addEventListener("click", () => wavJob && renderAudio(wavJob.list, wavJob.name, true));
+  $("wavMenu").addEventListener("click", (e) => { if (e.target === $("wavMenu")) $("wavMenu").close(); });
+
+  // ------------------------------------------------------------------------------------------- the output ---
+  // where the sound goes (Chrome and Edge can choose: an audio interface, headphones); remembered
+  const sinkOK = !!(window.AudioContext && AudioContext.prototype.setSinkId);
+  const OUT_KEY = "acid-flower-output";
+  async function drawOutputs() {
+    $("outOpt").hidden = !sinkOK || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices;
+    if ($("outOpt").hidden) return;
+    let devs = [];
+    try { devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audiooutput" && d.deviceId !== "default"); } catch {}
+    const cur = (() => { try { return localStorage.getItem(OUT_KEY) || ""; } catch { return ""; } })();
+    $("outSel").innerHTML = `<option value="">The system's</option>` + devs.map((d, i) => `<option value="${d.deviceId}">${d.label || "Output " + (i + 1)}</option>`).join("");
+    $("outSel").value = devs.some((d) => d.deviceId === cur) ? cur : "";
+  }
+  const applyOutput = async () => { if (!sinkOK || !ctx) return; let id = ""; try { id = localStorage.getItem(OUT_KEY) || ""; } catch {} try { await ctx.setSinkId(id); } catch {} };
+  $("outSel").addEventListener("change", async () => { try { localStorage.setItem(OUT_KEY, $("outSel").value); } catch {} await applyOutput(); toast("Sound to " + $("outSel").selectedOptions[0].textContent); });
+  $("menuBtn").addEventListener("click", drawOutputs);
+  playHooks.push(() => applyOutput());
+  drawOutputs();
+
+  // --------------------------------------------------------------------------------- an app on the desktop ---
+  // Chrome and Edge can install it (its own window and icon); the window's title says what plays
+  let installEv = null;
+  addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEv = e; $("installBtn").hidden = false; });
+  addEventListener("appinstalled", () => { $("installBtn").hidden = true; installEv = null; toast("Installed: Acid Flower has its own window now"); });
+  $("installBtn").addEventListener("click", async () => { if (!installEv) return; installEv.prompt(); try { await installEv.userChoice; } catch {} installEv = null; $("installBtn").hidden = true; });
+  function drawTitle() { const p = pat(); document.title = (playing ? "▶ " : "") + (p.name || "Pattern " + (S.cur + 1)) + " · Acid Flower"; }
+  playHooks.push(drawTitle);
+
   // ------------------------------------------------------------------------------------------ pocket jam ---
   // shake to mutate (the motion sensor), and the light filter (the front camera's brightness: the frames stay here,
   // sampled at 16 x 12 and thrown away)
@@ -1735,10 +2093,11 @@
 
   // -------------------------------------------------------------------------------------- the keyboard ---
   // a step focused with Tab: Enter or Space toggles it (a note rests or comes back; a drum step on or off)
-  for (const el of [bassEl, drumsEl]) el.addEventListener("keydown", (e) => {
+  for (const el of [bassEl, leadEl, drumsEl]) el.addEventListener("keydown", (e) => {
+    if (stepKey(e)) return;
     if (e.key !== "Enter" && e.key !== " ") return;
     const t = e.target;
-    if (t.classList.contains("st__note")) { e.preventDefault(); e.stopPropagation(); begin(); const i = stp(+t.dataset.s), x = trk()[i]; x.on = !x.on; drawBass(); edited(); audition(i); }
+    if (t.classList.contains("st__note")) { e.preventDefault(); e.stopPropagation(); track = melOf(t); setFocus(track); begin(); const i = stp(+t.dataset.s), x = trk()[i]; x.on = !x.on; drawBass(); edited(); audition(i); }
     else if (t.classList.contains("dr")) { e.preventDefault(); e.stopPropagation(); begin(); const l = +t.dataset.lane, i = stp(+t.dataset.s); pat().drums[l][i] = !pat().drums[l][i]; drawDrums(); edited(); }
   });
   document.querySelectorAll(".st__note, .dr").forEach((el) => { el.tabIndex = 0; if (el.classList.contains("st__note")) el.setAttribute("role", "button"); });
@@ -1816,5 +2175,5 @@
   $("tourAgain").addEventListener("click", () => { menu.close(); setTimeout(() => tour(0), 200); });
   addEventListener("resize", () => { if (tourI >= 0) tour(tourI); });
 
-  window.acid = { state: () => S, VJS, applyVJ, ctx: () => ctx, onMidi: (d) => onMidi({ data: d, timeStamp: performance.now() }), onMidiAt: (d, t) => onMidi({ data: d, timeStamp: t }), clockLoop, CTRL, MP, toMidi, gen, songPos: () => [songI, songLoop], locked: () => locked, decode2, normPat, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
+  window.acid = { state: () => S, renderAudio, sel: () => sel, clip: () => clip, studio: () => studio, kbOct: () => kbOct, VJS, applyVJ, ctx: () => ctx, onMidi: (d) => onMidi({ data: d, timeStamp: performance.now() }), onMidiAt: (d, t) => onMidi({ data: d, timeStamp: t }), clockLoop, CTRL, MP, toMidi, gen, songPos: () => [songI, songLoop], locked: () => locked, decode2, normPat, undo, redo, encode: (i) => encode(S.slots[i == null ? S.cur : i]), latch: () => latch, nextSlot: () => nextSlot, playing: () => playing, viz: () => viz, rave, boot, tilt: () => tiltOn, fold: () => [...document.documentElement.classList].filter((c) => c.startsWith("fold")).join(" ") };
 })();

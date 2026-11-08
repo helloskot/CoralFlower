@@ -153,8 +153,9 @@ class SVF {                                            // a state-variable filte
 }
 
 class AcidFlower extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
+    const opt = (options && options.processorOptions) || null;   // (an export, rendered offline: everything up front)
     const sr = (this.sr = sampleRate);
     this.p = { ...DEFAULT_PARAMS };
     this.sm = { cutoff: this.p.cutoff, reso: this.p.reso, env: this.p.env, drive: this.p.drive, delay: this.p.delay, verb: 0, pump: 0, lead: this.p.lead };
@@ -193,6 +194,16 @@ class AcidFlower extends AudioWorkletProcessor {
     this.crushN = 0; this.crushL = 0; this.crushR = 0; this.gateG = 1;
     this.eL = new Float32Array(Math.ceil(sr * 2.2)); this.eR = new Float32Array(Math.ceil(sr * 2.2)); this.ew = 0; this.eIn = 0;
     this.bassG = 1; this.drumsG = 1;
+    // an export: the knobs, a queue of patterns ([{ pattern, reps }], played in order, then the tails ring out) and,
+    // for a stem, what to leave out (the parts still run, so chance comes out the same in every stem)
+    this.mute = { bass: 0, lead: 0, drums: 0 }; this.queue = null; this.qi = 0; this.qLoops = 0;
+    if (opt) {
+      if (opt.params) Object.assign(this.p, opt.params);
+      if (opt.mute) for (const k of ["bass", "lead", "drums"]) this.mute[k] = opt.mute[k] ? 1 : 0;
+      if (opt.queue && opt.queue.length) { this.queue = opt.queue; this.pat = opt.queue[0].pattern; }
+      else if (opt.pattern) this.pat = opt.pattern;
+      if (opt.play) { this.playing = true; this.step = -1; this.abs = -1; this.phase = 0; this.dur = 0; }
+    }
     this.port.onmessage = (e) => this.onMessage(e.data);
   }
 
@@ -291,6 +302,11 @@ class AcidFlower extends AudioWorkletProcessor {
     if (s >= len) {
       s = 0;
       if (this.next) { this.pat = this.next; this.next = null; this.abs = 0; }
+      if (this.queue && ++this.qLoops >= Math.max(1, this.queue[this.qi].reps | 0)) {   // (an export's next pattern, or the end)
+        this.qLoops = 0; this.qi++;
+        if (this.qi >= this.queue.length) { this.playing = false; this.bass.gate = false; this.lead.gate = false; this.queue = null; this.step = -1; return; }
+        this.pat = this.queue[this.qi].pattern; this.abs = 0;
+      }
     }
     const pat = this.pat, L = clampI(pat.len, 1, MAXS, 16), prevS = (s - 1 + L) % L;
     this.step = s;
@@ -361,8 +377,8 @@ class AcidFlower extends AudioWorkletProcessor {
       // ---- the voices, ducked by the kick (the pump)
       this.pumpE *= pumpK;
       const duck = 1 - sm.pump * 0.85 * this.pumpE;
-      const bass = this.bass.run(K, p.wave, 0) * duck;
-      const lead = this.lead.run(K, leadW, 0.12) * duck * sm.lead * 0.8;
+      const bass = this.bass.run(K, p.wave, 0) * duck * (1 - this.mute.bass);
+      const lead = this.lead.run(K, leadW, 0.12) * duck * sm.lead * 0.8 * (1 - this.mute.lead);
       // ---- the drums
       let drums = 0;
       const k = this.k;
@@ -426,7 +442,7 @@ class AcidFlower extends AudioWorkletProcessor {
       this.dl[this.dw] = send + this.dlp * 0.48;
       this.dlr[this.dw] = this.dlpR * 0.48;
       this.dw = (this.dw + 1) % this.dl.length;
-      const voices = (bass * 0.95 + lead) * this.bassG, dr = drums * dvol * this.drumsG;
+      const voices = (bass * 0.95 + lead) * this.bassG, dr = drums * dvol * this.drumsG * (1 - this.mute.drums);
       let oL = voices + dr + dLeft * 0.8, oR = voices + dr + dRight * 0.8;
       if (verbOn) {                                    // the room: the voices and a little of the drums
         const vin = (voices * 0.7 + dr * 0.5) * sm.verb * 0.5;

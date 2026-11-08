@@ -322,6 +322,19 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
   ok(err / tot < 0.25, `stems: bass + lead + drums close to the mix (difference ${(100 * err / tot).toFixed(1)}%, the limiter's)`);
   ok(rms(l.L, 0, Math.round(32 * S120)) < 1e-4 && rms(l.L, Math.round(36 * S120), Math.round(40 * S120)) > 0.01, `stems: the lead only where the lead plays`);
 }
+{ // the squelch pad over a repeat: unmoved, the loop is untouched; moved left after the press, the loop goes dark
+  const S = sps(120), busyP = () => { const p = empty(); for (let s2 = 0; s2 < 16; s2++) { p.bass[s2] = { on: true, note: (s2 * 7) % 12, oct: s2 % 3 === 0 ? 1 : 0, acc: s2 % 4 === 0, slide: false }; p.drums[3][s2] = true; } return p; };
+  const run = (cutAfter) => {
+    const a = load(); a.send({ type: "params", params: { tempo: 120, swing: 0.5, delay: 0, cutoff: 0.7, reso: 0.7 } });
+    a.send({ type: "pattern", pattern: busyP() }); a.send({ type: "play" }); a.render(0.5);
+    a.send({ type: "fx", mask: 1 << 1 }); a.render(0.05);
+    if (cutAfter != null) a.send({ type: "params", params: { cutoff: cutAfter } });
+    return a.render(0.6).L;
+  };
+  const zc = (x, from) => { let n = 0; for (let i = from + 1; i < x.length; i++) if ((x[i - 1] < 0) !== (x[i] < 0)) n++; return n; };
+  const still = run(null), dark = run(0.15), from = Math.round(0.25 * SR);
+  ok(zc(dark, from) < zc(still, from) * 0.5, `squelch over REPEAT: the pad left closes the loop (${zc(still, from)} to ${zc(dark, from)} zero crossings)`);
+}
 { // the power-on sounds (boot-sound.js): each part where the boot animation puts it, nothing clipped, then quiet
   const ctx = vm.createContext({ Math, Float32Array, globalThis: {} });
   ctx.globalThis = ctx;

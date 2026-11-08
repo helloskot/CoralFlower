@@ -11,14 +11,14 @@ const SR = 44100, BLOCK = 128;
 let fails = 0;
 const ok = (c, msg) => { console.log(`  ${c ? "ok  " : "FAIL"}  ${msg}`); if (!c) fails++; };
 
-function load() {
+function load(processorOptions) {
   let Proc = null;
   const posted = [];
   class AudioWorkletProcessor { constructor() { this.port = { postMessage: (m) => posted.push(m), onmessage: null }; } }
   const ctx = vm.createContext({ AudioWorkletProcessor, registerProcessor: (n, c) => { Proc = c; }, sampleRate: SR, Math, Float32Array,
                                  Float64Array, Array, Object, Infinity, console, Number });
   vm.runInContext(fs.readFileSync(path.join(HERE, "acid-worklet.js"), "utf8"), ctx);
-  const p = new Proc();
+  const p = new Proc(processorOptions ? { processorOptions } : undefined);
   const send = (m) => p.onMessage(m);
   const render = (secs) => {
     const n = Math.round((secs * SR) / BLOCK), L = new Float32Array(n * BLOCK), R = new Float32Array(n * BLOCK);
@@ -303,6 +303,24 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
     const pumped = duck(1), flat = duck(0);
     ok(pumped < flat * 0.5, `pump: the bass ducked under the kick (${pumped.toFixed(3)} against ${flat.toFixed(3)})`);
   }
+}
+{ // an export: a queue of patterns, played once each then the tails; stems that add up to the mix
+  const S120 = sps(120), e8 = () => { const p = empty(); p.drums = Array.from({ length: 8 }, () => new Array(32).fill(false)); return p; };
+  const p1 = e8(), p2 = e8();
+  p1.drums[0][0] = true; p1.bass[2] = { on: true, note: 0, oct: 0, acc: false, slide: false, prob: 50 };
+  p2.drums[1][0] = true; p2.lead = Array.from({ length: 32 }, () => ({ on: false, note: 0, oct: 0, acc: false, slide: false })); p2.lead[4] = { on: true, note: 7, oct: 0, acc: false, slide: false };
+  for (let s2 = 0; s2 < 16; s2 += 2) p1.drums[3][s2] = true;
+  const opts = (mute) => ({ params: { tempo: 120, swing: 0.5, delay: 0.3, verb: 0.3 }, queue: [{ pattern: p1, reps: 2 }, { pattern: p2, reps: 1 }], play: true, mute });
+  const run = (mute) => load(opts(mute)).render((3 * 16 * S120) / SR + 1.5);
+  const mix = run(null), b = run({ lead: 1, drums: 1 }), l = run({ bass: 1, drums: 1 }), d = run({ bass: 1, lead: 1 });
+  const kicks = (r) => { let n = 0; for (let k = 0; k < 4; k++) if (rms(r.L, Math.round(k * 16 * S120), Math.round(k * 16 * S120 + 1500)) > 0.05) n++; return n; };
+  const done = load(opts(null)); done.render((3 * 16 * S120) / SR + 0.2);
+  ok(rms(mix.L, Math.round(48 * S120 + 0.9 * SR), mix.L.length) < 0.01 && !done.p.playing, `export: the queue plays (2 bars, then 1), then stops and rings out`);
+  ok(kicks(d) >= 2, `export: pattern 1's kick on bars 1 and 2 (${kicks(d)} loud bar starts)`);
+  let err = 0, tot = 0;
+  for (let i = 0; i < mix.L.length; i += 7) { const sum = b.L[i] + l.L[i] + d.L[i]; err += Math.abs(mix.L[i] - sum); tot += Math.abs(mix.L[i]); }
+  ok(err / tot < 0.25, `stems: bass + lead + drums close to the mix (difference ${(100 * err / tot).toFixed(1)}%, the limiter's)`);
+  ok(rms(l.L, 0, Math.round(32 * S120)) < 1e-4 && rms(l.L, Math.round(36 * S120), Math.round(40 * S120)) > 0.01, `stems: the lead only where the lead plays`);
 }
 { // the power-on sounds (boot-sound.js): each part where the boot animation puts it, nothing clipped, then quiet
   const ctx = vm.createContext({ Math, Float32Array, globalThis: {} });

@@ -834,3 +834,59 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 :root.is-large .menu p, :root.is-large .menu li { font-size: 16px; }
 @media (max-width: 600px) and (orientation: portrait) { .tabs { gap: 4px; } .tabs button { padding: 0 8px; } .hist .tool { padding: 0 7px; } }
 @media (max-width: 360px) and (orientation: portrait) { .tabs button { padding: 0 6px; } .hist .tool { padding: 0 5px; } .hist { gap: 3px; } }
+
+/* ================================================================================================= studio ===
+ * a big desktop window with a mouse or a trackpad: the display, the squelch pad and the knobs on top (a split you
+ * drag sets their height); below, the bass and the lead on the left, the drums and the punch-ins on the right */
+.splitter, #lead[hidden] { display: none; }
+.focus-lbl { display: none; }
+:root.studio .app {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  grid-template-rows: 54px var(--top-h, 34vh) 10px minmax(0, 1fr);
+  grid-template-areas: "bar bar" "rave perf" "split split" "edit edit";
+}
+:root.studio .splitter { display: block; grid-area: split; position: relative; cursor: row-resize; touch-action: none; border-radius: 6px; }
+:root.studio .splitter::before { content: ""; position: absolute; left: 50%; top: 3px; width: 64px; height: 4px; margin-left: -32px; border-radius: 2px; background: var(--line); }
+:root.studio .splitter:hover::before, :root.studio .splitter.is-drag::before, :root.studio .splitter:focus-visible::before { background: var(--lime); }
+:root.studio .perf { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr); }
+:root.studio .strips { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+:root.studio .edit {
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "head head" "bass drums" "lead punch";
+  column-gap: 14px;
+}
+:root.studio .edit__head { grid-area: head; }
+:root.studio #bass { grid-area: bass; }
+:root.studio #lead { grid-area: lead; display: grid; }
+:root.studio #drums { grid-area: drums; display: grid; }
+:root.studio #punch { grid-area: punch; display: grid; }
+:root.studio .tabs button[data-tab] { display: none !important; }
+:root.studio .focus-lbl { display: inline-block; align-self: center; margin-right: 6px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+:root.studio .bass, :root.studio .drums, :root.studio .punch { padding: 4px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px transparent; transition: box-shadow .15s; }
+:root.studio .bass.is-focus, :root.studio .drums.is-focus { box-shadow: inset 0 0 0 1.5px rgba(180, 255, 43, .35); }
+:root.studio .st--lab .st__n { color: var(--lime); font-size: 10px; letter-spacing: .06em; }
+:root.studio .bass.is-lead .st--lab .st__n { color: var(--pink); }
+:root.studio .st { grid-template-rows: auto minmax(0, 1fr) repeat(3, minmax(20px, .3fr)); gap: 3px; }
+:root.studio .punch .fxp b { font-size: 15px; }
+:root.studio .rave__bar, :root.studio .rave__top { font-size: inherit; }
+.bass.is-lead .st:not(.is-on) .st__pill { background: none; box-shadow: none; }
+
+/* the mouse: what is under it lights up a little; a pattern dragged onto another; a file dragged over the window */
+@media (hover: hover) and (pointer: fine) {
+  .st__note:hover, .st__t:hover, .dr:hover, .dr__name:hover, .slot:hover, .strip:hover, .fxp:hover, .tool:hover, .tabs button:hover, .stepper button:hover, .knobbtn:hover, .menu-btn:hover, .rec:hover {
+    filter: brightness(1.18); }
+  .st__note:hover { box-shadow: inset 0 0 0 1.5px var(--muted); }
+  .dr:not(.is-on):hover { background: var(--cell-hi); }
+}
+.slot.is-drop { box-shadow: inset 0 0 0 3px var(--cyan) !important; }
+:root.is-slotdrag, :root.is-slotdrag * { cursor: copy !important; }
+:root.is-filedrag body::after { content: "DROP TO LOAD YOUR PATTERNS"; position: fixed; inset: 12px; z-index: 50; display: grid; place-items: center; border: 3px dashed var(--lime);
+  border-radius: 20px; background: rgba(7, 2, 12, .82); color: var(--lime); font: 24px var(--font); letter-spacing: .1em; pointer-events: none; }
+.st__note.is-sel { box-shadow: inset 0 0 0 2px var(--cyan) !important; background: rgba(43, 240, 255, .14) !important; }
+.dr.is-sel { box-shadow: inset 0 0 0 2px var(--cyan) !important; }
+.dr.is-sel:not(.is-on) { background: rgba(43, 240, 255, .16); }
+.keys dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 6px 0 4px; font-size: 14px; }
+.keys dt { color: var(--yellow); white-space: nowrap; }
+.keys dd { margin: 0; color: var(--muted); line-height: 1.4; }
+.keys { width: min(40rem, 94vw); }

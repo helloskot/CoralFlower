@@ -118,6 +118,7 @@
     </div>
   </section>
 
+  <div class="splitter" id="splitter" role="separator" aria-orientation="horizontal" aria-label="Drag to make the display or the editor bigger" tabindex="0"></div>
   <section class="edit" aria-label="The pattern">
     <div class="edit__head">
       <div class="tabs" role="tablist">
@@ -134,6 +135,7 @@
       <button type="button" class="tool latch" id="latch" aria-pressed="false" title="Latch: a tap turns an effect on, another turns it off" hidden>Latch</button>
       <div class="pager" id="pager" role="group" aria-label="Steps shown" hidden><button type="button" data-page="0" aria-pressed="true">1&#8211;16</button><button type="button" data-page="1" aria-pressed="false">17&#8211;32</button></div>
       <div class="tools">
+        <span class="focus-lbl" id="focusLbl" aria-live="polite"></span>
         <button type="button" id="wave" class="tool tool--lab" title="The bass's waveform"><small>Wave</small><b>Saw</b></button>
         <div class="stepper" aria-label="Key (transpose)"><button type="button" data-tune="-1" aria-label="Key down">&minus;</button><span class="stepper__v"><small>Key</small><b id="tune">C</b></span><button type="button" data-tune="1" aria-label="Key up">+</button></div>
         <div class="stepper" aria-label="Length in steps"><button type="button" data-len="-1" aria-label="Shorter">&minus;</button><span class="stepper__v"><small>Len</small><b id="len">16</b></span><button type="button" data-len="1" aria-label="Longer">+</button></div>
@@ -143,6 +145,7 @@
       </div>
     </div>
     <div class="bass" id="bass" role="tabpanel" aria-label="Bass line: drag a note up or down to change it, tap it to rest"></div>
+    <div class="bass is-lead" id="lead" role="region" aria-label="Lead: drag a note up or down to change it, tap it to rest" hidden></div>
     <div class="drums" id="drums" role="tabpanel" aria-label="Drums" hidden></div>
     <div class="punch fxpads" id="punch" role="tabpanel" aria-label="Punch-in effects: hold a pad, let go to drop out; hold several at once" hidden></div>
   </section>
@@ -173,6 +176,7 @@
   <div class="menu__row">
     <button type="button" id="slotShare">Share as a link</button>
     <button type="button" id="slotMidi">Save as MIDI</button>
+    <button type="button" id="slotWav">Save as audio</button>
     <button type="button" id="slotClear" class="is-bad">Clear this pattern</button>
   </div>
   <form method="dialog"><button class="menu__close">Done</button></form>
@@ -193,6 +197,7 @@
   <div class="menu__row">
     <button type="button" id="songAdd">Add a pattern</button>
     <button type="button" id="songMidi">Save the song as MIDI</button>
+    <button type="button" id="songWav">Save the song as audio</button>
   </div>
   <form method="dialog"><button class="menu__close">Done</button></form>
 </dialog>
@@ -228,6 +233,56 @@
   <form method="dialog"><button class="menu__close">Done</button></form>
 </dialog>
 
+<dialog class="menu sheet keys" id="keysMenu" aria-labelledby="keysTitle">
+  <h2 id="keysTitle">On a keyboard</h2>
+  <h3>Play</h3>
+  <dl>
+    <dt>Space</dt><dd>Play / stop</dd>
+    <dt>A W S E D F T G Y H U J K</dt><dd>Play notes on the lead or the bass (whichever you last touched), like a piano</dd>
+    <dt>Z / X</dt><dd>Those notes an octave down / up</dd>
+    <dt>1 &#8211; 8</dt><dd>Pick a pattern</dd>
+    <dt>&#8592; &#8594;</dt><dd>Tempo down / up (with Shift, by 5)</dd>
+    <dt>Shift + 1 &#8230; =</dt><dd>Hold a punch-in</dd>
+    <dt>R</dt><dd>Rave mode (Esc to leave; [ and ] change the scene)</dd>
+    <dt>Shift + F</dt><dd>Full screen</dd>
+  </dl>
+  <h3>Edit</h3>
+  <dl>
+    <dt>Tab</dt><dd>Into the steps (click one with the mouse, too)</dd>
+    <dt>&#8592; &#8594;</dt><dd>On a step: the step before / after (Shift: select)</dd>
+    <dt>&#8593; &#8595;</dt><dd>On a note: its pitch (Shift: an octave). On a drum: the drum above / below</dd>
+    <dt>Enter</dt><dd>A note rests or comes back; a drum step on or off</dd>
+    <dt>Delete</dt><dd>Clear the step, or the selection</dd>
+    <dt>Shift + click / drag</dt><dd>Select steps (on the drums, across drums too)</dd>
+    <dt>&#8984;A</dt><dd>Select the whole track</dd>
+    <dt>&#8984;C &#8984;X &#8984;V</dt><dd>Copy, cut, paste the selection; with nothing selected, the whole pattern</dd>
+    <dt>&#8984;Z / &#8679;&#8984;Z</dt><dd>Undo / redo</dd>
+    <dt>Esc</dt><dd>Drop the selection</dd>
+    <dt>?</dt><dd>This list</dd>
+  </dl>
+  <h3>Mouse and trackpad</h3>
+  <dl>
+    <dt>Scroll</dt><dd>On a knob, tempo or swing: turn it. On a note: its pitch. On the squelch pad: the resonance (sideways, or Shift: the cutoff)</dd>
+    <dt>Double-click</dt><dd>A knob back to where it started</dd>
+    <dt>Shift + drag</dt><dd>A knob, finely</dd>
+    <dt>Drag a pattern number</dt><dd>Onto another to copy it</dd>
+    <dt>Drop a file</dt><dd>A saved set of patterns loads</dd>
+  </dl>
+  <form method="dialog"><button class="menu__close">Done</button></form>
+</dialog>
+
+<dialog class="menu sheet" id="wavMenu" aria-labelledby="wavTitle">
+  <h2 id="wavTitle">Save as audio</h2>
+  <p class="sheet__hint" id="wavWhat"></p>
+  <p class="sheet__hint">A WAV file (44.1 kHz, 16-bit), made faster than real time, with the effects' tails at the end. Stems are the bass, the lead and the drums on their own, each with its effects, lined up to drop into a DAW.</p>
+  <div class="menu__row">
+    <button type="button" id="wavMix">The mix</button>
+    <button type="button" id="wavStems">The mix and its stems</button>
+  </div>
+  <p class="menu__msg" id="wavMsg" role="status"></p>
+  <form method="dialog"><button class="menu__close">Close</button></form>
+</dialog>
+
 <dialog class="menu sheet" id="stepMenu" aria-labelledby="stepTitle">
   <h2 id="stepTitle">Step 1</h2>
   <h3>Chance</h3>
@@ -256,6 +311,8 @@
   <div class="menu__row menu__row--top">
     <button type="button" id="songBtn">Song&#8230;</button>
     <button type="button" id="midiBtn">MIDI&#8230;</button>
+    <button type="button" id="keysBtn">Keys&#8230;</button>
+    <button type="button" id="installBtn" hidden>Install the app</button>
   </div>
   <h3>How it plays</h3>
   <ul>
@@ -272,6 +329,7 @@
     <li><b>Motion:</b> on while it plays, the knobs you move are recorded into the pattern. <b>Sounds:</b> presets for the knobs. <b>Hold Random</b> for a whole pattern in a style.</li>
     <li><b>Song</b> and <b>MIDI</b> are at the top of this menu: patterns in order; a keyboard, a controller and a clock (in Chrome, Edge or Android). A pattern or the song saves as a MIDI file.</li>
     <li><b>VJ</b> (in rave mode): colours, mirrors, trails, scrolling words, Auto VJ, a second screen for a projector, and Rec with the picture.</li>
+    <li><b>On a computer:</b> a big window shows the bass, the lead, the drums and the punch-ins at once (drag the line under the display to share the space); scroll on a knob or a note to turn it; play notes on the letters A to K; <b>Keys&#8230;</b> above lists every shortcut. A pattern or the song saves as audio (with stems) from its menu.</li>
     <li><b>Undo:</b> the arrows beside the tabs undo and redo any change to a pattern.</li>
     <li><b>Rec:</b> records everything you hear, effects and all; when you stop, save it or send it.</li>
     <li><b>The squelch pad</b> stays where you leave it; double-tap it to go back to the start.</li>
@@ -291,6 +349,7 @@
   <div class="opt"><span>Light filter<small>The front camera's brightness opens the filter (nothing is recorded or sent)</small></span>
     <div class="seg" id="lightSeg"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></div></div>
   <h3>Sound</h3>
+  <div class="opt" id="outOpt" hidden><span>Output<small>Where the sound goes: your audio interface, headphones, speakers</small></span><select id="outSel"></select></div>
   <div class="opt"><span>Response<small>Smooth uses a bigger audio buffer: try it if you hear crackles. Applies the next time you open the app.</small></span>
     <div class="seg" data-pref="latency"><button type="button" data-v="interactive">Fast</button><button type="button" data-v="playback">Smooth</button></div></div>
   <h3>Your patterns</h3>

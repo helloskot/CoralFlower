@@ -7,8 +7,8 @@
 // the open one), tom, rim and cowbell, each with its own tune, decay and level. Drive, a tempo-locked delay, a room
 // reverb, a pump (the kick ducking the voices), a soft limiter.
 // The clock runs here, sample-accurate, with swing: up to 32 steps, each track (the bass, the lead, every drum) with
-// its own length, so they can drift against each other; a step can play by chance and repeat (a ratchet); knob moves
-// recorded into the pattern (its motion) play back with it. The page sends the pattern, the knobs, play / stop and
+// its own length, so they can drift against each other; a step can play by chance and repeat (a ratchet). The page
+// sends the pattern, the knobs, play / stop and
 // live notes (a MIDI keyboard), and gets the step, the filter's motion, the drums' hits and a scrap of the waveform
 // back for its pixel display.
 // Punch-in effects, held from the page (a bit mask, FX below), work on the whole mix: the last 4 s of it are kept,
@@ -55,7 +55,6 @@ const DEFAULT_PARAMS = { cutoff: 0.35, reso: 0.7, env: 0.55, decay: 0.45, accent
                          verb: 0, pump: 0, lead: 0.6, leadWave: 1, dk: null };
 const LANES = 8;                                       // kick, snare, clap, closed hat, open hat, tom, rim, cowbell
 const MAXS = 32;
-const MOTION = ["cutoff", "reso", "env", "decay", "accent", "drive", "delay"];
 const clampI = (v, a, b, d) => { v = v | 0; return v < a ? (d != null && !v ? d : a) : v > b ? b : v; };
 
 // one voice: the oscillator, the ladder, the envelopes (the bass and the lead are two of these)
@@ -128,9 +127,9 @@ class Verb {
     this.cL = [1116, 1188, 1277, 1356].map(mk); this.cR = [1139, 1211, 1300, 1379].map(mk);
     this.aL = [556, 441].map(mk); this.aR = [579, 464].map(mk);
   }
-  side(x, C, A) {
+  side(x, C, A, fb = 0.9) {
     let o = 0;
-    for (const c of C) { const y = c.b[c.i]; c.f = y * 0.72 + c.f * 0.28; c.b[c.i] = x + c.f * 0.9; if (++c.i >= c.b.length) c.i = 0; o += y; }
+    for (const c of C) { const y = c.b[c.i]; c.f = y * 0.72 + c.f * 0.28; c.b[c.i] = x + c.f * fb; if (++c.i >= c.b.length) c.i = 0; o += y; }
     o *= 0.25;
     for (const a of A) { const y = a.b[a.i]; a.b[a.i] = o + y * 0.5; if (++a.i >= a.b.length) a.i = 0; o = y - o * 0.5; }
     return o;
@@ -149,6 +148,168 @@ class SVF {                                            // a state-variable filte
       out = hp ? h : this.lp;
     }
     return out;
+  }
+}
+
+
+// ================================================================================================== Drift ===
+// the ambient, generative mode: Acid Flower playing itself, slowly. A seed word starts its own random numbers (the same
+// word, the same piece): a key and a scale, a chord progression, and tracks of different lengths (the bells, the acid
+// line) that drift against each other and change a little every few bars. The sounds: a soft pad playing the chords,
+// FM bells, the acid voice creeping in as the weather turns, soft drums only in a storm, a texture bed (rain, vinyl,
+// the sea), a wobbling tape delay and a shimmering reverb (its tail an octave up). The page sends the weather (calm ..
+// storm), the mood (dark .. bright, sparse .. busy), taps (a bell where the finger lands), the texture and the space.
+const DSCALES = [[0, 2, 3, 5, 7, 8, 10], [0, 2, 3, 5, 7, 9, 10], [0, 2, 4, 6, 7, 9, 11], [0, 2, 4, 5, 7, 9, 11], [0, 3, 5, 7, 10], [0, 2, 4, 7, 9]];
+const hashStr = (t) => { let h = 2166136261; for (const c of String(t).toLowerCase()) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+const mulberry = (a) => () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+class Drift {
+  constructor(sr, set) {
+    this.sr = sr; this.on = true;
+    this.set = { seed: "drift", weather: 0.25, moodX: 0.5, moodY: 0.4, texture: "none", tex: 0.5, space: 0.7, shimmer: 0.5, bpm: 72, ...set };
+    this.w = this.set.weather; this.mx = this.set.moodX; this.my = this.set.moodY; this.acidAmt = 0;
+    this.pads = Array.from({ length: 12 }, (_, i) => ({ env: 0, gate: false, f: 110, p0: 0, p1: 0, p2: 0, l1: 0, l2: 0, pan: ((i % 4) - 1.5) * 0.35, att: 1, rel: 1 }));
+    this.bells = Array.from({ length: 6 }, () => ({ amp: 0, idx: 0, f: 440, pc: 0, pm: 0, dec: 1, idec: 1, pan: 0 }));
+    this.verb = new Verb(sr); this.shb = new Float32Array(4096); this.shw = 0; this.shp = 0; this.shOut = 0;
+    this.tL = new Float32Array(Math.ceil(sr * 3)); this.tR = new Float32Array(Math.ceil(sr * 3)); this.tw = 0; this.tlL = 0; this.tlR = 0;
+    this.t = 0; this.noteHit = -1; this.drops = []; this.oceanLp = 0; this.hissLp = 0; this.crk = 0;
+    this.rainBp = new Biquad().set("bp", 2600, 0.6, sr); this.rainHp = new Biquad().set("hp", 500, 0.7, sr);
+    this.dp = { accent: 0.5, decay: 0.6 };
+    this.reseed(this.set.seed);
+  }
+  reseed(seed) {
+    const r = (this.r = mulberry(hashStr(seed)));
+    this.root = Math.floor(r() * 12); this.scale = DSCALES[Math.floor(r() * DSCALES.length)];
+    this.chordLen = [32, 48, 64][Math.floor(r() * 3)];
+    this.prog = Array.from({ length: 4 + Math.floor(r() * 3) }, (_, i) => (i === 0 ? 0 : [3, 4, 5, 1, 2, 6][Math.floor(r() * 6)]));
+    this.bellLen = [5, 7, 9, 11, 13][Math.floor(r() * 5)]; this.acidLen = [7, 11, 13][Math.floor(r() * 3)];
+    this.bellR = Array.from({ length: this.bellLen }, () => r()); this.acidR = Array.from({ length: this.acidLen }, () => r());
+    this.acidS = Array.from({ length: this.acidLen }, () => r() < 0.35); this.acidA = Array.from({ length: this.acidLen }, () => r() < 0.25);
+    this.bellDeg = 7 + Math.floor(r() * 4); this.acidDeg = 0; this.evolveBars = [8, 12, 16][Math.floor(r() * 3)];
+    this.abs = -1; this.chordI = -1; this.chordDeg = 0;
+    this.lfo = [r(), r(), r()];
+  }
+  noteOf(deg, base) { const n = this.scale.length, o = Math.floor(deg / n), i = ((deg % n) + n) % n; return base + this.root + this.scale[i] + 12 * o; }
+  walk(deg, lo, hi) {                                  // mostly a step, now and then a leap; kept in range
+    const r = this.r(), d = r < 0.08 ? -4 : r < 0.3 ? -1 : r < 0.42 ? -2 : r < 0.58 ? 0 : r < 0.8 ? 1 : r < 0.92 ? 2 : 4;
+    deg += d; if (deg < lo) deg += this.scale.length; if (deg > hi) deg -= this.scale.length;
+    return deg;
+  }
+  chord(deg) {                                         // the old chord fades; the new one swells in, kept close
+    this.chordDeg = deg;
+    for (const v of this.pads) v.gate = false;
+    const n = this.scale.length, step = n >= 7 ? 2 : 1, att = 3.6 - this.w * 2.4;
+    for (let k = 0; k < 4; k++) {
+      let note = this.noteOf(deg + k * step + (k === 3 && n < 7 ? 1 : 0), 48);
+      while (note > 74) note -= 12; while (note < 50) note += 12;
+      let v = this.pads.find((x) => !x.gate && x.env < 0.002) || this.pads.reduce((a, b) => (a.env < b.env ? a : b));
+      v.gate = true; v.f = 440 * Math.pow(2, (note - 69) / 12);
+      v.att = 1 - Math.exp(-1 / (att * this.sr)); v.rel = Math.exp(-1 / (5 * this.sr));
+    }
+  }
+  bell(note, vel) {
+    const v = this.bells.reduce((a, b) => (a.amp < b.amp ? a : b));
+    v.f = 440 * Math.pow(2, (note - 69) / 12); v.amp = 0.2 * vel; v.idx = 2.4 * vel; v.pc = 0; v.pm = 0; v.pan = (this.r() - 0.5) * 1.2;
+    v.dec = Math.exp(-1 / ((2.2 + this.r() * 2) * this.sr)); v.idec = Math.exp(-1 / (0.35 * this.sr));
+    this.noteHit = note;
+  }
+  tap(x) { const deg = Math.round(Math.max(0, Math.min(1, x)) * 14); this.bell(this.noteOf(deg, 60), 0.9); }
+  evolve() {                                           // a little change: one cell of a track, the walk's centre, the progression
+    const r = this.r;
+    this.bellR[Math.floor(r() * this.bellLen)] = r(); this.acidR[Math.floor(r() * this.acidLen)] = r();
+    if (r() < 0.5) this.bellDeg += r() < 0.5 ? -1 : 1;
+    if (r() < 0.3) this.prog[1 + Math.floor(r() * (this.prog.length - 1))] = [3, 4, 5, 1, 2, 6][Math.floor(r() * 6)];
+  }
+  tick(P) {                                            // a step (a 16th at Drift's own slow tempo)
+    const a = ++this.abs, S = this.set;
+    this.w += (S.weather - this.w) * 0.3; this.mx += (S.moodX - this.mx) * 0.3; this.my += (S.moodY - this.my) * 0.3;
+    const w = this.w, dens = 0.06 + this.my * 0.5 + w * 0.22;
+    if (a % this.chordLen === 0) { this.chordI = (this.chordI + 1) % this.prog.length; this.chord(this.prog[this.chordI]); }
+    const bi = a % this.bellLen;
+    if (this.bellR[bi] < dens * 0.6) { this.bellDeg = this.walk(this.bellDeg, 4, 16); this.bell(this.noteOf(this.bellDeg, 60), 0.55 + this.r() * 0.45); }
+    // the acid line: in as the weather turns, out when it calms
+    this.acidAmt = sstep(0.25, 0.85, w);
+    const ai = a % this.acidLen, B = P.bass;
+    if (this.acidAmt > 0.02 && this.acidR[ai] < 0.2 + this.acidAmt * 0.6) {
+      this.acidDeg = this.walk(this.acidDeg, -3, 7);
+      const note = this.noteOf(this.acidDeg, 36), slide = this.acidS[(ai - 1 + this.acidLen) % this.acidLen];
+      B.noteOn(note, this.acidA[ai] && w > 0.5, slide, this.dp);
+      B.gateLeft = this.acidS[ai] ? Infinity : Math.round(P.dur * 0.7);
+    } else if (B.gateLeft === Infinity) { B.gateLeft = 0; B.gate = false; }
+    // soft drums, only in a storm
+    if (w > 0.62) {
+      if (a % 4 === 0 && this.r() < (w - 0.62) * 3) P.drum(0, 0.5 + w * 0.4);
+      if (a % 4 === 2 && this.r() < (w - 0.6) * 2) P.drum(4, 0.45);
+      if (a % 2 === 1 && this.r() < (w - 0.7) * 2.2) P.drum(3, 0.35);
+    }
+    if (a > 0 && a % (16 * this.evolveBars) === 0) this.evolve();
+  }
+  // the acid voice's knobs for this block (the filter breathes slowly; brighter with the mood and the storm)
+  block(n) {
+    this.t += n / this.sr;
+    const lf = (k, per) => Math.sin((this.t / per + this.lfo[k]) * TAU), w = this.w;
+    const cut = 0.14 + this.mx * 0.22 + w * 0.12 + lf(0, 23) * 0.06, reso = 0.78 + w * 0.15 + lf(1, 31) * 0.04, driveG = 1 + (0.1 + w * 0.3) * 9;
+    this.K = { res: Math.min(0.97, reso) * 4.15, comp: 1 + reso * 1.1, driveG, driveN: 1 / tanh(driveG), driveC: 0.9, accDec: Math.exp(-1 / (0.28 * this.sr)),
+      ampA: Math.exp(-1 / (0.004 * this.sr)), ampR: Math.exp(-1 / (0.05 * this.sr)), ampHold: Math.exp(-1 / (3 * this.sr)), glideK: 1 - Math.exp(-1 / (0.03 * this.sr)),
+      cutoff: cut, env: 0.3 + w * 0.35, accent: 0.5 };
+    this.padG = 1 - Math.exp((-TAU * Math.min(9000, 260 * Math.pow(2, this.mx * 4.2 + lf(2, 37) * 0.6 + w * 0.5))) / this.sr);
+    this.tapeLen = Math.min(this.tL.length - 2, Math.round(((60 / this.set.bpm) * 0.75) * this.sr));   // (a dotted eighth)
+    this.fb = Math.min(0.97, 0.86 + this.set.space * 0.11) - this.set.shimmer * 0.02;   // (a little shorter with the shimmer: its loop stays safe)
+  }
+  // one sample: the pad, the bells, the texture, the tape and the shimmer; acid: the acid voice's sample (for the sends)
+  run(P, acid) {
+    const sr = this.sr, S = this.set;
+    let pL = 0, pR = 0;
+    for (const v of this.pads) {
+      if (!v.gate && v.env < 1e-5) continue;
+      v.env = v.gate ? v.env + (1 - v.env) * v.att : v.env * v.rel;
+      const dt0 = (v.f * 1.0029) / sr, dt1 = (v.f * 0.9971) / sr, dt2 = (v.f * 0.5) / sr;
+      v.p0 += dt0; if (v.p0 >= 1) v.p0 -= 1; v.p1 += dt1; if (v.p1 >= 1) v.p1 -= 1; v.p2 += dt2; if (v.p2 >= 1) v.p2 -= 1;
+      const o = (2 * v.p0 - 1 - blep(v.p0, dt0)) + (2 * v.p1 - 1 - blep(v.p1, dt1)) + 0.7 * (1 - 4 * Math.abs(v.p2 - 0.5));
+      v.l1 += (o - v.l1) * this.padG; v.l2 += (v.l1 - v.l2) * this.padG;
+      const x = v.l2 * v.env * 0.1;
+      pL += x * (1 - v.pan); pR += x * (1 + v.pan);
+    }
+    let bL = 0, bR = 0;
+    for (const v of this.bells) {
+      if (v.amp < 1e-5) continue;
+      v.pc += v.f / sr; if (v.pc >= 1) v.pc -= 1; v.pm += (v.f * 3.5) / sr; if (v.pm >= 1) v.pm -= 1;
+      const x = Math.sin(TAU * v.pc + v.idx * Math.sin(TAU * v.pm)) * v.amp;
+      v.amp *= v.dec; v.idx *= v.idec;
+      bL += x * (1 - v.pan * 0.5); bR += x * (1 + v.pan * 0.5);
+    }
+    // the texture bed
+    let tx = 0;
+    if (S.texture === "rain") {
+      tx = this.rainBp.run(this.rainHp.run(P.rnd())) * 0.22;
+      if (P.rnd() > 0.9992) this.drops.push({ e: 0.3 + 0.5 * Math.abs(P.rnd()), ph: 0, f: (2500 + 2500 * Math.abs(P.rnd())) / sr });
+      for (const d of this.drops) { d.ph += d.f; tx += Math.sin(TAU * d.ph) * d.e * 0.25; d.e *= 0.9965; }
+      if (this.drops.length && this.drops[0].e < 1e-3) this.drops.shift();
+    } else if (S.texture === "vinyl") {
+      this.hissLp += (P.rnd() - this.hissLp) * 0.15; tx = this.hissLp * 0.03;
+      if (P.rnd() > 0.9994) this.crk = P.rnd() * 0.6;
+      tx += this.crk; this.crk *= 0.55;
+    } else if (S.texture === "ocean") {
+      const sw = 0.5 - 0.5 * Math.cos((this.t / 9.5) * TAU), g = 0.004 + sw * sw * 0.05;
+      this.oceanLp += (P.rnd() - this.oceanLp) * g; tx = this.oceanLp * (0.15 + sw * 1.2);
+    }
+    tx *= S.tex;
+    // the tape: a wobbling ping-pong, darker and a little saturated each time round
+    const tin = (pL + pR) * 0.25 + (bL + bR) * 0.4 + acid * 0.35, wob = Math.sin(this.t * TAU * 0.45) * 0.0028 * sr + Math.sin(this.t * TAU * 5.8) * 0.00025 * sr;
+    const rp = this.tw - this.tapeLen - wob, i0 = Math.floor(rp), fr = rp - i0, N = this.tL.length, j0 = (i0 % N + N) % N, j1 = (j0 + 1) % N;
+    const tLo = this.tL[j0] + (this.tL[j1] - this.tL[j0]) * fr, tRo = this.tR[j0] + (this.tR[j1] - this.tR[j0]) * fr, tfb = 0.48 + this.w * 0.2;
+    this.tlL += (tRo - this.tlL) * 0.3; this.tlR += (tLo - this.tlR) * 0.3;
+    this.tL[this.tw] = tanh((tin + this.tlL * tfb) * 1.2) / 1.2; this.tR[this.tw] = tanh(this.tlR * tfb * 1.2) / 1.2;
+    this.tw = (this.tw + 1) % N;
+    // the shimmer: the reverb's tail, an octave up, fed back into it
+    const vin = (pL + pR) * 0.35 + (bL + bR) * 0.5 + acid * 0.25 + (tLo + tRo) * 0.25 + this.shOut * S.shimmer * 0.07;   // (kept under a loop gain of 1, even with the biggest room)
+    const V = this.verb, vL = V.side(vin * S.space * 0.4, V.cL, V.aL, this.fb), vR = V.side(vin * S.space * 0.4, V.cR, V.aR, this.fb);
+    const SB = this.shb, SN = SB.length, d1 = this.shp, d2 = (this.shp + SN / 2) % SN;
+    SB[this.shw] = (vL + vR) * 0.5;
+    this.shOut = tanh((SB[(this.shw - d1 - 1 + SN) % SN] * Math.sin((Math.PI * d1) / SN) + SB[(this.shw - d2 - 1 + SN) % SN] * Math.sin((Math.PI * d2) / SN)) * 0.8);   // (soft-limited: the loop can't run away)
+    this.shw = (this.shw + 1) % SN; this.shp = (this.shp - 1 + SN) % SN;
+    const shim = this.shOut * S.shimmer * 1.8;           // (the tail an octave up, heard as well as fed back)
+    this.oL = pL + bL + tx + tLo * 0.7 + vL * 2.6 + shim; this.oR = pR + bR + tx + tRo * 0.7 + vR * 2.6 + shim;
   }
 }
 
@@ -197,12 +358,13 @@ class AcidFlower extends AudioWorkletProcessor {
     this.bassG = 1; this.drumsG = 1;
     // an export: the knobs, a queue of patterns ([{ pattern, reps }], played in order, then the tails ring out) and,
     // for a stem, what to leave out (the parts still run, so chance comes out the same in every stem)
-    this.mute = { bass: 0, lead: 0, drums: 0 }; this.queue = null; this.qi = 0; this.qLoops = 0;
+    this.mute = { bass: 0, lead: 0, drums: 0 }; this.queue = null; this.qi = 0; this.qLoops = 0; this.drift = null;
     if (opt) {
       if (opt.params) Object.assign(this.p, opt.params);
       if (opt.mute) for (const k of ["bass", "lead", "drums"]) this.mute[k] = opt.mute[k] ? 1 : 0;
       if (opt.queue && opt.queue.length) { this.queue = opt.queue; this.pat = opt.queue[0].pattern; }
       else if (opt.pattern) this.pat = opt.pattern;
+      if (opt.drift) this.drift = new Drift(this.sr, opt.drift);
       if (opt.play) { this.playing = true; this.step = -1; this.abs = -1; this.phase = 0; this.dur = 0; }
     }
     this.port.onmessage = (e) => this.onMessage(e.data);
@@ -226,10 +388,21 @@ class AcidFlower extends AudioWorkletProcessor {
       const v = m.voice === "bass" ? this.bass : this.lead;
       if (m.on) { v.noteOn(m.note, !!m.acc, v.live >= 0, this.p); v.gateLeft = Infinity; v.live = m.note; }
       else if (v.live === m.note) { v.gate = false; v.gateLeft = 0; v.live = -1; }
-    } else if (m.type === "hit") this.drum(m.lane | 0, 1);
+    } else if (m.type === "drift") this.driftMsg(m);
+    else if (m.type === "hit") this.drum(m.lane | 0, 1);
     else if (m.type === "fx") this.setFx(m.mask | 0);
   }
 
+  // Drift on or off, its settings, a tap
+  driftMsg(m) {
+    if (m.on === true && !(this.drift && this.drift.on)) { this.drift = new Drift(this.sr, m.set || {}); this.bass.gate = false; this.bass.gateLeft = 0; }
+    else if (m.on === false && this.drift) { this.drift.on = false; for (const v of this.drift.pads) v.gate = false; this.bass.gate = false; this.bass.gateLeft = 0; }
+    const D = this.drift;
+    if (!D) return;
+    if (m.set) { const reseed = m.set.seed != null && m.set.seed !== D.set.seed; Object.assign(D.set, m.set); if (reseed) D.reseed(D.set.seed); }
+    if (m.tap != null && D.on) D.tap(m.tap);
+    if (m.bell != null && D.on) D.bell(m.bell, 0.9);        // (a key played on the keyboard)
+  }
   rnd() {                                              // white noise, -1..1 (xorshift)
     let x = this.noise;
     x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
@@ -263,7 +436,7 @@ class AcidFlower extends AudioWorkletProcessor {
   setFx(mask) {
     const was = this.fx, hadPlay = !!this.play;
     this.fx = mask;
-    const sps = (this.sr * 60) / Math.max(40, Math.min(220, this.p.tempo)) / 4, HN = this.HN;
+    const sps = (this.sr * 60) / Math.max(40, Math.min(220, this.bpm())) / 4, HN = this.HN;
     const div = on(mask, FX.ROLL) ? 0.5 : on(mask, FX.REP16) ? 1 : on(mask, FX.REP8) ? 2 : 0;
     if (on(mask, FX.TAPE)) {
       if (!on(was, FX.TAPE)) this.play = { mode: "tape", pos: (this.hw - 1 + HN) % HN, rate: 1 };
@@ -297,7 +470,15 @@ class AcidFlower extends AudioWorkletProcessor {
     }
   }
 
+  bpm() { return this.drift && this.drift.on ? this.drift.set.bpm : this.p.tempo; }
   tick() {                                             // a new step
+    if (this.drift && this.drift.on) {                 // (Drift plays itself: its own steps, no pattern)
+      this.step = (this.step + 1) % 16; this.abs++; this.stepAt = this.hw;
+      this.dur = (this.sr * 60) / Math.max(40, Math.min(220, this.drift.set.bpm)) / 4;
+      this.drift.tick(this);
+      if (this.evs.length > 1) this.evs.sort((x, y) => x.t - y.t);
+      return;
+    }
     const P = this.pat, len = clampI(P.len, 1, MAXS, 16);
     let s = this.step + 1;
     this.abs++;
@@ -317,9 +498,6 @@ class AcidFlower extends AudioWorkletProcessor {
     const sw = Math.max(0.5, Math.min(0.75, this.p.swing));
     this.dur = (s % 2 === 0 ? sw : 1 - sw) * 2 * sps;
     const a = this.abs;
-    // the motion: knob moves recorded into the pattern, at this step
-    const mo = pat.motion;
-    if (mo) for (const k of MOTION) { const lane = mo[k]; if (lane && lane[s] != null) this.p[k] = lane[s]; }
     // the drums: each on its own length; by chance; ratcheted
     for (let l = 0; l < LANES; l++) {
       const row = pat.drums[l];
@@ -351,7 +529,7 @@ class AcidFlower extends AudioWorkletProcessor {
     const K = { res: Math.min(0.97, sm.reso) * 4.15, comp: 1 + sm.reso * 1.1, driveG, driveN: 1 / tanh(driveG), driveC: 1 - sm.drive * 0.35,
                 accDec: Math.exp(-1 / (0.28 * sr)), ampA: Math.exp(-1 / (0.002 * sr)), ampR: Math.exp(-1 / (0.012 * sr)),
                 ampHold: Math.exp(-1 / (1.6 * sr)), glideK: 1 - Math.exp(-1 / (0.012 * sr)), cutoff: sm.cutoff, env: sm.env, accent: p.accent };
-    const sps = (sr * 60) / Math.max(40, Math.min(220, p.tempo)) / 4;
+    const sps = (sr * 60) / Math.max(40, Math.min(220, this.bpm())) / 4;
     const dlen = Math.min(this.dl.length - 1, Math.round(sps * 3));
     const D = this.dkD || [1, 1, 1, 1, 1, 1, 1, 1], T = this.dkT || [1, 1, 1, 1, 1, 1, 1, 1], G = this.dkG;
     const kDec = Math.exp(-1 / (0.42 * D[0] * sr)), kP = Math.exp(-1 / (0.028 * sr)), clickD = Math.exp(-1 / (0.0015 * sr));
@@ -367,6 +545,8 @@ class AcidFlower extends AudioWorkletProcessor {
     const tapeDec = 1 / (0.75 * sr), muteK = 1 - Math.exp(-1 / (0.006 * sr));
     const bassT = on(fx, FX.BASSOUT) ? 0 : 1, drumsT = on(fx, FX.DRUMSOUT) ? 0 : 1;
     const elen = Math.min(this.eL.length - 1, Math.round(sps * 3)), echoFb = echoOn ? 0.72 : 0.55;
+    const DR = this.drift && this.drift.on ? this.drift : null;
+    if (DR) DR.block(n);
     // (the squelch pad over a repeat: 1 open .. 0 closed, eight octaves down from the press; smoothed per block)
     const pTarget = P ? Math.max(0, Math.min(1, 1 + ((p.cutoff - (this.cutPress == null ? p.cutoff : this.cutPress)) * 8.2) / 9)) : 1;
     this.pfc += (pTarget - this.pfc) * a;
@@ -383,8 +563,8 @@ class AcidFlower extends AudioWorkletProcessor {
       // ---- the voices, ducked by the kick (the pump)
       this.pumpE *= pumpK;
       const duck = 1 - sm.pump * 0.85 * this.pumpE;
-      const bass = this.bass.run(K, p.wave, 0) * duck * (1 - this.mute.bass);
-      const lead = this.lead.run(K, leadW, 0.12) * duck * sm.lead * 0.8 * (1 - this.mute.lead);
+      const bass = (DR ? this.bass.run(DR.K, 0, 0) * DR.acidAmt * 0.8 : this.bass.run(K, p.wave, 0) * duck) * (1 - this.mute.bass);
+      const lead = DR ? 0 : this.lead.run(K, leadW, 0.12) * duck * sm.lead * 0.8 * (1 - this.mute.lead);
       // ---- the drums
       let drums = 0;
       const k = this.k;
@@ -440,7 +620,7 @@ class AcidFlower extends AudioWorkletProcessor {
         cb.aenv *= cbA;
       }
       // ---- the delay (the voices into it), ping-pong
-      const send = (bass + lead * 0.8) * sm.delay * this.bassG;   // (BASS OUT: nothing more into the delay; its repeats ring out)
+      const send = DR ? 0 : (bass + lead * 0.8) * sm.delay * this.bassG;   // (BASS OUT: nothing more into the delay; its repeats ring out)
       let rd = this.dw - dlen; if (rd < 0) rd += this.dl.length;
       const dLeft = this.dl[rd], dRight = this.dlr[rd];
       this.dlp += (dRight - this.dlp) * 0.35;          // the repeats a little darker each time
@@ -450,6 +630,7 @@ class AcidFlower extends AudioWorkletProcessor {
       this.dw = (this.dw + 1) % this.dl.length;
       const voices = (bass * 0.95 + lead) * this.bassG, dr = drums * dvol * this.drumsG * (1 - this.mute.drums);
       let oL = voices + dr + dLeft * 0.8, oR = voices + dr + dRight * 0.8;
+      if (DR) { DR.run(this, bass); oL += DR.oL * this.bassG; oR += DR.oR * this.bassG; }   // (Drift: the pad, the bells, the bed, the tape, the shimmer)
       if (verbOn) {                                    // the room: the voices and a little of the drums
         const vin = (voices * 0.7 + dr * 0.5) * sm.verb * 0.5;
         oL += this.verb.side(vin, this.verb.cL, this.verb.aL) * 3.2; oR += this.verb.side(vin, this.verb.cR, this.verb.aR) * 3.2;
@@ -516,9 +697,10 @@ class AcidFlower extends AudioWorkletProcessor {
       const B = this.bass, Ld = this.lead;
       this.port.postMessage({ type: "viz", step: this.playing ? this.step : -1, abs: this.playing ? this.abs : -1, playing: this.playing,
         env: Math.max(B.fenv, Ld.fenv * 0.8), acc: B.accCap, cut: sm.cutoff, reso: sm.reso, amp: Math.max(B.amp, Ld.amp), hits: this.hits,
-        accHit: B.accHit || Ld.accHit, note: B.noteHit >= 0 ? B.noteHit : Ld.noteHit, wave: w, fx: this.fx,
-        tape: this.play && this.play.mode === "tape" ? this.play.rate : 1, p: { cutoff: p.cutoff, reso: p.reso, env: p.env } }, [w.buffer]);
-      this.hits = 0; B.accHit = Ld.accHit = false; B.noteHit = Ld.noteHit = -1;
+        accHit: B.accHit || Ld.accHit, note: B.noteHit >= 0 ? B.noteHit : Ld.noteHit >= 0 ? Ld.noteHit : DR && DR.noteHit >= 0 ? DR.noteHit : -1, wave: w, fx: this.fx,
+        tape: this.play && this.play.mode === "tape" ? this.play.rate : 1, p: { cutoff: p.cutoff, reso: p.reso, env: p.env },
+        drift: DR ? { chord: DR.chordDeg, w: DR.w, mx: DR.mx, my: DR.my, bell: DR.noteHit, acid: DR.acidAmt } : null }, [w.buffer]);
+      this.hits = 0; B.accHit = Ld.accHit = false; B.noteHit = Ld.noteHit = -1; if (DR) DR.noteHit = -1;
     }
     return true;
   }

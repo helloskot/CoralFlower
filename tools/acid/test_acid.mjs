@@ -222,7 +222,7 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
     ok(finite(r.L) && finite(r.R) && peak(r.L) <= 1, `all twelve held at once: finite, peak ${peak(r.L).toFixed(2)}`);
   }
 }
-{ // v2: the three new drums, each drum's knobs, chance, ratchets, track lengths, 32 steps, the lead, motion, live keys,
+{ // v2: the three new drums, each drum's knobs, chance, ratchets, track lengths, 32 steps, the lead, live keys,
   // the room and the pump
   const S = sps(120);
   const e8 = () => { const p = empty(); p.drums = Array.from({ length: 8 }, () => new Array(32).fill(false)); return p; };
@@ -278,12 +278,6 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
     const { L } = a.render(0.6), f = pitch(L, 3000, 9000);
     ok(Math.abs(f - 130.8) / 130.8 < 0.04, `lead: C3 sounds at ${f.toFixed(1)} Hz (130.8)`);
   }
-  { // motion: the cutoff recorded at step 5 is there when step 5 plays
-    const a = load(), pat = e8(); pat.motion = { cutoff: new Array(32).fill(null) }; pat.motion.cutoff[4] = 0.91;
-    a.send({ type: "params", params: { tempo: 120, cutoff: 0.2 } }); a.send({ type: "pattern", pattern: pat }); a.send({ type: "play" });
-    a.render(0.4); const c1 = a.p.p.cutoff; a.render(0.2);
-    ok(Math.abs(c1 - 0.2) < 1e-9 && Math.abs(a.p.p.cutoff - 0.91) < 1e-9, `motion: the cutoff ${c1} until step 5, then ${a.p.p.cutoff}`);
-  }
   { // a live key: held, then let go
     const a = load();
     a.send({ type: "params", params: { delay: 0, lead: 1 } }); a.send({ type: "live", on: true, note: 57, voice: "lead" });
@@ -334,6 +328,31 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
   const zc = (x, from) => { let n = 0; for (let i = from + 1; i < x.length; i++) if ((x[i - 1] < 0) !== (x[i] < 0)) n++; return n; };
   const still = run(null), dark = run(0.15), from = Math.round(0.25 * SR);
   ok(zc(dark, from) < zc(still, from) * 0.5, `squelch over REPEAT: the pad left closes the loop (${zc(still, from)} to ${zc(dark, from)} zero crossings)`);
+}
+{ // Drift: it plays itself; the same seed, the same piece; the weather brings in the acid and the drums; taps, textures,
+  // the shimmer; fast enough
+  const drift = (set, secs, msgs) => { const a = load({ drift: { seed: "nightbus", ...set }, play: true }); if (msgs) msgs(a); const r = a.render(secs); return { ...r, a }; };
+  const calm = drift({ weather: 0 }, 8), again = drift({ weather: 0 }, 8), other = drift({ weather: 0, seed: "sunrise" }, 8);
+  ok(finite(calm.L) && peak(calm.L) < 1 && rms(calm.L, Math.round(4 * SR), calm.L.length) > 0.01, `Drift: the pad swells in and plays (rms ${rms(calm.L, Math.round(4 * SR), calm.L.length).toFixed(3)})`);
+  let same = true, diff = 0;
+  for (let i = 0; i < calm.L.length; i += 11) { if (calm.L[i] !== again.L[i]) same = false; diff += Math.abs(calm.L[i] - other.L[i]); }
+  ok(same && diff > 1, `Drift: "nightbus" twice is the same piece; "sunrise" is another`);
+  const vz = (r) => r.a.posted.filter((m) => m.type === "viz");
+  const kicksCalm = vz(calm).reduce((n, m) => n + (m.hits & 1), 0);
+  const storm = drift({ weather: 1 }, 10), kicksStorm = vz(storm).reduce((n, m) => n + (m.hits & 1), 0), acid = vz(storm).at(-1).drift.acid;
+  ok(kicksCalm === 0 && kicksStorm > 3 && acid > 0.95 && vz(calm).at(-1).drift.acid < 0.01, `Drift: calm has no drums and no acid; a storm brings both (${kicksStorm} kicks, acid ${acid.toFixed(2)})`);
+  const tapped = drift({ weather: 0 }, 1.5, (a) => { a.render(0.3); a.send({ type: "drift", tap: 0.8 }); });
+  ok(vz(tapped).some((m) => m.drift && m.drift.bell >= 60), `Drift: a tap rings a bell`);
+  const hf = (x, from, to) => { let n = 0; for (let i = from + 1; i < to; i++) n += Math.abs(x[i] - x[i - 1]); return n / (to - from); };
+  const dry = drift({ weather: 0, texture: "none" }, 2).L, rain = drift({ weather: 0, texture: "rain", tex: 1 }, 2).L;
+  ok(hf(rain, 2000, 80000) > hf(dry, 2000, 80000) * 2, `Drift: rain adds its hiss and drops (${hf(dry, 2000, 80000).toFixed(4)} to ${hf(rain, 2000, 80000).toFixed(4)})`);
+  const sh = (amt) => { const r = drift({ weather: 0, shimmer: amt, space: 1 }, 7); ok(finite(r.L) && rms(r.L, Math.round(5 * SR), r.L.length) < 0.6, `Drift: shimmer ${amt} stays in bounds (rms ${rms(r.L, Math.round(5 * SR), r.L.length).toFixed(3)})`); return hf(r.L, Math.round(5 * SR), r.L.length - 1) / rms(r.L, Math.round(5 * SR), r.L.length); };   // (brightness: the highs for the loudness)
+  const s0 = sh(0), s1 = sh(1);
+  ok(s1 > s0 * 1.1, `Drift: the shimmer brightens the tail (${s0.toFixed(4)} to ${s1.toFixed(4)})`);
+  const off = drift({ weather: 0.5 }, 6, null); off.a.send({ type: "drift", on: false }); off.a.send({ type: "stop" }); const tail = off.a.render(14).L;
+  ok(rms(tail, Math.round(12 * SR), tail.length) < 0.004, `Drift off: it fades to silence (${rms(tail, Math.round(12 * SR), tail.length).toFixed(4)})`);
+  const t0 = process.hrtime.bigint(); drift({ weather: 0.8, texture: "ocean", tex: 0.6 }, 10); const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+  ok(ms < 3000, `Drift: speed, 10 s rendered in ${ms.toFixed(0)} ms (${(10000 / ms).toFixed(0)}x real time)`);
 }
 { // the power-on sounds (boot-sound.js): each part where the boot animation puts it, nothing clipped, then quiet
   const ctx = vm.createContext({ Math, Float32Array, globalThis: {} });

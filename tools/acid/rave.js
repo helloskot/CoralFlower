@@ -54,7 +54,7 @@
     B: "11110100011000111110100011000111110", X: "10001100010101000100010101000110001", 0: "01110100011001110101110011000101110" };
   const WORDS = ["ACID", "FLOWER", "RAVE", "JACK", "LOVE", "HOUSE", "ACID!"];
   const HACKWORDS = ["ROOT", "ACCESS", "OVERRIDE", "SYSTEM", "0XACID", "BYPASS"];
-  const SCENES = ["WAREHOUSE", "CYBERSPACE", "TUNNEL", "VOXEL", "PLASMA", "MAINFRAME", "GARDEN", "FEEDBACK", "HYPERSPACE", "ACID RAIN", "SPIRAL"];
+  const SCENES = ["WAREHOUSE", "CYBERSPACE", "TUNNEL", "VOXEL", "PLASMA", "MAINFRAME", "GARDEN", "FEEDBACK", "HYPERSPACE", "ACID RAIN", "SPIRAL", "AURORA", "NEBULA"];
   // the VJ's controls: over every scene (acid.js's VJ panel, MIDI, and Auto VJ turn them)
   const VJ0 = { hue: 0, speed: 1, mirror: 0, trails: 0, strobe: 0, zoom: 0, rgb: 0, pix: 1, hud: true, scan: true, parts: true, words: true, text: "", auto: false };
   const HACKER = { 1: true, 5: true };                  // (the scenes the terminal types over)
@@ -79,7 +79,6 @@
   class Rave {
     constructor(canvas, hooks, opts = {}) {
       this.cv = canvas; this.g = canvas.getContext("2d"); this.hooks = hooks; this.opts = opts;
-      this.tilt = [0, 0];                                  // the iPad's tilt (-1..1 each way), when Tilt is on
       this.bootT = 0; this.ready = false; this.stopped = false;
       this.W = 0;
       this.setWidth(240);
@@ -148,14 +147,15 @@
     burst() { this.scatter = 1; this.glitch = 0.4; this.flash = Math.max(this.flash, 0.3); }
     sceneCount() { return SCENES.length; }
     go(i) { this.scene = ((i % SCENES.length) + SCENES.length) % SCENES.length; this.sceneLabel = 1.6; this.barOfScene = 0; this.prev.fill(0); }
-    next() { this.go(this.scene + 1); }
-    back() { this.go(this.scene - 1); }
+    next() { const L = this.sceneList; if (L && L.length) { const i = L.indexOf(this.scene); this.go(L[(i + 1) % L.length]); } else this.go(this.scene + 1); }
+    back() { const L = this.sceneList; if (L && L.length) { const i = L.indexOf(this.scene); this.go(L[(i - 1 + L.length) % L.length]); } else this.go(this.scene - 1); }
     setPad(x, y) { this.pad = x == null ? null : [x, y]; }
 
     // ------------------------------------------------------------------------------------- the sound's news ---
     event(m) {
       this.use();
       this.v = m;
+      if (m.drift) this.driftInfo = m.drift;
       const fx = m.fx | 0;
       for (let b = 0; b < 12; b++) if ((fx >> b) & 1 && !((this.fx >> b) & 1)) this.fxSince[b] = this.t;
       if ((fx & 7) && !(this.fx & 7)) this.freeze = null;
@@ -165,7 +165,7 @@
         if (m.step < this.lastStep || this.lastStep < 0) {   // a new bar
           this.bar++; this.barOfScene++;
           if (this.vj.auto && this.bar % 4 === 0 && this.onAuto) this.onAuto();
-          if (this.auto && this.barOfScene >= 8 && m.playing) this.next();
+          if (this.auto && this.barOfScene >= (this.autoBars || 8) && m.playing) this.next();
         }
         this.lastStep = m.step;
       }
@@ -319,7 +319,7 @@
       const beams = 4 + Math.round(cut * 6) + (this.accent > 0.3 ? 4 : 0), inten = 0.2 + 0.35 * env + 0.45 * this.accent + 0.2 * cut;
       for (let k = 0; k < beams; k++) {
         const ox = [6, W - 7, W / 2, W / 4, (3 * W) / 4][k % 5], col = [LIME, CYAN, PINK, LIME, YEL][k % 5];
-        const a = Math.PI / 2 + Math.sin(this.t * (0.7 + 0.25 * k) + k * 1.7 + this.scroll * 0.5) * (0.55 + 0.35 * reso) + [-0.4, 0.4, 0, -0.2, 0.2][k % 5] - this.tilt[0] * 0.5;
+        const a = Math.PI / 2 + Math.sin(this.t * (0.7 + 0.25 * k) + k * 1.7 + this.scroll * 0.5) * (0.55 + 0.35 * reso) + [-0.4, 0.4, 0, -0.2, 0.2][k % 5];
         this.line(ox, 0, ox + Math.cos(a) * 320, Math.sin(a) * 320, this.accent > 0.6 ? WHITE : col, inten, true);
       }
       // fog: slow bands, lit by the kick
@@ -359,7 +359,7 @@
     tunnel() {
       const v = this.v, sh = this.slotShift(), reso = v.reso, env = v.env || 0;
       this.fade(0.55);
-      const rings = 16, rot = Math.sin(this.t * 0.35) * 0.6 + reso * 0.3 * Math.sin(this.t) + this.tilt[0] * 0.8;
+      const rings = 16, rot = Math.sin(this.t * 0.35) * 0.6 + reso * 0.3 * Math.sin(this.t);
       for (let i = rings; i >= 1; i--) {
         let z = (i - ((this.scroll * 2) % 1)) / rings;
         const s = 6 / (z * z + 0.02), half = s * (1 + this.kick * 0.08), a = rot + z * 1.2 * reso;
@@ -510,8 +510,8 @@
         x += w;
       }
       this.rect(0, H - 10, W, 10, [20, 14, 34]);
-      // the rain, leaning with the tilt
-      const lean = 0.35 + this.tilt[0] * 0.8, sp = (1.1 + this.hat * 0.8) * this.dt * (this.vj.speed || 1);
+      // the rain, leaning in the wind
+      const lean = 0.35, sp = (1.1 + this.hat * 0.8) * this.dt * (this.vj.speed || 1);
       for (const d of this.drops) {
         d.y += d.v * sp; d.x += d.v * sp * lean * (H / W);
         if (d.y > 1) { d.y -= 1; d.x = rnd(); if (rnd() < 0.3) this.parts.push({ k: 2, x: d.x * W, y: H - 10, vx: 0, vy: -6, life: 0.2, c: CYAN }); }
@@ -532,6 +532,35 @@
       }
       this.flower(cx, cy, 10 + this.kick * 4);
     }
+
+    // ------------------------------------------------------------------------------------ Drift's calm scenes ---
+    // AURORA: curtains of light over dark hills, swaying slowly, brighter with each bell; coloured by the chord
+    aurora() {
+      const B = this.buf, t = this.t * 0.5, v = this.v, d = this.driftInfo || { chord: 0, mx: 0.5 }, sh = this.slotShift();
+      for (let y = 0; y < H; y++) { const q = y / H, r = 3 + 8 * q, g = 5 + 14 * q, b = 16 + 26 * q; for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = r; B[i + 1] = g; B[i + 2] = b; } }
+      for (let k = 0; k < 60; k++) { const x = (k * 97 + 13) % W, y = (k * 41 + 7) % 70; this.add(x, y, WHITE, 0.12 + 0.3 * Math.max(0, sn(this.t * 1.7 + k))); }
+      const glow = 0.3 + 0.35 * Math.min(1, this.accent + (v.env || 0) * 0.6) + d.mx * 0.25;
+      for (let k = 0; k < 3; k++) {
+        const col = pal(sh + 140 + k * 36 + (d.chord | 0) * 22);
+        for (let x = 0; x < W; x++) {
+          const top = 22 + k * 9 + sn(x * 0.021 + t * (0.6 + k * 0.2) + k * 2) * 11 + sn(x * 0.0065 - t * 0.3 + k) * 8;
+          const inten = (Math.max(0, sn(x * 0.085 + t * 1.2 + k * 1.3)) * 0.6 + 0.4) * glow;
+          for (let j = 0; j < 46; j++) { const f = 1 - j / 46; this.add(x, top + j, col, inten * f * f * 0.62); }
+        }
+      }
+      for (let x = 0; x < W; x++) { const h = H - 16 + Math.round(sn(x * 0.019 + 0.5) * 6 + sn(x * 0.053 + 1.3) * 3); for (let y = h; y < H; y++) this.set(x, y, [4, 6, 12]); }
+    }
+    // NEBULA: a slow cloud of colour folding into itself, stars drifting through
+    nebula() {
+      const B = this.buf, t = this.t * 0.12, d = this.driftInfo || { chord: 0, mx: 0.5 }, sh = this.slotShift() + (d.chord | 0) * 20, br = 0.35 + d.mx * 0.45 + this.accent * 0.2;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const p = y * W + x, q = sn(x * 0.029 + t) + sn(y * 0.041 - t * 1.3) + sn((x + y) * 0.016 + t * 0.7) + sn(this.dist[p] * 0.033 - t * 0.9);
+        const c = (((q + 4) * 26 + sh) | 0) & 255, k = Math.max(0, (q + 1.4) / 5.4) * br, i = p * 3;
+        B[i] = PAL[c * 3] * k; B[i + 1] = PAL[c * 3 + 1] * k; B[i + 2] = PAL[c * 3 + 2] * k + 6;
+      }
+      for (let k = 0; k < 70; k++) { const x = ((k * 53 + this.t * (2 + (k % 5))) % (W + 10)) - 5, y = (k * 29 + 11) % H; this.add(x, y, WHITE, 0.25 + 0.4 * Math.max(0, sn(this.t * 2 + k * 1.7))); }
+    }
+
     // the VJ's words: big, scrolling across the middle, in the acid colours
     banner() {
       const s = String(this.vj.text).toUpperCase().slice(0, 40) + "   ", k = 3, w = s.length * 6 * k;
@@ -602,7 +631,7 @@
       const v = this.v, sh = this.slotShift(), B = this.buf;
       for (let y = 0; y < H; y++) { const t = y / H, r = 4 + 30 * Math.max(0, 0.55 - Math.abs(t - 0.45)), b = 12 + 60 * Math.max(0, 0.55 - Math.abs(t - 0.45)); for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = r; B[i + 1] = 2; B[i + 2] = b; } }
       const speed = this.scroll * 6, camZ = speed, bank = Math.sin(this.t * 0.4) * 0.25 + (v.cut - 0.5) * 0.4;
-      this.cam(Math.sin(this.t * 0.3) * 3 + this.tilt[0] * 4, 7 + Math.sin(this.t * 0.5) * 1.5 - this.kick * 0.6, camZ, bank + this.tilt[0] * 0.35, -0.18 + (v.reso - 0.5) * 0.1 + this.tilt[1] * 0.15, 130);
+      this.cam(Math.sin(this.t * 0.3) * 3, 7 + Math.sin(this.t * 0.5) * 1.5 - this.kick * 0.6, camZ, bank, -0.18 + (v.reso - 0.5) * 0.1, 130);
       // the floor: a neon grid running under the city
       const gz0 = Math.floor(camZ / 4) * 4;
       for (let k = 0; k < 18; k++) { const z = gz0 + k * 4; const a = this.proj(-110, 0, z), b = this.proj(110, 0, z); if (a && b) this.line(a[0], a[1], b[0], b[1], pal(sh + 200), 0.25); }
@@ -631,7 +660,7 @@
     mainframe() {
       const v = this.v, sh = this.slotShift();
       this.fade(0.35);
-      this.cam(this.tilt[0] * 8, 2 - this.tilt[1] * 5, -34, Math.sin(this.t * 0.2) * 0.2 + this.tilt[0] * 0.25, -0.05 + this.tilt[1] * 0.15, 140);
+      this.cam(0, 2, -34, Math.sin(this.t * 0.2) * 0.2, -0.05, 140);
       for (let x = -40; x <= 40; x += 5) { const a = this.proj(x, -12, -10), b = this.proj(x, -12, 60); if (a && b) this.line(a[0], a[1], b[0], b[1], [0, 160, 60], 0.35); }
       for (let z = -10; z <= 60; z += 5) { const zz = z - ((this.scroll * 5) % 5); const a = this.proj(-40, -12, zz), b = this.proj(40, -12, zz); if (a && b) this.line(a[0], a[1], b[0], b[1], [0, 160, 60], 0.35); }
       // the core: a wire sphere turning, its radius beating
@@ -680,7 +709,7 @@
     voxelScene() {
       const v = this.v, sh = this.slotShift(), B = this.buf;
       for (let y = 0; y < H; y++) { const t = y / H, c = pal(sh + 20 + t * 40); for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = c[0] * 0.18; B[i + 1] = c[1] * 0.12; B[i + 2] = c[2] * 0.3; } }
-      const yaw = Math.sin(this.t * 0.25) * 0.5 + this.tilt[0] * 0.6;
+      const yaw = Math.sin(this.t * 0.25) * 0.5;
       this.cam(Math.sin(yaw) * -46, 16, -Math.cos(yaw) * 46 + 4, yaw, -0.32, 150);
       // the landscape: on each new step a new row from the sound
       if (v.step >= 0 && v.step !== this.tStep) {
@@ -725,7 +754,7 @@
       this.fade(t < 2.4 ? 0 : 0.45);
       if (t < 2.4) this.fill(0, 6, 2);
       // the grid: a neon floor scrolling under it all, from the BIOS on
-      this.cam(0, 6 + (this.look || 0) * 10, -40, Math.sin(t * 0.4) * 0.15 + this.tilt[0] * 0.3, -0.12 + this.tilt[1] * 0.1 - (this.look || 0) * 0.3, 140);
+      this.cam(0, 6 + (this.look || 0) * 10, -40, Math.sin(t * 0.4) * 0.15, -0.12 - (this.look || 0) * 0.3, 140);
       const gz = (t * 14) % 6, ga = clamp((t - 1.2) / 1, 0, 0.55);
       if (ga > 0) {
         for (let k = 0; k < 16; k++) { const a = this.proj(-60, -6, k * 6 - gz), b = this.proj(60, -6, k * 6 - gz); if (a && b) this.line(a[0], a[1], b[0], b[1], [255, 47, 180], ga * 0.6); }
@@ -755,7 +784,7 @@
         if (!this.dragging) { this.spin = (this.spin || 0) + (this.spinV || 0) * this.dt; this.spinV = (this.spinV || 0) * Math.pow(0.25, this.dt); }
         this.scatter = (this.scatter || 0) * Math.pow(0.12, this.dt);
         const sc2 = this.scatter;
-        const a = (1 - e) * TAU * 1.5 + Math.sin(t * 1.1) * 0.35 * e * (Math.abs(this.spinV || 0) < 0.3 ? 1 : 0.2) + this.tilt[0] * 0.6 + (this.spin || 0), ca = Math.cos(a), sa = Math.sin(a);
+        const a = (1 - e) * TAU * 1.5 + Math.sin(t * 1.1) * 0.35 * e * (Math.abs(this.spinV || 0) < 0.3 ? 1 : 0.2) + (this.spin || 0), ca = Math.cos(a), sa = Math.sin(a);
         VOX.forEach((q, i) => {
           const r0 = 55 + hash(i, 7) * 40, u = hash(i, 3) * TAU, w = (hash(i, 5) - 0.5) * Math.PI;
           const sx = Math.cos(w) * Math.cos(u) * r0, sy = Math.sin(w) * r0, sz = Math.cos(w) * Math.sin(u) * r0;
@@ -825,7 +854,7 @@
       this.flash *= d(0.0015); this.shake *= d(0.0005); this.sceneLabel -= dt;
       if (!playing) { this.v = { ...this.v, cut: this.hooks.params().cutoff, reso: this.hooks.params().reso }; }
       [this.warehouse, this.cyberspace, this.tunnel, this.voxelScene, this.plasma, this.mainframe, this.garden, this.feedback,
-       this.hyperspace, this.rain, this.spiral][this.scene].call(this);
+       this.hyperspace, this.rain, this.spiral, this.aurora, this.nebula][this.scene].call(this);
       if (HACKER[this.scene] && this.vj.hud) this.terminal();
       if (this.vj.parts) this.particles(dt * sp); else this.parts.length = 0;
       if (this.vj.words) this.words(dt); else this.word = null;
@@ -853,6 +882,10 @@
       if (Math.floor(w.life * 12) % 3 !== 0) this.text5(w.s, x, y, k, pal(this.t * 200 + this.slotShift()), true);
     }
     hud(playing) {
+      if (this.driftMode) {                              // (Drift: no steps, no tempo; the mood pad's place when touched)
+        if (this.pad) { const [v0, v1] = this.view, [px, py] = this.pad, x = v0 + px * (v1 - v0), y = py * H; this.disc(x, y, 3, [200, 220, 255], 0.6); this.line(x, 0, x, H - 1, [200, 220, 255], 0.15); this.line(0, y, W - 1, y, [200, 220, 255], 0.15); }
+        return;
+      }
       const v = this.v, p = this.hooks.pattern(), B = this.buf;
       for (let y = 0; y < 8; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] *= 0.35; B[i + 1] *= 0.35; B[i + 2] *= 0.35; }
       const [v0, v1] = this.view, vc = (v0 + v1) >> 1;

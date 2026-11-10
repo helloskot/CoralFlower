@@ -156,6 +156,17 @@
       this.use();
       this.v = m;
       if (m.drift) this.driftInfo = m.drift;
+      if (m.drift && this.driftMode) {                   // (Drift: the scenes follow the music: a bloom on each new chord, a spark on each bell)
+        const dI = m.drift;
+        if (this.prevChord != null && dI.chord !== this.prevChord) this.bloom = 1;
+        this.prevChord = dI.chord;
+        if (dI.bell >= 0) {
+          this.accent = Math.max(this.accent, 0.5);
+          const x = clamp(20 + ((dI.bell % 36) / 36) * (W - 40), 4, W - 4), y = H * (0.25 + rnd() * 0.4);
+          for (let i = 0; i < 5; i++) this.parts.push({ k: 2, x: x + (rnd() - 0.5) * 8, y: y + (rnd() - 0.5) * 8, vx: (rnd() - 0.5) * 4, vy: -5 - rnd() * 5, life: 0.9 + rnd() * 0.6,
+            c: pal(this.slotShift() + 128 + (dI.bell % 12) * 21) });
+        }
+      }
       const fx = m.fx | 0;
       for (let b = 0; b < 12; b++) if ((fx >> b) & 1 && !((this.fx >> b) & 1)) this.fxSince[b] = this.t;
       if ((fx & 7) && !(this.fx & 7)) this.freeze = null;
@@ -202,7 +213,7 @@
       if (this.flowers.length > 28) this.flowers.shift();
     }
     center() { return this.scene === 0 ? [W / 2, 52 - this.kick * 5] : [W / 2, H / 2]; }
-    slotShift() { return ((this.hooks.slot() | 0) * 32) & 255; }
+    slotShift() { return this.driftMode && this.seedShift != null ? this.seedShift & 255 : ((this.hooks.slot() | 0) * 32) & 255; }   // (Drift: the seed's own colour)
 
     // ------------------------------------------------------------------------------------------ primitives ---
     fill(r, g, b) { const B = this.buf; for (let i = 0; i < N * 3; i += 3) { B[i] = r; B[i + 1] = g; B[i + 2] = b; } }
@@ -495,10 +506,12 @@
     }
     // ACID RAIN: rain over a skyline whose windows light with the steps, lightning on the claps and accents
     rain() {
-      const v = this.v, B = this.buf, t = this.t, sh = this.slotShift(), fl = Math.max(this.clap, this.accent * 0.6);
+      const dw = this.driftMode && this.driftInfo ? this.driftInfo.w : null;   // (Drift: the weather sets the rain, a storm brings the lightning)
+      if (dw != null && dw > 0.8 && rnd() < this.dt * (dw - 0.8) * 1.2) { this.bolt = 1; this.boltX = 0.2 + rnd() * 0.6; }
+      const v = this.v, B = this.buf, t = this.t, sh = this.slotShift(), fl = dw != null ? this.bolt || 0 : Math.max(this.clap, this.accent * 0.6);
       for (let y = 0; y < H; y++) { const q = y / H, r = 10 + 20 * q + fl * 120, g = 6 + 14 * q + fl * 120, b = 22 + 40 * q + fl * 150;
         for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = r; B[i + 1] = g; B[i + 2] = b; } }
-      if (fl > 0.6) { let x = W * (0.3 + 0.4 * sn(this.bar * 1.7)), y = 0; while (y < 90) { const nx = x + (rnd() - 0.5) * 10, ny = y + 4 + rnd() * 5; this.line(x, y, nx, ny, WHITE, fl, true); x = nx; y = ny; } }
+      if (fl > 0.6) { let x = W * (dw != null ? this.boltX || 0.5 : 0.3 + 0.4 * sn(this.bar * 1.7)), y = 0; while (y < 90) { const nx = x + (rnd() - 0.5) * 10, ny = y + 4 + rnd() * 5; this.line(x, y, nx, ny, WHITE, fl, true); x = nx; y = ny; } }
       // the skyline
       for (let bI = 0, x = 0; x < W; bI++) {
         const w = 10 + ((bI * 37) % 13), h = 30 + ((bI * 53) % 40) + (bI % 5 === 2 ? 20 : 0), top = H - 10 - h;
@@ -511,8 +524,9 @@
       }
       this.rect(0, H - 10, W, 10, [20, 14, 34]);
       // the rain, leaning in the wind
-      const lean = 0.35, sp = (1.1 + this.hat * 0.8) * this.dt * (this.vj.speed || 1);
-      for (const d of this.drops) {
+      const lean = dw != null ? 0.1 + dw * 0.5 : 0.35, sp = (dw != null ? 0.5 + dw * 1.2 : 1.1 + this.hat * 0.8) * this.dt * (this.vj.speed || 1);
+      const nDrops = dw != null ? Math.floor(this.drops.length * (0.08 + dw * 0.92)) : this.drops.length;
+      for (let di = 0; di < nDrops; di++) { const d = this.drops[di];
         d.y += d.v * sp; d.x += d.v * sp * lean * (H / W);
         if (d.y > 1) { d.y -= 1; d.x = rnd(); if (rnd() < 0.3) this.parts.push({ k: 2, x: d.x * W, y: H - 10, vx: 0, vy: -6, life: 0.2, c: CYAN }); }
         if (d.x > 1) d.x -= 1; if (d.x < 0) d.x += 1;
@@ -539,7 +553,7 @@
       const B = this.buf, t = this.t * 0.5, v = this.v, d = this.driftInfo || { chord: 0, mx: 0.5 }, sh = this.slotShift();
       for (let y = 0; y < H; y++) { const q = y / H, r = 3 + 8 * q, g = 5 + 14 * q, b = 16 + 26 * q; for (let x = 0; x < W; x++) { const i = (y * W + x) * 3; B[i] = r; B[i + 1] = g; B[i + 2] = b; } }
       for (let k = 0; k < 60; k++) { const x = (k * 97 + 13) % W, y = (k * 41 + 7) % 70; this.add(x, y, WHITE, 0.12 + 0.3 * Math.max(0, sn(this.t * 1.7 + k))); }
-      const glow = 0.3 + 0.35 * Math.min(1, this.accent + (v.env || 0) * 0.6) + d.mx * 0.25;
+      const glow = 0.3 + 0.35 * Math.min(1, this.accent + (v.env || 0) * 0.6) + d.mx * 0.25 + (this.bloom || 0) * 0.35;
       for (let k = 0; k < 3; k++) {
         const col = pal(sh + 140 + k * 36 + (d.chord | 0) * 22);
         for (let x = 0; x < W; x++) {
@@ -552,7 +566,7 @@
     }
     // NEBULA: a slow cloud of colour folding into itself, stars drifting through
     nebula() {
-      const B = this.buf, t = this.t * 0.12, d = this.driftInfo || { chord: 0, mx: 0.5 }, sh = this.slotShift() + (d.chord | 0) * 20, br = 0.35 + d.mx * 0.45 + this.accent * 0.2;
+      const B = this.buf, t = this.t * 0.12, d = this.driftInfo || { chord: 0, mx: 0.5 }, sh = this.slotShift() + (d.chord | 0) * 20, br = 0.35 + d.mx * 0.45 + this.accent * 0.2 + (this.bloom || 0) * 0.25;
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const p = y * W + x, q = sn(x * 0.029 + t) + sn(y * 0.041 - t * 1.3) + sn((x + y) * 0.016 + t * 0.7) + sn(this.dist[p] * 0.033 - t * 0.9);
         const c = (((q + 4) * 26 + sh) | 0) & 255, k = Math.max(0, (q + 1.4) / 5.4) * br, i = p * 3;
@@ -846,12 +860,13 @@
         requestAnimationFrame(this.loop);
         return;
       }
+      if (this.sleeping) { requestAnimationFrame(this.loop); return; }   // (dimmed: nothing to draw, nothing to spend)
       const playing = this.hooks.playing(), bpm = this.hooks.params().tempo, sp = this.vj.speed || 1;
       this.t += dt * (sp - 1);                             // (the VJ's speed: everything that moves by time)
       this.scroll += (playing ? dt * (bpm / 60) : dt * 0.12) * sp;
       const d = (k) => Math.pow(k, dt);
       this.kick *= d(0.004); this.snare *= d(0.01); this.clap *= d(0.01); this.hat *= d(0.002); this.accent *= d(0.05);
-      this.flash *= d(0.0015); this.shake *= d(0.0005); this.sceneLabel -= dt;
+      this.flash *= d(0.0015); this.shake *= d(0.0005); this.sceneLabel -= dt; this.bloom = (this.bloom || 0) * d(0.25); this.bolt = (this.bolt || 0) * d(0.002);
       if (!playing) { this.v = { ...this.v, cut: this.hooks.params().cutoff, reso: this.hooks.params().reso }; }
       [this.warehouse, this.cyberspace, this.tunnel, this.voxelScene, this.plasma, this.mainframe, this.garden, this.feedback,
        this.hyperspace, this.rain, this.spiral, this.aurora, this.nebula][this.scene].call(this);

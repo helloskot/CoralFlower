@@ -930,3 +930,39 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 }
 .drift__b .pix { width: 18px; height: 18px; }
 #driftDice span { display: none; }
+
+/* Drift: the tools row, the sheets, the Dim screen */
+.drift__row--tools { gap: 6px; }
+.drift__row--tools .drift__b { flex: 1 1 auto; }
+.drift__b[aria-pressed="true"] { background: #B98CFF; color: var(--black); box-shadow: none; }
+.drift__star { font-size: 18px; color: #A99BD6; }
+.drift__star[aria-pressed="true"] { background: rgba(0, 0, 0, .35); color: #FFD84A; box-shadow: inset 0 0 0 1.5px #FFD84A; }
+.drift__auto { min-height: 36px; font-size: 13px; }
+.seg--wrap { display: flex; flex-wrap: wrap; }
+.drift-sheet { width: min(30rem, 94vw); }
+.drift-sheet .seg button[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px #B98CFF; }
+.drift-sheet h3 { color: #B98CFF; }
+.drift-sheet__knobs { display: grid; gap: 10px; margin: 16px 0 8px; }
+.drift-sheet__knobs .drift__knob span { flex: 0 0 6.5rem; }
+.dmode { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid var(--line); }
+.dmode b { font-weight: 400; color: var(--text); }
+.dmode small { font-size: 12px; color: var(--dim); line-height: 1.35; }
+.dmode .seg { justify-self: start; margin-top: 4px; }
+.dmode .seg button[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px #B98CFF; color: var(--text); }
+.dfavs { list-style: none; padding: 0; margin: 0 0 8px; }
+.dfavs li { padding: 4px 0; border-top: 1px solid var(--line); margin: 0; }
+.dfavs .lrow > span { text-transform: none; letter-spacing: .02em; min-width: 0; overflow-wrap: anywhere; }
+.dfavs .menu__row { margin: 0; flex-wrap: nowrap; gap: 6px; }
+.dfavs .menu__row button { min-height: 40px; padding: 0 12px; }
+.dim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: end center; padding-bottom: max(28px, env(safe-area-inset-bottom)); background: #000; cursor: pointer; }
+.dim[hidden] { display: none; }
+.dim p { margin: 0; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: rgba(185, 140, 255, .22); }
+.app.is-drift .drift { grid-template-columns: minmax(0, 1fr); }
+.drift__weather input { min-width: 0; }
+@media (max-width: 600px) and (orientation: portrait) {
+  .drift__row--tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .drift__row--tools .drift__b { padding: 0 6px; font-size: 13px; }
+  .drift__weather { gap: 8px; }
+  .drift__wl, .drift__wr { font-size: 11px; }
+  .drift__seed span { display: none; }
+}

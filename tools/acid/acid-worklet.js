@@ -159,6 +159,8 @@ class SVF {                                            // a state-variable filte
 // FM bells, the acid voice creeping in as the weather turns, soft drums only in a storm, a texture bed (rain, vinyl,
 // the sea), a wobbling tape delay and a shimmering reverb (its tail an octave up). The page sends the weather (calm ..
 // storm), the mood (dark .. bright, sparse .. busy), taps (a bell where the finger lands), the texture and the space.
+const SINT = new Float32Array(4097); for (let i = 0; i <= 4096; i++) SINT[i] = Math.sin((i / 4096) * TAU);
+const fsin = (x) => { x -= Math.floor(x); const f = x * 4096, i = f | 0; return SINT[i] + (SINT[i + 1] - SINT[i]) * (f - i); };   // sin(2 pi x)
 const DSCALES = [[0, 2, 3, 5, 7, 8, 10], [0, 2, 3, 5, 7, 9, 10], [0, 2, 4, 6, 7, 9, 11], [0, 2, 4, 5, 7, 9, 11], [0, 3, 5, 7, 10], [0, 2, 4, 7, 9]];
 const hashStr = (t) => { let h = 2166136261; for (const c of String(t).toLowerCase()) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const mulberry = (a) => () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -166,11 +168,19 @@ const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a)
 class Drift {
   constructor(sr, set) {
     this.sr = sr; this.on = true;
-    this.set = { seed: "drift", weather: 0.25, moodX: 0.5, moodY: 0.4, texture: "none", tex: 0.5, space: 0.7, shimmer: 0.5, bpm: 72, ...set };
+    this.set = { seed: "drift", weather: 0.25, moodX: 0.5, moodY: 0.4, texture: "none", texture2: "none", tex: 0.5, space: 0.7, shimmer: 0.5, bpm: 72,
+                 pad: "auto", bell: "auto", drone: 0.3, pulse: 0, freeze: false, autoW: false, arcs: true, ...set };
     this.w = this.set.weather; this.mx = this.set.moodX; this.my = this.set.moodY; this.acidAmt = 0;
-    this.pads = Array.from({ length: 12 }, (_, i) => ({ env: 0, gate: false, f: 110, p0: 0, p1: 0, p2: 0, l1: 0, l2: 0, pan: ((i % 4) - 1.5) * 0.35, att: 1, rel: 1 }));
-    this.bells = Array.from({ length: 6 }, () => ({ amp: 0, idx: 0, f: 440, pc: 0, pm: 0, dec: 1, idec: 1, pan: 0 }));
+    this.pads = Array.from({ length: 14 }, (_, i) => ({ env: 0, gate: false, f: 110, p0: 0, p1: 0, p2: 0, l1: 0, l2: 0, pan: ((i % 4) - 1.5) * 0.35, att: 1, rel: 1, held: null, kd: 1, idx: 0, vel: 1 }));
+    this.bells = Array.from({ length: 6 }, () => ({ amp: 0, idx: 0, f: 440, pc: 0, pm: 0, dec: 1, idec: 1, pan: 0, ratio: 3.5 }));
+    // the drone (a soft sub on the key's root), the pulse (a slow heartbeat), the choir's two formants, the textures' states
+    this.sub = { ph: 0, a: 0 }; this.thump = { ph: 0, e: 0, pe: 0 };
+    this.fA = new Biquad().set("bp", 420, 3, sr); this.fB = new Biquad().set("bp", 900, 4, sr);
+    this.windBp = new Biquad().set("bp", 600, 1.2, sr); this.gust = 0.5; this.fireLp = 0; this.pops = 0; this.popHp = new Biquad().set("hp", 1500, 0.7, sr);
+    this.cityLp = 0; this.cityLp2 = 0; this.car = null; this.carBp = new Biquad().set("bp", 700, 0.8, sr); this.chirps = []; this.birdT = 0;
+    this.chordChange = 0; this.arc = 1; this.sect = "full";
     this.verb = new Verb(sr); this.shb = new Float32Array(4096); this.shw = 0; this.shp = 0; this.shOut = 0;
+    this.shWin = Float32Array.from({ length: 4096 }, (_, i) => Math.sin((Math.PI * i) / 4096));   // (the shifter's window, once)
     this.tL = new Float32Array(Math.ceil(sr * 3)); this.tR = new Float32Array(Math.ceil(sr * 3)); this.tw = 0; this.tlL = 0; this.tlR = 0;
     this.t = 0; this.noteHit = -1; this.drops = []; this.oceanLp = 0; this.hissLp = 0; this.crk = 0;
     this.rainBp = new Biquad().set("bp", 2600, 0.6, sr); this.rainHp = new Biquad().set("hp", 500, 0.7, sr);
@@ -188,7 +198,14 @@ class Drift {
     this.bellDeg = 7 + Math.floor(r() * 4); this.acidDeg = 0; this.evolveBars = [8, 12, 16][Math.floor(r() * 3)];
     this.abs = -1; this.chordI = -1; this.chordDeg = 0;
     this.lfo = [r(), r(), r()];
+    this.seedPad = ["saw", "glass", "choir", "keys", "drone"][Math.floor(r() * 5)]; this.seedBell = ["bell", "box", "glass"][Math.floor(r() * 3)];
+    // the movements: build, full, thin, a near-silent rest, then a new key; their lengths in bars
+    this.sects = [["build", 16 + Math.floor(r() * 9)], ["full", 24 + Math.floor(r() * 17)], ["thin", 12 + Math.floor(r() * 9)], ["rest", 8 + Math.floor(r() * 5)]];
+    this.secI = 0; this.secLeft = this.sects[0][1] * 16; this.keyMoves = [5, 7, -2, 3, -5, 2];
+    this.awTarget = this.set.weather;
   }
+  get padType() { return this.set.pad && this.set.pad !== "auto" ? this.set.pad : this.seedPad; }
+  get bellType() { return this.set.bell && this.set.bell !== "auto" ? this.set.bell : this.seedBell; }
   noteOf(deg, base) { const n = this.scale.length, o = Math.floor(deg / n), i = ((deg % n) + n) % n; return base + this.root + this.scale[i] + 12 * o; }
   walk(deg, lo, hi) {                                  // mostly a step, now and then a leap; kept in range
     const r = this.r(), d = r < 0.08 ? -4 : r < 0.3 ? -1 : r < 0.42 ? -2 : r < 0.58 ? 0 : r < 0.8 ? 1 : r < 0.92 ? 2 : 4;
@@ -196,21 +213,38 @@ class Drift {
     return deg;
   }
   chord(deg) {                                         // the old chord fades; the new one swells in, kept close
-    this.chordDeg = deg;
-    for (const v of this.pads) v.gate = false;
-    const n = this.scale.length, step = n >= 7 ? 2 : 1, att = 3.6 - this.w * 2.4;
+    this.chordDeg = deg; this.chordChange = 1;
+    for (const v of this.pads) if (!v.held) v.gate = false;
+    const n = this.scale.length, step = n >= 7 ? 2 : 1, pt = this.padType, att = pt === "keys" ? 0.004 : pt === "drone" ? 6 : 3.6 - this.w * 2.4;
     for (let k = 0; k < 4; k++) {
       let note = this.noteOf(deg + k * step + (k === 3 && n < 7 ? 1 : 0), 48);
       while (note > 74) note -= 12; while (note < 50) note += 12;
-      let v = this.pads.find((x) => !x.gate && x.env < 0.002) || this.pads.reduce((a, b) => (a.env < b.env ? a : b));
-      v.gate = true; v.f = 440 * Math.pow(2, (note - 69) / 12);
-      v.att = 1 - Math.exp(-1 / (att * this.sr)); v.rel = Math.exp(-1 / (5 * this.sr));
+      let v = this.pads.find((x) => !x.gate && !x.held && x.env < 0.002) || this.pads.filter((x) => !x.held).reduce((a, b) => (a.env < b.env ? a : b));
+      v.gate = true; v.f = 440 * Math.pow(2, (note - 69) / 12); v.vel = 1;
+      v.att = 1 - Math.exp(-1 / (att * this.sr)); v.rel = Math.exp(-1 / ((pt === "keys" ? 1.5 : 3) * this.sr));
+      v.kd = pt === "keys" ? Math.exp(-1 / (3.2 * this.sr)) : 1; v.idx = pt === "keys" ? 1.6 : 0;
     }
   }
+  strike(vel) {                                        // (keys: the chord struck again, softly, as a slow strum)
+    for (const v of this.pads) if (v.gate && !v.held) { v.env = Math.max(v.env, vel); v.idx = 1.2 * vel; }
+  }
+  // a held finger: a note that swells and stays until let go (id: which finger)
+  hold(id, x, on) {
+    if (on) {
+      const note = this.noteOf(Math.round(Math.max(0, Math.min(1, x)) * 14), 60);
+      let v = this.pads.find((q) => !q.gate && !q.held && q.env < 0.002) || this.pads.reduce((a, b) => (a.env < b.env ? a : b));
+      v.held = id; v.gate = true; v.f = 440 * Math.pow(2, (note - 69) / 12); v.vel = 0.9;
+      v.att = 1 - Math.exp(-1 / (0.7 * this.sr)); v.rel = Math.exp(-1 / (3.5 * this.sr)); v.kd = 1; v.idx = this.padType === "keys" ? 1.4 : 0;
+      this.noteHit = note;
+    } else for (const v of this.pads) if (v.held === id) { v.gate = false; v.held = null; }
+  }
   bell(note, vel) {
-    const v = this.bells.reduce((a, b) => (a.amp < b.amp ? a : b));
-    v.f = 440 * Math.pow(2, (note - 69) / 12); v.amp = 0.2 * vel; v.idx = 2.4 * vel; v.pc = 0; v.pm = 0; v.pan = (this.r() - 0.5) * 1.2;
-    v.dec = Math.exp(-1 / ((2.2 + this.r() * 2) * this.sr)); v.idec = Math.exp(-1 / (0.35 * this.sr));
+    const v = this.bells.reduce((a, b) => (a.amp < b.amp ? a : b)), bt = this.bellType, sr = this.sr;
+    if (bt === "box") note += 12;                       // (a music box: high, bright, short)
+    v.f = 440 * Math.pow(2, (note - 69) / 12); v.pc = 0; v.pm = 0; v.pan = (this.r() - 0.5) * 1.2;
+    if (bt === "box") { v.ratio = 4; v.amp = 0.16 * vel; v.idx = 0.9 * vel; v.dec = Math.exp(-1 / (1.1 * sr)); v.idec = Math.exp(-1 / (0.08 * sr)); }
+    else if (bt === "glass") { v.ratio = 2; v.amp = 0.15 * vel; v.idx = 0.35 * vel; v.dec = Math.exp(-1 / ((4 + this.r() * 2) * sr)); v.idec = Math.exp(-1 / (1.5 * sr)); }
+    else { v.ratio = 3.5; v.amp = 0.2 * vel; v.idx = 2.4 * vel; v.dec = Math.exp(-1 / ((2.2 + this.r() * 2) * sr)); v.idec = Math.exp(-1 / (0.35 * sr)); }
     this.noteHit = note;
   }
   tap(x) { const deg = Math.round(Math.max(0, Math.min(1, x)) * 14); this.bell(this.noteOf(deg, 60), 0.9); }
@@ -222,9 +256,32 @@ class Drift {
   }
   tick(P) {                                            // a step (a 16th at Drift's own slow tempo)
     const a = ++this.abs, S = this.set;
+    // weather that drifts by itself: a slow walk towards a new target, now and then
+    if (S.autoW && a % 16 === 0) {
+      if (Math.abs(S.weather - this.awTarget) < 0.01) this.awTarget = 0.05 + this.r() * 0.6;
+      S.weather += Math.sign(this.awTarget - S.weather) * Math.min(0.006, Math.abs(this.awTarget - S.weather));
+    }
     this.w += (S.weather - this.w) * 0.3; this.mx += (S.moodX - this.mx) * 0.3; this.my += (S.moodY - this.my) * 0.3;
-    const w = this.w, dens = 0.06 + this.my * 0.5 + w * 0.22;
-    if (a % this.chordLen === 0) { this.chordI = (this.chordI + 1) % this.prog.length; this.chord(this.prog[this.chordI]); }
+    if (S.freeze) {                                    // frozen: the chord and the bed hold; nothing new is played
+      if (P.bass.gateLeft === Infinity) { P.bass.gateLeft = 0; P.bass.gate = false; }
+      return;
+    }
+    // the movements: build, full, thin, rest (then a new key); the arc shapes how much plays
+    if (S.arcs) {
+      if (--this.secLeft <= 0) {
+        this.secI = (this.secI + 1) % this.sects.length; this.secLeft = this.sects[this.secI][1] * 16;
+        if (this.secI === 0) { this.root = (this.root + this.keyMoves[Math.floor(this.r() * this.keyMoves.length)] + 12) % 12; this.chordI = -1; }
+      }
+      const [name, bars] = this.sects[this.secI], f = 1 - this.secLeft / (bars * 16);
+      this.sect = name;
+      const target = name === "build" ? 0.3 + 0.7 * f : name === "full" ? 1 : name === "thin" ? 1 - 0.75 * f : 0.12;
+      this.arc += (target - this.arc) * 0.05;
+    } else { this.arc += (1 - this.arc) * 0.05; this.sect = "full"; }
+    const w = this.w, dens = (0.06 + this.my * 0.5 + w * 0.22) * (0.2 + 0.8 * this.arc);
+    if (this.padType === "keys" && a % 8 === 4) this.strike(0.45 + 0.3 * this.arc);
+    if (S.pulse > 0.01 && a % 16 === 0) { this.thump.e = 1; this.thump.pe = 1; this.thump.ph = 0; this.lub = 2; }
+    if (S.pulse > 0.01 && a % 16 === 2) { this.thump.e = 0.6; this.thump.pe = 1; this.thump.ph = 0; }
+    if (a % this.chordLen === 0 || this.chordI < 0) { this.chordI = (this.chordI + 1) % this.prog.length; this.chord(this.prog[this.chordI]); }
     const bi = a % this.bellLen;
     if (this.bellR[bi] < dens * 0.6) { this.bellDeg = this.walk(this.bellDeg, 4, 16); this.bell(this.noteOf(this.bellDeg, 60), 0.55 + this.r() * 0.45); }
     // the acid line: in as the weather turns, out when it calms
@@ -244,6 +301,52 @@ class Drift {
     }
     if (a > 0 && a % (16 * this.evolveBars) === 0) this.evolve();
   }
+  texture(kind, P) {
+    const sr = this.sr, w = this.w;
+    if (kind === "rain") {
+      const g = 0.4 + w * 1.1;
+      let x = this.rainBp.run(this.rainHp.run(P.rnd())) * 0.22 * g;
+      if (P.rnd() > 0.9995 - w * 0.0008) this.drops.push({ e: 0.3 + 0.5 * Math.abs(P.rnd()), ph: 0, f: (2500 + 2500 * Math.abs(P.rnd())) / sr });
+      for (const d of this.drops) { d.ph += d.f; x += fsin(d.ph) * d.e * 0.25; d.e *= 0.9965; }
+      while (this.drops.length && this.drops[0].e < 1e-3) this.drops.shift();
+      return x;
+    }
+    if (kind === "vinyl") {
+      this.hissLp += (P.rnd() - this.hissLp) * 0.15; let x = this.hissLp * 0.03;
+      if (P.rnd() > 0.9994) this.crk = P.rnd() * 0.6;
+      x += this.crk; this.crk *= 0.55; return x;
+    }
+    if (kind === "ocean") {
+      const sw = 0.5 - 0.5 * Math.cos((this.t / 9.5) * TAU), g = 0.004 + sw * sw * 0.05;
+      this.oceanLp += (P.rnd() - this.oceanLp) * g; return this.oceanLp * (0.15 + sw * 1.2) * (0.7 + w * 0.6);
+    }
+    if (kind === "wind") {                             // a band of noise, its pitch and its gusts wandering
+      if ((this.t * 40 | 0) !== this.windK) { this.windK = this.t * 40 | 0; this.gust = Math.max(0.1, Math.min(1, this.gust + P.rnd() * 0.08)); this.windBp.set("bp", 250 + this.gust * 900, 1.4, sr); }
+      return this.windBp.run(P.rnd()) * this.gust * (0.35 + w * 0.9) * 0.8;
+    }
+    if (kind === "fire") {                             // a low roar, and pops
+      this.fireLp += (P.rnd() - this.fireLp) * 0.02; if (P.rnd() > 0.9988) this.pops = (0.3 + Math.abs(P.rnd())) * 0.7;
+      const x = this.fireLp * 0.5 + this.popHp.run(this.pops * P.rnd()); this.pops *= 0.985; return x;
+    }
+    if (kind === "city") {                             // a far-off hum, and now and then a car passing
+      this.cityLp += (P.rnd() - this.cityLp) * 0.01; this.cityLp2 += (this.cityLp - this.cityLp2) * 0.02; let x = this.cityLp2 * 1.6;
+      if (!this.car && P.rnd() > 0.99997) this.car = { t: 0, len: (3 + Math.abs(P.rnd()) * 3) * sr };
+      if (this.car) { const k = this.car.t / this.car.len, e = Math.sin(Math.PI * k); x += this.carBp.run(P.rnd()) * e * e * 0.18; if (++this.car.t >= this.car.len) this.car = null; }
+      return x;
+    }
+    if (kind === "birds") {                            // chirps, in little runs; fewer as the weather turns
+      if (--this.birdT <= 0) {
+        this.birdT = (0.8 + Math.abs(P.rnd()) * 3.5) * sr * (1 + w * 3);
+        const n = 2 + Math.floor(Math.abs(P.rnd()) * 4), f0 = 2600 + Math.abs(P.rnd()) * 2200;
+        for (let k = 0; k < n; k++) this.chirps.push({ at: k * 0.11 * sr, t: 0, len: 0.07 * sr, f0, f1: f0 * (1.2 + Math.abs(P.rnd()) * 0.4), ph: 0 });
+      }
+      let x = 0;
+      for (const c of this.chirps) { if (c.at > 0) { c.at--; continue; } const k = c.t / c.len; c.ph += (c.f0 + (c.f1 - c.f0) * k) / sr; x += fsin(c.ph) * fsin(k * 0.5) * 0.08; c.t++; }
+      if (this.chirps.length && this.chirps[this.chirps.length - 1].t >= this.chirps[this.chirps.length - 1].len) this.chirps.length = 0;   // (a run ends when its last chirp does)
+      return x * (1 - w * 0.8);
+    }
+    return 0;
+  }
   // the acid voice's knobs for this block (the filter breathes slowly; brighter with the mood and the storm)
   block(n) {
     this.t += n / this.sr;
@@ -254,48 +357,70 @@ class Drift {
       cutoff: cut, env: 0.3 + w * 0.35, accent: 0.5 };
     this.padG = 1 - Math.exp((-TAU * Math.min(9000, 260 * Math.pow(2, this.mx * 4.2 + lf(2, 37) * 0.6 + w * 0.5))) / this.sr);
     this.tapeLen = Math.min(this.tL.length - 2, Math.round(((60 / this.set.bpm) * 0.75) * this.sr));   // (a dotted eighth)
-    this.fb = Math.min(0.97, 0.86 + this.set.space * 0.11) - this.set.shimmer * 0.02;   // (a little shorter with the shimmer: its loop stays safe)
+    this.fb = Math.min(0.97, 0.86 + this.set.space * 0.11) - this.set.shimmer * 0.02;
+    if (this.padType === "choir" && (this.t * 20 | 0) !== this.vowK) { this.vowK = this.t * 20 | 0; this.fA.set("bp", 330 + this.mx * 420, 3, this.sr); this.fB.set("bp", 760 + this.mx * 520, 4, this.sr); }
+    this.chordChange *= 0.9; this.subDt = (440 * Math.pow(2, (this.root + 36 - 69) / 12)) / this.sr;
+    // (per block: the tape's wobble and the drone's vibrato move far slower than a block)
+    this.wob = fsin(this.t * 0.45) * 0.0028 * this.sr + fsin(this.t * 5.8) * 0.00025 * this.sr; this.vib = 1 + fsin(this.t * 5.1) * 0.0035;   // (a little shorter with the shimmer: its loop stays safe)
   }
   // one sample: the pad, the bells, the texture, the tape and the shimmer; acid: the acid voice's sample (for the sends)
   run(P, acid) {
     const sr = this.sr, S = this.set;
-    let pL = 0, pR = 0;
+    let pL = 0, pR = 0, choir = 0;
+    const pt = this.padType, lvl = (0.45 + 0.55 * this.arc) * 0.1, vib = this.vib || 1;
     for (const v of this.pads) {
-      if (!v.gate && v.env < 1e-5) continue;
-      v.env = v.gate ? v.env + (1 - v.env) * v.att : v.env * v.rel;
-      const dt0 = (v.f * 1.0029) / sr, dt1 = (v.f * 0.9971) / sr, dt2 = (v.f * 0.5) / sr;
-      v.p0 += dt0; if (v.p0 >= 1) v.p0 -= 1; v.p1 += dt1; if (v.p1 >= 1) v.p1 -= 1; v.p2 += dt2; if (v.p2 >= 1) v.p2 -= 1;
-      const o = (2 * v.p0 - 1 - blep(v.p0, dt0)) + (2 * v.p1 - 1 - blep(v.p1, dt1)) + 0.7 * (1 - 4 * Math.abs(v.p2 - 0.5));
+      if (!v.gate && v.env < 5e-4) { v.env = 0; continue; }   // (-66 dB: done; a long release no longer costs a voice for a minute)
+      if (v.kd < 1 && v.gate) v.env *= v.kd;            // (keys: struck, then fading even while held)
+      else v.env = v.gate ? v.env + (v.vel - v.env) * v.att : v.env * v.rel;
+      let o;
+      if (pt === "glass") {                             // three sines, an octave and a twelfth up: glassy
+        v.p0 += v.f / sr; if (v.p0 >= 1) v.p0 -= 1; v.p1 += (v.f * 2.003) / sr; if (v.p1 >= 1) v.p1 -= 1; v.p2 += (v.f * 3.01) / sr; if (v.p2 >= 1) v.p2 -= 1;
+        o = fsin(v.p0) * 1.6 + fsin(v.p1) * 0.55 + fsin(v.p2) * 0.25;
+      } else if (pt === "keys") {                       // an electric piano: a sine bent by another, brighter when struck
+        v.p0 += v.f / sr; if (v.p0 >= 1) v.p0 -= 1; v.p1 += (v.f * 1.0005) / sr; if (v.p1 >= 1) v.p1 -= 1;
+        o = fsin(v.p0 + v.idx * fsin(v.p1) / TAU) * 0.5; v.idx *= 0.99996;
+      } else {
+        const f = pt === "drone" ? v.f * vib : v.f, dt0 = (f * 1.0029) / sr, dt1 = (f * 0.9971) / sr, dt2 = (f * 0.5) / sr;
+        v.p0 += dt0; if (v.p0 >= 1) v.p0 -= 1; v.p1 += dt1; if (v.p1 >= 1) v.p1 -= 1; v.p2 += dt2; if (v.p2 >= 1) v.p2 -= 1;
+        o = (2 * v.p0 - 1 - blep(v.p0, dt0)) + (2 * v.p1 - 1 - blep(v.p1, dt1)) + 0.7 * (1 - 4 * Math.abs(v.p2 - 0.5));
+        if (pt === "drone") o += P.rnd() * 0.35;          // (a bow's breath)
+      }
+      if (pt === "choir") { choir += o * v.env; continue; }
       v.l1 += (o - v.l1) * this.padG; v.l2 += (v.l1 - v.l2) * this.padG;
-      const x = v.l2 * v.env * 0.1;
+      const x = (pt === "glass" || pt === "keys" ? v.l1 : v.l2) * v.env * lvl;
       pL += x * (1 - v.pan); pR += x * (1 + v.pan);
+    }
+    if (pt === "choir") {                               // the saws through two vowel formants (oo .. ah with the mood)
+      const c = (this.fA.run(choir) * 1.1 + this.fB.run(choir) * 0.6) * lvl * 1.4; pL += c; pR += c;
+    }
+    // the drone: a soft sine on the key's root, two octaves down; the pulse: a slow lub-dub
+    const S0 = this.set;
+    if (S0.drone > 0.005) {
+      this.sub.ph += this.subDt; if (this.sub.ph >= 1) this.sub.ph -= 1;
+      this.sub.a += ((0.5 + 0.5 * this.arc) - this.sub.a) * 0.00002;
+      const d = (fsin(this.sub.ph) + 0.25 * fsin(2 * this.sub.ph)) * S0.drone * 0.11 * this.sub.a; pL += d; pR += d;
+    }
+    const th = this.thump;
+    if (th.e > 1e-4 && S0.pulse > 0.005) {
+      th.ph += (48 + 40 * th.pe) / sr; if (th.ph >= 1) th.ph -= 1;
+      const x = fsin(th.ph) * th.e * S0.pulse * 0.32; pL += x; pR += x;
+      th.e *= 0.99975; th.pe *= 0.9993;
     }
     let bL = 0, bR = 0;
     for (const v of this.bells) {
       if (v.amp < 1e-5) continue;
-      v.pc += v.f / sr; if (v.pc >= 1) v.pc -= 1; v.pm += (v.f * 3.5) / sr; if (v.pm >= 1) v.pm -= 1;
-      const x = Math.sin(TAU * v.pc + v.idx * Math.sin(TAU * v.pm)) * v.amp;
+      v.pc += v.f / sr; if (v.pc >= 1) v.pc -= 1; v.pm += (v.f * v.ratio) / sr; if (v.pm >= 1) v.pm -= 1;
+      const x = fsin(v.pc + v.idx * fsin(v.pm) / TAU) * v.amp;
       v.amp *= v.dec; v.idx *= v.idec;
       bL += x * (1 - v.pan * 0.5); bR += x * (1 + v.pan * 0.5);
     }
-    // the texture bed
+    // the texture beds (two at once); rain, wind and the sea grow with the weather, the birds hide from a storm
     let tx = 0;
-    if (S.texture === "rain") {
-      tx = this.rainBp.run(this.rainHp.run(P.rnd())) * 0.22;
-      if (P.rnd() > 0.9992) this.drops.push({ e: 0.3 + 0.5 * Math.abs(P.rnd()), ph: 0, f: (2500 + 2500 * Math.abs(P.rnd())) / sr });
-      for (const d of this.drops) { d.ph += d.f; tx += Math.sin(TAU * d.ph) * d.e * 0.25; d.e *= 0.9965; }
-      if (this.drops.length && this.drops[0].e < 1e-3) this.drops.shift();
-    } else if (S.texture === "vinyl") {
-      this.hissLp += (P.rnd() - this.hissLp) * 0.15; tx = this.hissLp * 0.03;
-      if (P.rnd() > 0.9994) this.crk = P.rnd() * 0.6;
-      tx += this.crk; this.crk *= 0.55;
-    } else if (S.texture === "ocean") {
-      const sw = 0.5 - 0.5 * Math.cos((this.t / 9.5) * TAU), g = 0.004 + sw * sw * 0.05;
-      this.oceanLp += (P.rnd() - this.oceanLp) * g; tx = this.oceanLp * (0.15 + sw * 1.2);
-    }
+    if (S.texture && S.texture !== "none") tx += this.texture(S.texture, P);
+    if (S.texture2 && S.texture2 !== "none" && S.texture2 !== S.texture) tx += this.texture(S.texture2, P);
     tx *= S.tex;
     // the tape: a wobbling ping-pong, darker and a little saturated each time round
-    const tin = (pL + pR) * 0.25 + (bL + bR) * 0.4 + acid * 0.35, wob = Math.sin(this.t * TAU * 0.45) * 0.0028 * sr + Math.sin(this.t * TAU * 5.8) * 0.00025 * sr;
+    const tin = (pL + pR) * 0.25 + (bL + bR) * 0.4 + acid * 0.35, wob = this.wob || 0;
     const rp = this.tw - this.tapeLen - wob, i0 = Math.floor(rp), fr = rp - i0, N = this.tL.length, j0 = (i0 % N + N) % N, j1 = (j0 + 1) % N;
     const tLo = this.tL[j0] + (this.tL[j1] - this.tL[j0]) * fr, tRo = this.tR[j0] + (this.tR[j1] - this.tR[j0]) * fr, tfb = 0.48 + this.w * 0.2;
     this.tlL += (tRo - this.tlL) * 0.3; this.tlR += (tLo - this.tlR) * 0.3;
@@ -306,7 +431,7 @@ class Drift {
     const V = this.verb, vL = V.side(vin * S.space * 0.4, V.cL, V.aL, this.fb), vR = V.side(vin * S.space * 0.4, V.cR, V.aR, this.fb);
     const SB = this.shb, SN = SB.length, d1 = this.shp, d2 = (this.shp + SN / 2) % SN;
     SB[this.shw] = (vL + vR) * 0.5;
-    this.shOut = tanh((SB[(this.shw - d1 - 1 + SN) % SN] * Math.sin((Math.PI * d1) / SN) + SB[(this.shw - d2 - 1 + SN) % SN] * Math.sin((Math.PI * d2) / SN)) * 0.8);   // (soft-limited: the loop can't run away)
+    this.shOut = tanh((SB[(this.shw - d1 - 1 + SN) % SN] * this.shWin[d1] + SB[(this.shw - d2 - 1 + SN) % SN] * this.shWin[d2]) * 0.8);   // (soft-limited: the loop can't run away)
     this.shw = (this.shw + 1) % SN; this.shp = (this.shp - 1 + SN) % SN;
     const shim = this.shOut * S.shimmer * 1.8;           // (the tail an octave up, heard as well as fed back)
     this.oL = pL + bL + tx + tLo * 0.7 + vL * 2.6 + shim; this.oR = pR + bR + tx + tRo * 0.7 + vR * 2.6 + shim;
@@ -402,6 +527,7 @@ class AcidFlower extends AudioWorkletProcessor {
     if (m.set) { const reseed = m.set.seed != null && m.set.seed !== D.set.seed; Object.assign(D.set, m.set); if (reseed) D.reseed(D.set.seed); }
     if (m.tap != null && D.on) D.tap(m.tap);
     if (m.bell != null && D.on) D.bell(m.bell, 0.9);        // (a key played on the keyboard)
+    if (m.hold && D.on) D.hold(m.hold.id, m.hold.x, !!m.hold.on);
   }
   rnd() {                                              // white noise, -1..1 (xorshift)
     let x = this.noise;
@@ -699,7 +825,8 @@ class AcidFlower extends AudioWorkletProcessor {
         env: Math.max(B.fenv, Ld.fenv * 0.8), acc: B.accCap, cut: sm.cutoff, reso: sm.reso, amp: Math.max(B.amp, Ld.amp), hits: this.hits,
         accHit: B.accHit || Ld.accHit, note: B.noteHit >= 0 ? B.noteHit : Ld.noteHit >= 0 ? Ld.noteHit : DR && DR.noteHit >= 0 ? DR.noteHit : -1, wave: w, fx: this.fx,
         tape: this.play && this.play.mode === "tape" ? this.play.rate : 1, p: { cutoff: p.cutoff, reso: p.reso, env: p.env },
-        drift: DR ? { chord: DR.chordDeg, w: DR.w, mx: DR.mx, my: DR.my, bell: DR.noteHit, acid: DR.acidAmt } : null }, [w.buffer]);
+        drift: DR ? { chord: DR.chordDeg, w: DR.w, ws: DR.set.weather, mx: DR.mx, my: DR.my, bell: DR.noteHit, acid: DR.acidAmt, arc: DR.arc, sect: DR.sect,
+                      root: DR.root, scale: DSCALES.indexOf(DR.scale), pad: DR.padType, bellT: DR.bellType, change: DR.chordChange, frozen: !!DR.set.freeze } : null }, [w.buffer]);
       this.hits = 0; B.accHit = Ld.accHit = false; B.noteHit = Ld.noteHit = -1; if (DR) DR.noteHit = -1;
     }
     return true;

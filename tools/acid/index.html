@@ -68,19 +68,21 @@
         <button type="button" class="drift__play" id="driftPlay"><i aria-hidden="true"></i><span>Play</span></button>
         <label class="drift__seed"><span>Seed</span><input id="driftSeed" maxlength="24" autocomplete="off" spellcheck="false" placeholder="a word"></label>
         <button type="button" class="drift__b" id="driftDice" aria-label="A new seed" title="A new seed">New</button>
+        <button type="button" class="drift__b drift__star" id="driftStar" aria-pressed="false" aria-label="Keep this piece in your favourites" title="Favourite">&#9733;</button>
         <button type="button" class="drift__b" id="driftShare" title="Share this piece as a link">Share</button>
         <button type="button" class="drift__b drift__done" id="driftDone">Done</button>
       </div>
-      <label class="drift__weather"><span class="drift__wl">Calm</span><input type="range" id="driftWeather" min="0" max="1" step="0.01" aria-label="Weather: calm to storm"><span class="drift__wr">Storm</span></label>
-      <div class="drift__row drift__row--more">
-        <div class="seg" id="driftTex" aria-label="Texture"><button type="button" data-v="none">Clear</button><button type="button" data-v="rain">Rain</button><button type="button" data-v="vinyl">Vinyl</button><button type="button" data-v="ocean">Sea</button></div>
-        <label class="drift__knob"><span>Space</span><input type="range" id="driftSpace" min="0" max="1" step="0.01"></label>
-        <label class="drift__knob"><span>Shimmer</span><input type="range" id="driftShimmer" min="0" max="1" step="0.01"></label>
+      <div class="drift__weather">
+        <span class="drift__wl">Calm</span><input type="range" id="driftWeather" min="0" max="1" step="0.01" aria-label="Weather: calm to storm"><span class="drift__wr">Storm</span>
+        <button type="button" class="drift__b drift__auto" id="driftAuto" aria-pressed="false" title="The weather wanders by itself">Auto</button>
       </div>
-      <div class="drift__row drift__row--more">
-        <span class="drift__lab">Sleep</span><div class="seg" id="driftSleep"><button type="button" data-v="0">Off</button><button type="button" data-v="15">15 min</button><button type="button" data-v="30">30</button><button type="button" data-v="60">60</button></div>
-        <span class="drift__lab">Save</span><div class="seg" id="driftSave"><button type="button" data-v="2">2 min</button><button type="button" data-v="5">5</button><button type="button" data-v="10">10</button></div>
+      <div class="drift__row drift__row--tools">
+        <button type="button" class="drift__b" id="driftFreeze" aria-pressed="false" title="Hold everything as it is">Freeze</button>
+        <button type="button" class="drift__b" id="driftSoundsBtn" aria-haspopup="dialog">Sounds&#8230;</button>
+        <button type="button" class="drift__b" id="driftModesBtn" aria-haspopup="dialog">Modes&#8230;</button>
+        <button type="button" class="drift__b" id="driftKeepBtn" aria-haspopup="dialog">Keep&#8230;</button>
         <button type="button" class="drift__b" id="driftScene">Scene &#8250;</button>
+        <button type="button" class="drift__b" id="driftDim" title="Black out the screen (it stays awake and playing); tap to wake">Dim</button>
       </div>
       <p class="drift__msg" id="driftMsg" role="status"></p>
     </div>
@@ -304,6 +306,50 @@
   <form method="dialog"><button class="menu__close">Close</button></form>
 </dialog>
 
+<dialog class="menu sheet drift-sheet" id="driftSounds" aria-labelledby="dsTitle">
+  <h2 id="dsTitle">Drift&#8217;s sounds</h2>
+  <p class="sheet__hint">Auto lets the seed choose.</p>
+  <h3>Pad</h3><div class="seg seg--wrap" data-dset="pad"><button type="button" data-v="auto">Auto</button><button type="button" data-v="saw">Warm</button><button type="button" data-v="glass">Glass</button><button type="button" data-v="choir">Choir</button><button type="button" data-v="keys">Keys</button><button type="button" data-v="drone">Bowed</button></div>
+  <h3>Bells</h3><div class="seg seg--wrap" data-dset="bell"><button type="button" data-v="auto">Auto</button><button type="button" data-v="bell">Bell</button><button type="button" data-v="box">Music box</button><button type="button" data-v="glass">Glass</button></div>
+  <h3>Underneath</h3>
+  <div class="seg seg--wrap" data-dset="texture"><button type="button" data-v="none">Nothing</button><button type="button" data-v="rain">Rain</button><button type="button" data-v="wind">Wind</button><button type="button" data-v="ocean">Sea</button><button type="button" data-v="fire">Fire</button><button type="button" data-v="city">City</button><button type="button" data-v="birds">Birds</button><button type="button" data-v="vinyl">Vinyl</button></div>
+  <p class="sheet__hint">And with it:</p>
+  <div class="seg seg--wrap" data-dset="texture2"><button type="button" data-v="none">Nothing</button><button type="button" data-v="rain">Rain</button><button type="button" data-v="wind">Wind</button><button type="button" data-v="ocean">Sea</button><button type="button" data-v="fire">Fire</button><button type="button" data-v="city">City</button><button type="button" data-v="birds">Birds</button><button type="button" data-v="vinyl">Vinyl</button></div>
+  <div class="drift-sheet__knobs">
+    <label class="drift__knob"><span>Underneath</span><input type="range" data-dk="tex" min="0" max="1" step="0.01"></label>
+    <label class="drift__knob"><span>Drone</span><input type="range" data-dk="drone" min="0" max="1" step="0.01"></label>
+    <label class="drift__knob"><span>Pulse</span><input type="range" data-dk="pulse" min="0" max="1" step="0.01"></label>
+    <label class="drift__knob"><span>Space</span><input type="range" data-dk="space" min="0" max="1" step="0.01"></label>
+    <label class="drift__knob"><span>Shimmer</span><input type="range" data-dk="shimmer" min="0" max="1" step="0.01"></label>
+  </div>
+  <div class="opt"><span>Movements<small>Builds, thins to almost nothing, then a new key, every few minutes</small></span><div class="seg" data-dset="arcs"><button type="button" data-v="1">On</button><button type="button" data-v="0">Off</button></div></div>
+  <form method="dialog"><button class="menu__close">Done</button></form>
+</dialog>
+
+<dialog class="menu sheet drift-sheet" id="driftModes" aria-labelledby="dmTitle">
+  <h2 id="dmTitle">Modes</h2>
+  <div class="dmode"><b>Sleep</b><small>Darker, sparser and quieter as it goes, then a fade to silence</small><div class="seg" data-mode="sleep"><button type="button" data-v="20">20 min</button><button type="button" data-v="40">40</button><button type="button" data-v="60">60</button></div></div>
+  <div class="dmode"><b>Wake</b><small>Starts dark and quiet, then brightens and grows, like a sunrise</small><div class="seg" data-mode="wake"><button type="button" data-v="10">10 min</button><button type="button" data-v="20">20</button></div></div>
+  <div class="dmode"><b>Focus</b><small>25 minutes of Drift, a soft chime, 5 minutes of calm, again</small><div class="seg" data-mode="focus"><button type="button" data-v="25">Start</button></div></div>
+  <div class="menu__row"><button type="button" id="dmOff">No mode</button></div>
+  <p class="menu__msg" id="dmMsg" role="status"></p>
+  <form method="dialog"><button class="menu__close">Done</button></form>
+</dialog>
+
+<dialog class="menu sheet drift-sheet" id="driftKeep" aria-labelledby="dkTitle">
+  <h2 id="dkTitle">Keep</h2>
+  <h3>Your favourites</h3>
+  <ol class="dfavs" id="dFavs"></ol>
+  <div class="opt"><span>Play them in turn<small>Each for a while, then the next</small></span><div class="seg" id="dList"><button type="button" data-v="0">Off</button><button type="button" data-v="5">5 min</button><button type="button" data-v="10">10</button><button type="button" data-v="20">20</button></div></div>
+  <h3>Save as audio</h3>
+  <p class="sheet__hint">This piece, rendered faster than real time, faded at the end (a WAV file).</p>
+  <div class="seg" id="driftSave"><button type="button" data-v="2">2 min</button><button type="button" data-v="5">5 min</button><button type="button" data-v="10">10 min</button></div>
+  <p class="menu__msg" id="dkMsg" role="status"></p>
+  <form method="dialog"><button class="menu__close">Done</button></form>
+</dialog>
+
+<div class="dim" id="dim" hidden><p>Drift is playing &#183; tap to wake</p></div>
+
 <dialog class="menu sheet" id="stepMenu" aria-labelledby="stepTitle">
   <h2 id="stepTitle">Step 1</h2>
   <h3>Chance</h3>
@@ -354,6 +400,7 @@
     <li><b>Rec:</b> records everything you hear, effects and all; when you stop, save it or send it.</li>
     <li><b>The squelch pad</b> stays where you leave it; double-tap it to go back to the start.</li>
     <li><b>On a keyboard:</b> Space plays, the number row holds the punch-ins (1 to 0, - and =), Shift with 1 to 8 picks a pattern, ← and → the tempo (with Shift, by 5), R the rave, ⌘Z undo.</li>
+    <li><b>In Drift</b>, hold a finger on the picture for a note that stays until you let go (two fingers, two notes). <b>Freeze</b> holds everything as it is. <b>Sounds&#8230;</b> picks the pad, the bells and up to two textures underneath (rain, wind, the sea, fire, a city, birds, vinyl), a drone and a pulse. <b>Modes&#8230;</b>: Sleep, Wake and Focus. <b>Keep&#8230;</b>: your favourites (the &#9733;), played in turn if you like, and saving as audio. <b>Dim</b> blacks out the screen while it plays.</li>
     <li><b>Drift:</b> an ambient mode that plays itself, never quite repeating. The picture is its mood: drag for dark to bright and sparse to busy; tap it for a bell. The weather turns it from calm (a pad and bells) to a storm (the acid line creeps in, then soft drums). A seed word makes the piece: the same word, the same piece, to share as a link. Rain, vinyl or the sea underneath; a sleep timer; save 2, 5 or 10 minutes as audio.</li>
     <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter. With two fingers: swipe left or right for another scene, pinch for more or less squelch (env mod), tap for Latch, swipe down to leave. Hold <b>Scene</b> to pick one. The patterns and the tempo are along the top; <b>Lock</b> makes the picture ignore touches. The controls fade after a few seconds: touch to bring them back.</li>
   </ul>

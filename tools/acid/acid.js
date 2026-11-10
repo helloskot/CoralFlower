@@ -823,10 +823,17 @@
   let solo = null, g2 = null;
   const at = (ev) => { const r = (raving() && VJS.fill ? raveEl : vizEl).getBoundingClientRect(); return [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)]; };
   const padAt = (ev) => { const [x, y] = at(ev); S.params.cutoff = x; S.params.reso = 1 - y; sendParams(); save(); drawXY(); rave.setPad(x, y); };
-  let dPtr = null;                                         // (Drift: a finger on the mood)
+  // (Drift: fingers on the mood; a still finger, after a moment, holds a note until it lets go)
+  const dPtrs = new Map();
   vizEl.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    if (drifting()) { dPtr = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false }; try { vizEl.setPointerCapture(e.pointerId); } catch {} return; }
+    if (drifting()) {
+      const q = { id: e.pointerId, x0: e.clientX, y0: e.clientY, moved: false, held: false, first: dPtrs.size === 0 };
+      q.timer = setTimeout(() => { if (q.moved) return; q.held = true; const [x] = at(e); post({ type: "drift", hold: { id: e.pointerId, x, on: true } }); buzz(15); }, 350);
+      dPtrs.set(e.pointerId, q);
+      try { vizEl.setPointerCapture(e.pointerId); } catch {}
+      return;
+    }
     if (!$("raveScenes").hidden) { closeScenes(); return; }
     try { vizEl.setPointerCapture(e.pointerId); } catch {}
     vTouch.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
@@ -840,9 +847,10 @@
     } else if (vTouch.size === 1 && !g2) { solo = { id: e.pointerId, t: performance.now(), was: [S.params.cutoff, S.params.reso] }; padAt(e); }
   });
   vizEl.addEventListener("pointermove", (e) => {
-    if (dPtr && dPtr.id === e.pointerId) {
-      if (Math.abs(e.clientX - dPtr.x0) + Math.abs(e.clientY - dPtr.y0) > 8) dPtr.moved = true;
-      if (dPtr.moved) { const [x, y] = at(e); DS.moodX = x; DS.moodY = 1 - y; sendDrift(); rave.setPad(x, y); }
+    const dq = dPtrs.get(e.pointerId);
+    if (dq) {
+      if (!dq.held && Math.abs(e.clientX - dq.x0) + Math.abs(e.clientY - dq.y0) > 8) { dq.moved = true; clearTimeout(dq.timer); }
+      if (dq.moved && dq.first) { const [x, y] = at(e); DS.moodX = x; DS.moodY = 1 - y; sendDrift(); rave.setPad(x, y); }
       return;
     }
     const t = vTouch.get(e.pointerId);
@@ -859,10 +867,13 @@
     } else if (solo && solo.id === e.pointerId && !g2) padAt(e);
   });
   const vEnd = (e) => {
-    if (dPtr && dPtr.id === e.pointerId) {
-      if (!dPtr.moved && e.type === "pointerup") { const [x] = at(e); post({ type: "drift", tap: x }); buzz(); }
+    const dq = dPtrs.get(e.pointerId);
+    if (dq) {
+      clearTimeout(dq.timer); dPtrs.delete(e.pointerId);
+      if (dq.held) post({ type: "drift", hold: { id: e.pointerId, on: false } });
+      else if (!dq.moved && e.type === "pointerup") { const [x] = at(e); post({ type: "drift", tap: x }); buzz(); }
       else saveDS();
-      dPtr = null; rave.setPad(null);
+      if (dq.first) rave.setPad(null);
       return;
     }
     if (!vTouch.has(e.pointerId)) return;
@@ -2043,42 +2054,59 @@
 
   // --------------------------------------------------------------------------------------------- Drift ---
   // the ambient mode: it plays itself (acid-worklet.js's Drift). Rave mode's picture, calm, is its mood pad: drag for
-  // dark to bright and sparse to busy, tap for a bell. The weather, the seed word (the same word, the same piece), a
-  // texture, the space and the shimmer; a sleep timer; 2, 5 or 10 minutes saved as audio; a link to share the piece.
+  // dark to bright and sparse to busy, tap for a bell, hold for a note that stays. The weather (or Auto), the seed word
+  // (the same word, the same piece), Freeze; Sounds (the pad, the bells, two textures, a drone, a pulse); Modes (sleep,
+  // wake, focus); Keep (favourites, played in turn; audio); Dim; a link to share the piece.
   const SCN = globalThis.AcidRave.SCENES, DRIFT_SC = ["AURORA", "NEBULA", "GARDEN", "ACID RAIN", "HYPERSPACE"].map((n) => SCN.indexOf(n)).filter((i) => i >= 0);
   const SEED1 = ["night", "slow", "blue", "moss", "glass", "rain", "tide", "dust", "neon", "soft", "silver", "late", "quiet", "amber", "cloud", "velvet"];
   const SEED2 = ["bus", "garden", "harbour", "signal", "window", "river", "orbit", "static", "lantern", "meadow", "station", "echo", "flower", "dawn", "tram", "pier"];
   const newSeed = () => pick(SEED1) + pick(SEED2);
-  const DS = (() => { const d = { seed: "", weather: 0.25, moodX: 0.5, moodY: 0.4, texture: "none", tex: 0.6, space: 0.7, shimmer: 0.5, bpm: 72, sleep: 0 }; try { return { ...d, ...JSON.parse(localStorage.getItem("acid-flower-drift") || "{}") }; } catch { return d; } })();
+  const DSET0 = { seed: "", weather: 0.25, moodX: 0.5, moodY: 0.4, texture: "none", texture2: "none", tex: 0.6, space: 0.7, shimmer: 0.5, bpm: 72,
+                  pad: "auto", bell: "auto", drone: 0.3, pulse: 0, arcs: true, autoW: false, freeze: false };
+  const DS = (() => { try { return { ...DSET0, ...JSON.parse(localStorage.getItem("acid-flower-drift") || "{}"), freeze: false }; } catch { return { ...DSET0 }; } })();
   if (!DS.seed) DS.seed = newSeed();
-  const saveDS = () => { try { localStorage.setItem("acid-flower-drift", JSON.stringify(DS)); } catch {} };
+  const saveDS = () => { try { const { freeze, ...keep } = DS; localStorage.setItem("acid-flower-drift", JSON.stringify(keep)); } catch {} };
   function drifting() { return app.classList.contains("is-drift"); }
-  const driftSet = () => ({ seed: DS.seed, weather: DS.weather, moodX: DS.moodX, moodY: DS.moodY, texture: DS.texture, tex: DS.tex, space: DS.space, shimmer: DS.shimmer, bpm: DS.bpm });
+  const DKEYS = ["seed", "weather", "moodX", "moodY", "texture", "texture2", "tex", "space", "shimmer", "bpm", "pad", "bell", "drone", "pulse", "arcs", "autoW", "freeze"];
+  const driftSet = () => { const o = {}; for (const k of DKEYS) o[k] = DS[k]; return o; };
   const sendDrift = () => post({ type: "drift", set: driftSet() });
-  // the key and the scale a seed makes (the worklet's own choice, made the same way)
+  // the key and the scale a seed starts in (the worklet's own choice, made the same way); the movements change the key
   const KEYS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"], SCALE_N = ["minor", "dorian", "lydian", "major", "minor pentatonic", "major pentatonic"];
+  const seedHash = (seed) => { let h = 2166136261; for (const c of String(seed).toLowerCase()) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
   const seedKey = (seed) => {
-    let h = 2166136261; for (const c of String(seed).toLowerCase()) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
-    let a = h >>> 0; const r = () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    let a = seedHash(seed); const r = () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
     return KEYS[Math.floor(r() * 12)] + " " + SCALE_N[Math.floor(r() * 6)];
   };
   const weatherWord = (w) => (w < 0.2 ? "calm" : w < 0.45 ? "a breeze" : w < 0.68 ? "clouds" : w < 0.88 ? "rain" : "a storm");
-  let sleepT = 0, sleepAt = 0, fadeT = 0;
+  const TEXN = { none: "", rain: "rain", wind: "wind", ocean: "the sea", fire: "fire", city: "a city", birds: "birds", vinyl: "vinyl" };
+  let mode = null;                                        // { kind: "sleep" | "wake" | "focus", t0, total, ... }
   function drawDrift() {
-    $("driftSeed").value = document.activeElement === $("driftSeed") ? $("driftSeed").value : DS.seed;
-    for (const [id, k] of [["driftWeather", "weather"], ["driftSpace", "space"], ["driftShimmer", "shimmer"]]) if (document.activeElement !== $(id)) $(id).value = DS[k];
-    for (const [id, v] of [["driftTex", DS.texture], ["driftSleep", String(DS.sleep)]]) $(id).querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(b2.dataset.v === v)));
+    if (document.activeElement !== $("driftSeed")) $("driftSeed").value = DS.seed;
+    if (document.activeElement !== $("driftWeather")) $("driftWeather").value = DS.weather;
     $("driftPlay").querySelector("span").textContent = playing ? "Stop" : "Play";
     $("driftPlay").setAttribute("aria-pressed", String(playing));
-    const left = sleepAt ? Math.max(0, Math.ceil((sleepAt - Date.now()) / 60000)) : 0;
-    $("driftStatus").textContent = ("Drift · " + DS.seed + " · " + seedKey(DS.seed) + " · " + weatherWord(DS.weather) + (left ? " · sleep in " + left + " min" : "")).toUpperCase();
+    $("driftAuto").setAttribute("aria-pressed", String(!!DS.autoW));
+    $("driftFreeze").setAttribute("aria-pressed", String(!!DS.freeze)); $("driftFreeze").textContent = DS.freeze ? "Frozen" : "Freeze";
+    $("driftStar").setAttribute("aria-pressed", String(favs().some((f) => f.seed === DS.seed)));
+    document.querySelectorAll("[data-dset]").forEach((sg) => sg.querySelectorAll("button").forEach((b2) => {
+      const k = sg.dataset.dset, v = DS[k], want = typeof v === "boolean" ? (v ? "1" : "0") : String(v);
+      b2.setAttribute("aria-pressed", String(b2.dataset.v === want));
+    }));
+    document.querySelectorAll("[data-dk]").forEach((i) => { if (document.activeElement !== i) i.value = DS[i.dataset.dk]; });
+    const d = viz && viz.drift, key = d && d.root >= 0 && d.scale >= 0 ? KEYS[d.root] + " " + SCALE_N[d.scale] : seedKey(DS.seed);
+    const tx = [TEXN[DS.texture], DS.texture2 !== DS.texture ? TEXN[DS.texture2] : ""].filter(Boolean).join(" and ");
+    $("driftStatus").textContent = ["Drift", DS.seed, key, weatherWord(DS.weather) + (tx ? ", " + tx : ""), modeText()].filter(Boolean).join(" · ").toUpperCase();
+    $("dmMsg").textContent = mode ? "Now: " + modeText() : "";
+    drawList();
   }
+  // the picture's colours follow the seed, so each piece looks a little different too
+  const seedTint = () => { rave.seedShift = drifting() ? seedHash(DS.seed) & 255 : null; };
   function enterDrift() {
     if (drifting()) return;
     setRave(true);
     app.classList.add("is-drift"); $("driftBtn").setAttribute("aria-pressed", "true");
-    rave.calm = true; rave.driftMode = true; rave.sceneList = DRIFT_SC; rave.autoBars = 32;
-    if (!DRIFT_SC.includes(rave.scene)) rave.go(DS.texture === "rain" ? SCN.indexOf("ACID RAIN") : DRIFT_SC[0]);
+    rave.calm = true; rave.driftMode = true; rave.sceneList = DRIFT_SC; rave.autoBars = 32; seedTint();
+    if (!DRIFT_SC.includes(rave.scene)) rave.go(DS.texture === "rain" || DS.texture2 === "rain" ? SCN.indexOf("ACID RAIN") : DRIFT_SC[0]);
     post({ type: "drift", on: true, set: driftSet() });
     if (!playing) setPlaying(true);
     drawDrift(); poke();
@@ -2088,83 +2116,172 @@
     post({ type: "drift", on: false });
     if (playing) setPlaying(false);
     app.classList.remove("is-drift"); $("driftBtn").setAttribute("aria-pressed", "false");
-    rave.driftMode = false; rave.sceneList = null; rave.autoBars = 8; rave.calm = pref("motion", PREF_DEF.motion) === "calm";
+    rave.driftMode = false; rave.sceneList = null; rave.autoBars = 8; rave.calm = pref("motion", PREF_DEF.motion) === "calm"; rave.seedShift = null; rave.vj.speed = VJS.speed || 1;
     if (DRIFT_SC.includes(rave.scene)) rave.go(0);
-    setSleep(0, true);
+    setMode(null, true); setDim(false); DS.freeze = false; listStop();
   }
   onPress($("driftBtn"), () => (drifting() ? setRave(false) : enterDrift()));
   onPress($("driftDone"), () => setRave(false));
   onPress($("driftPlay"), () => { setPlaying(!playing); drawDrift(); });
   onPress($("driftScene"), () => { rave.next(); });
+  onPress($("driftAuto"), () => { DS.autoW = !DS.autoW; saveDS(); sendDrift(); drawDrift(); toast(DS.autoW ? "The weather wanders by itself" : "The weather stays where you put it"); });
+  onPress($("driftFreeze"), () => { DS.freeze = !DS.freeze; sendDrift(); rave.vj.speed = DS.freeze ? 0.25 : VJS.speed || 1; drawDrift(); });
   playHooks.push(() => { if (drifting()) drawDrift(); });
   for (const t of ["pointerdown", "pointermove", "keydown"]) $("driftPanel").addEventListener(t, (e) => { e.stopPropagation(); poke(); });
-  const knob = (id, k) => $(id).addEventListener("input", () => { DS[k] = +$(id).value; saveDS(); sendDrift(); drawDrift(); });
-  knob("driftWeather", "weather"); knob("driftSpace", "space"); knob("driftShimmer", "shimmer");
-  $("driftTex").addEventListener("click", (e) => {
-    const b2 = e.target.closest("button"); if (!b2) return;
-    DS.texture = b2.dataset.v; saveDS(); sendDrift(); drawDrift();
-    if (DS.texture === "rain" && drifting()) rave.go(SCN.indexOf("ACID RAIN"));
-  });
-  const setSeed = (seed) => { DS.seed = String(seed || "").trim().toLowerCase().slice(0, 24) || newSeed(); saveDS(); sendDrift(); drawDrift(); };
+  $("driftWeather").addEventListener("input", () => { DS.weather = +$("driftWeather").value; if (DS.autoW) DS.autoW = false; saveDS(); sendDrift(); drawDrift(); });
+  // the weather the worklet wanders to (Auto) shows on the slider
+  setInterval(() => { const d = viz && viz.drift; if (drifting() && DS.autoW && d && typeof d.ws === "number" && Math.abs(d.ws - DS.weather) > 0.005) { DS.weather = d.ws; drawDrift(); } }, 1500);
+  const setSeed = (seed) => { DS.seed = String(seed || "").trim().toLowerCase().slice(0, 24) || newSeed(); saveDS(); sendDrift(); seedTint(); drawDrift(); };
   $("driftSeed").addEventListener("change", () => setSeed($("driftSeed").value));
   $("driftSeed").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("driftSeed").blur(); } });
   onPress($("driftDice"), () => { setSeed(newSeed()); toast("A new piece: " + DS.seed); });
   $("driftShare").addEventListener("click", async () => {
-    const url = location.origin + location.pathname + "#drift=" + encodeURIComponent(DS.seed) + "&w=" + Math.round(DS.weather * 100) + "&tx=" + DS.texture;
+    const url = location.origin + location.pathname + "#drift=" + encodeURIComponent(DS.seed) + "&w=" + Math.round(DS.weather * 100) + "&tx=" + DS.texture +
+      (DS.texture2 !== "none" ? "&tx2=" + DS.texture2 : "") + (DS.pad !== "auto" ? "&pad=" + DS.pad : "") + (DS.bell !== "auto" ? "&bell=" + DS.bell : "");
     try { if (navigator.share) { await navigator.share({ title: "Acid Flower Drift: " + DS.seed, text: "An ambient piece from Acid Flower:", url }); return; } } catch (err) { if (err && err.name === "AbortError") return; }
     try { await navigator.clipboard.writeText(url); toast("Link copied"); } catch { window.prompt("Copy this link:", url); }
   });
-  // the sleep timer: at its end, a 30-second fade, then stop
-  function setSleep(min, quiet) {
-    clearTimeout(sleepT); clearInterval(fadeT); sleepAt = 0; DS.sleep = min; saveDS();
-    if (min > 0) { sleepAt = Date.now() + min * 60000; sleepT = setTimeout(sleepFade, min * 60000); if (!quiet) toast("Drift fades out in " + min + " minutes"); }
+  // the sheets
+  for (const id of ["driftSounds", "driftModes", "driftKeep"]) $(id).addEventListener("click", (e) => { if (e.target === $(id)) $(id).close(); });
+  $("driftSoundsBtn").addEventListener("click", () => { drawDrift(); show($("driftSounds")); });
+  $("driftModesBtn").addEventListener("click", () => { drawDrift(); show($("driftModes")); });
+  $("driftKeepBtn").addEventListener("click", () => { drawFavs(); drawDrift(); $("dkMsg").textContent = ""; show($("driftKeep")); });
+  $("driftSounds").addEventListener("click", (e) => {
+    const b2 = e.target.closest("button"), sg = b2 && b2.closest("[data-dset]"); if (!sg) return;
+    const k = sg.dataset.dset; DS[k] = k === "arcs" ? b2.dataset.v === "1" : b2.dataset.v;
+    saveDS(); sendDrift(); drawDrift();
+    if ((k === "texture" || k === "texture2") && DS[k] === "rain" && drifting()) rave.go(SCN.indexOf("ACID RAIN"));
+  });
+  $("driftSounds").addEventListener("input", (e) => { const i = e.target.closest("[data-dk]"); if (!i) return; DS[i.dataset.dk] = +i.value; saveDS(); sendDrift(); });
+  // ---- modes: sleep (darker, sparser, quieter, then a fade), wake (a sunrise), focus (25 on, 5 calm)
+  const lerp = (a, b, f) => a + (b - a) * f;
+  function modeText() {
+    if (!mode) return "";
+    const left = Math.max(0, Math.ceil((mode.t0 + mode.total * 60000 - Date.now()) / 60000));
+    return mode.kind === "sleep" ? "sleep, " + left + " min" : mode.kind === "wake" ? "waking, " + left + " min" : (mode.brk ? "a break, " : "focus, ") + left + " min";
+  }
+  const chime = () => { const r = 72; [0, 4, 7, 12].forEach((n, i) => setTimeout(() => post({ type: "drift", bell: r + n }), i * 380)); };
+  function setMode(kind, quiet, minutes) {
+    if (mode && mode.vol0 != null) { S.params.volume = mode.vol0; sendParams(); }
+    if (mode && mode.from) { Object.assign(DS, mode.from); sendDrift(); }
+    clearInterval(mode && mode.timer); mode = null;
+    if (kind) {
+      const from = { weather: DS.weather, moodX: DS.moodX, moodY: DS.moodY };
+      mode = { kind, t0: Date.now(), total: minutes, vol0: S.params.volume, from: kind === "focus" ? null : from, brk: false };
+      if (kind === "wake") { Object.assign(DS, { weather: 0, moodX: 0.05, moodY: 0.08 }); S.params.volume = mode.vol0 * 0.12; sendParams(); sendDrift(); mode.from = null; mode.target = from; }
+      if (kind === "focus") { mode.total = 25; }
+      mode.timer = setInterval(modeTick, 2000);
+      if (!playing) setPlaying(true);
+      if (!quiet) toast(kind === "sleep" ? "Sleep: " + minutes + " minutes, then silence" : kind === "wake" ? "Wake: brightening over " + minutes + " minutes" : "Focus: 25 minutes, then a break");
+    }
     drawDrift();
   }
-  function sleepFade() {
-    const v0 = S.params.volume, t0 = performance.now();
-    fadeT = setInterval(() => {
-      const f = Math.min(1, (performance.now() - t0) / 30000);
-      S.params.volume = v0 * (1 - f) * (1 - f); sendParams();
-      if (f >= 1) { clearInterval(fadeT); if (playing) setPlaying(false); S.params.volume = v0; sendParams(); sleepAt = 0; DS.sleep = 0; saveDS(); drawDrift(); }
-    }, 200);
+  function modeTick() {
+    if (!mode) return;
+    const el = (Date.now() - mode.t0) / 60000, f = Math.min(1, el / mode.total);
+    if (mode.kind === "sleep") {
+      DS.weather = lerp(mode.from.weather, 0.03, f); DS.moodX = lerp(mode.from.moodX, 0.12, f); DS.moodY = lerp(mode.from.moodY, 0.1, f); sendDrift();
+      const g = Math.max(0, (f - 0.75) / 0.25); S.params.volume = mode.vol0 * (1 - g) * (1 - g); sendParams();
+      if (f >= 1) { if (playing) setPlaying(false); const v0 = mode.vol0, from = mode.from; clearInterval(mode.timer); mode = null; S.params.volume = v0; sendParams(); Object.assign(DS, from); saveDS(); sendDrift(); }
+    } else if (mode.kind === "wake") {
+      const t = mode.target, e = f * f * (3 - 2 * f);
+      DS.weather = lerp(0, Math.max(0.2, t.weather), e); DS.moodX = lerp(0.05, 0.85, e); DS.moodY = lerp(0.08, 0.55, e); sendDrift();
+      S.params.volume = mode.vol0 * lerp(0.12, 1, e); sendParams();
+      if (f >= 1) { chime(); const v0 = mode.vol0; clearInterval(mode.timer); mode = null; S.params.volume = v0; sendParams(); saveDS(); toast("Good morning"); }
+    } else if (mode.kind === "focus" && f >= 1) {
+      chime(); mode.brk = !mode.brk; mode.t0 = Date.now(); mode.total = mode.brk ? 5 : 25;
+      if (mode.brk) { mode.keep = { weather: DS.weather, moodY: DS.moodY }; Object.assign(DS, { weather: 0.02, moodY: 0.12 }); }
+      else if (mode.keep) Object.assign(DS, mode.keep);
+      sendDrift(); toast(mode.brk ? "A break: 5 minutes" : "Focus: 25 minutes");
+    }
+    if (drifting()) drawDrift();
   }
-  $("driftSleep").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) setSleep(+b2.dataset.v); });
-  setInterval(() => { if (drifting() && sleepAt) drawDrift(); }, 20000);
+  $("driftModes").addEventListener("click", (e) => {
+    const b2 = e.target.closest("button"); if (!b2) return;
+    const sg = b2.closest("[data-mode]");
+    if (sg) setMode(sg.dataset.mode, false, +b2.dataset.v);
+    else if (b2.id === "dmOff") { setMode(null); toast("No mode"); }
+  });
+  // ---- Keep: favourites (and playing them in turn), and audio
+  const FKEY = "acid-flower-drift-favs";
+  function favs() { try { const a = JSON.parse(localStorage.getItem(FKEY) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } }
+  const saveFavs = (a) => { try { localStorage.setItem(FKEY, JSON.stringify(a.slice(0, 40))); } catch {} };
+  const favLabel = (f) => [f.seed, seedKey(f.seed), [TEXN[f.texture], f.texture2 !== f.texture ? TEXN[f.texture2] : ""].filter(Boolean).join(" and ")].filter(Boolean).join(" · ");
+  onPress($("driftStar"), () => {
+    const a = favs(), i = a.findIndex((f) => f.seed === DS.seed);
+    if (i >= 0) { a.splice(i, 1); toast("Out of your favourites"); } else { const { freeze, autoW, ...keep } = driftSet(); a.unshift(keep); toast("Kept: " + DS.seed); }
+    saveFavs(a); drawDrift(); drawFavs();
+  });
+  const playFav = (f) => { const keep = { autoW: DS.autoW }; Object.assign(DS, DSET0, f, keep, { freeze: false }); saveDS(); sendDrift(); seedTint(); drawDrift(); };
+  function drawFavs() {
+    const a = favs();
+    $("dFavs").innerHTML = a.length ? a.map((f, i) => `<li class="lrow"><span>${favLabel(f).replace(/[&<>"']/g, (c) => "&#" + c.charCodeAt(0) + ";")}</span><div class="menu__row"><button type="button" data-fplay="${i}">Play</button><button type="button" data-fdel="${i}" aria-label="Forget">✕</button></div></li>`).join("")
+      : `<li class="sheet__hint">None yet: the ★ keeps the piece that’s playing.</li>`;
+  }
+  $("dFavs").addEventListener("click", (e) => {
+    const b2 = e.target.closest("button"); if (!b2) return; const a = favs();
+    if (b2.dataset.fplay != null) { const f = a[+b2.dataset.fplay]; if (f) { playFav(f); listI = +b2.dataset.fplay; if (!drifting()) enterDrift(); toast("Drift: " + f.seed); } }
+    else if (b2.dataset.fdel != null) { a.splice(+b2.dataset.fdel, 1); saveFavs(a); drawFavs(); drawDrift(); }
+  });
+  let listT = 0, listI = 0, listMin = 0;
+  function listStop() { clearInterval(listT); listT = 0; listMin = 0; drawList(); }
+  function drawList() { $("dList").querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(+b2.dataset.v === listMin))); }
+  $("dList").addEventListener("click", (e) => {
+    const b2 = e.target.closest("button"); if (!b2) return;
+    clearInterval(listT); listMin = +b2.dataset.v;
+    if (listMin) {
+      const a = favs(); if (!a.length) { listMin = 0; drawList(); return toast("Keep a few favourites first (the ★)"); }
+      listT = setInterval(() => { const f = favs(); if (!f.length) return listStop(); listI = (listI + 1) % f.length; playFav(f[listI]); toast("Next: " + f[listI].seed); }, listMin * 60000);
+      toast("Your favourites in turn, " + listMin + " minutes each");
+    }
+    drawList();
+  });
   // a long piece, rendered offline (faster than real time), faded at the end, saved as WAV
   async function renderDrift(min) {
-    if (!window.OfflineAudioContext) { $("driftMsg").textContent = "This browser can’t render audio."; return; }
-    if (min >= 10 && navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) < 600) $("driftMsg").textContent = "10 minutes needs a lot of memory; on a phone, 2 or 5 is safer…";
+    const out = $("dkMsg");
+    if (!window.OfflineAudioContext) { out.textContent = "This browser can’t render audio."; return; }
+    if (min >= 10 && navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) < 600) out.textContent = "10 minutes needs a lot of memory; on a phone, 2 or 5 is safer…";
     const sr = 44100, secs = min * 60 + 8, code = await (await fetch("acid-worklet.js", { cache: "no-cache" })).text(), url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
     try {
       const off = new OfflineAudioContext(2, Math.ceil(secs * sr), sr);
       await off.audioWorklet.addModule(url);
-      const n = new AudioWorkletNode(off, "acid-flower", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { params: clone(S.params), drift: driftSet(), play: true } });
+      const { freeze, ...set } = driftSet();
+      const n = new AudioWorkletNode(off, "acid-flower", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { params: clone(S.params), drift: set, play: true } });
       n.connect(off.destination);
-      for (let t = 10; t < secs - 1; t += 10) off.suspend(t).then(() => { $("driftMsg").textContent = "Rendering " + DS.seed + ": " + Math.round((100 * t) / secs) + "%"; off.resume(); }).catch(() => {});
-      $("driftMsg").textContent = "Rendering " + DS.seed + "…";
+      for (let t = 10; t < secs - 1; t += 10) off.suspend(t).then(() => { out.textContent = "Rendering " + DS.seed + ": " + Math.round((100 * t) / secs) + "%"; off.resume(); }).catch(() => {});
+      out.textContent = "Rendering " + DS.seed + "…";
       const buf = await off.startRendering();
       const fade = Math.round(8 * sr);
       for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < fade; i++) { const k = 1 - i / fade; d[d.length - fade + i] *= k * k; } }
       const file = wavFile(buf, `acid-flower-drift-${DS.seed}-${min}min.wav`);
-      $("driftMsg").textContent = "Done: " + min + " minutes of " + DS.seed + ".";
+      out.textContent = "Done: " + min + " minutes of " + DS.seed + ".";
       await saveFile(file, "Acid Flower Drift");
-    } catch (err) { $("driftMsg").textContent = "Couldn’t render: " + err.message; }
+    } catch (err) { out.textContent = "Couldn’t render: " + err.message; }
     URL.revokeObjectURL(url);
   }
   $("driftSave").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) renderDrift(+b2.dataset.v); });
-  // a link to a piece: #drift=<seed>&w=<weather>&tx=<texture>
+  // ---- Dim: a black screen (it stays awake and playing); the picture stops drawing to save the battery
+  function setDim(on) { $("dim").hidden = !on; rave.sleeping = on; if (on) toast("Tap to wake", null, null, 1500); }
+  onPress($("driftDim"), () => setDim(true));
+  $("dim").addEventListener("pointerdown", (e) => { e.preventDefault(); setDim(false); poke(); });
+  addEventListener("keydown", (e) => { if (!$("dim").hidden) { setDim(false); e.preventDefault(); } }, true);
+  // a link to a piece: #drift=<seed>&w=<weather>&tx=<texture>[&tx2=..&pad=..&bell=..]
   function driftFromLink() {
     const h = location.hash;
     if (!/^#drift=/.test(h)) return false;
-    const q = new URLSearchParams(h.slice(1));
+    const q = new URLSearchParams(h.slice(1)), tex = ["none", "rain", "wind", "ocean", "fire", "city", "birds", "vinyl"];
     DS.seed = String(q.get("drift") || "").toLowerCase().slice(0, 24) || DS.seed;
     if (q.get("w") != null) DS.weather = Math.max(0, Math.min(1, +q.get("w") / 100 || 0));
-    if (["none", "rain", "vinyl", "ocean"].includes(q.get("tx"))) DS.texture = q.get("tx");
+    if (tex.includes(q.get("tx"))) DS.texture = q.get("tx");
+    DS.texture2 = tex.includes(q.get("tx2")) ? q.get("tx2") : "none";
+    if (["saw", "glass", "choir", "keys", "drone"].includes(q.get("pad"))) DS.pad = q.get("pad");
+    if (["bell", "box", "glass"].includes(q.get("bell"))) DS.bell = q.get("bell");
     saveDS();
     try { history.replaceState(null, "", location.pathname + location.search); } catch {}
     enterDrift(); sendDrift(); toast("Drift: " + DS.seed);
     return true;
   }
+
 
   // ---------------------------------------------------------------------------------- latch, tap tempo ---
   let latch = false;

@@ -744,6 +744,12 @@
     vizEl.style.width = (fill ? Math.ceil(rave.W * k) : Math.floor(rave.W * k)) + "px"; vizEl.style.height = (fill ? Math.ceil(150 * k) : Math.floor(150 * k)) + "px";
     if (fill) { const vis = r.width / k; rave.setView((rave.W - vis) / 2, (rave.W + vis) / 2); }
   };
+  // the picture as the screen shows it, into another canvas: the smooth 3D layer (when a 3D scene is on) under the
+  // rave's own pixels (for the recorder and the second screen; called in the frame it was drawn)
+  const composeTo = (g, w, h) => {
+    if (rave.layer3d && rave.glCanvas) { g.imageSmoothingEnabled = true; g.drawImage(rave.glCanvas, 0, 0, w, h); } else g.clearRect(0, 0, w, h);
+    g.imageSmoothingEnabled = false; g.drawImage(vizEl, 0, 0, w, h);
+  };
   if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(fitViz)).observe(document.querySelector(".rave"));
   addEventListener("resize", () => requestAnimationFrame(fitViz));
   fitViz();
@@ -1408,8 +1414,8 @@
         vc.width = (rave.W * sc) & ~1; vc.height = (150 * sc) & ~1;
         const g = vc.getContext("2d");
         recVideo = vc;
-        const draw = () => { if (recVideo !== vc) return; g.imageSmoothingEnabled = false; g.drawImage(vizEl, 0, 0, vc.width, vc.height); requestAnimationFrame(draw); };
-        draw();
+        const hook = () => { if (recVideo !== vc) { rave.frameHooks = rave.frameHooks.filter((f) => f !== hook); return; } composeTo(g, vc.width, vc.height); };
+        rave.frameHooks = [...(rave.frameHooks || []), hook];
         stream = vc.captureStream(30); recDest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
         type = ["video/mp4;codecs=avc1,mp4a.40.2", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find((t) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
       }
@@ -1719,6 +1725,7 @@
   CTRL.vj_mirror = { name: "VJ mirror", get: () => VJS.mirror / 3, set: (v) => { VJS.mirror = Math.round(v * 3); applyVJ(); } };
   // the second screen: a window that shows every frame (30 a second), for a projector
   let bc = null, outAlive = 0, lastOut = 0;
+  const outMix = document.createElement("canvas"), outG = outMix.getContext("2d", { willReadFrequently: true });
   const openOut = () => {
     if (!window.BroadcastChannel) { toast("This browser can’t open a second screen."); return; }
     if (!bc) {
@@ -1727,7 +1734,12 @@
       rave.onFrame = (img) => {
         const now = performance.now();
         if (!outAlive || now - outAlive > 4000 || now - lastOut < 32) return;
-        lastOut = now; bc.postMessage({ w: img.width, h: img.height, d: img.data });
+        lastOut = now;
+        if (rave.layer3d && rave.glCanvas) {             // (a 3D scene: sent bigger, smooth)
+          const w = Math.min(960, rave.glCanvas.width) & ~1, h = Math.round((w * img.height) / img.width) & ~1;
+          if (outMix.width !== w || outMix.height !== h) { outMix.width = w; outMix.height = h; }
+          composeTo(outG, w, h); bc.postMessage({ w, h, d: outG.getImageData(0, 0, w, h).data });
+        } else bc.postMessage({ w: img.width, h: img.height, d: img.data });
       };
     }
     outAlive = performance.now();

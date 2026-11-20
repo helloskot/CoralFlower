@@ -31,7 +31,7 @@
   bc.onmessage = (e) => {
     const m = e.data;
     if (!m || !m.d) return;
-    if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; img = null; }
+    if (cv.width !== m.w || cv.height !== m.h) { cv.width = m.w; cv.height = m.h; img = null; cv.style.imageRendering = m.w > 600 ? "auto" : ""; }   // (the 3D scenes come big and smooth)
     if (!img) img = g.createImageData(m.w, m.h);
     img.data.set(m.d); g.putImageData(img, 0, 0);
     last = performance.now(); hint.hidden = true;

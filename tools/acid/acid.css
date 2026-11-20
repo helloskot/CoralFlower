@@ -969,3 +969,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .drift__seed span { display: none; }
 }
 .rave__race[aria-pressed="true"] { background: var(--yellow); color: var(--black); box-shadow: none; }
+/* the 3D scenes: a smooth layer of their own, under the rave's pixels (which go see-through over it) */
+.rave { isolation: isolate; }
+.viz3d { position: absolute; z-index: -1; pointer-events: none; display: block; background: #000; }
+#viz.is-layer { background: transparent; }

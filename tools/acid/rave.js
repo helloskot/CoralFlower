@@ -870,9 +870,11 @@
       this.flash *= d(0.0015); this.shake *= d(0.0005); this.sceneLabel -= dt; this.bloom = (this.bloom || 0) * d(0.25); this.bolt = (this.bolt || 0) * d(0.002);
       if (!playing) { this.v = { ...this.v, cut: this.hooks.params().cutoff, reso: this.hooks.params().reso }; }
       const x3 = EXTRA[this.scene - BUILTIN];              // (the 3D scenes, from rave3d.js, after the built-in ones)
+      const was3d = !!this.layer3d; this.layer3d = false;  // (a 3D scene draws on its own smooth layer, under this one)
       if (x3) x3.fn.call(this);
       else [this.warehouse, this.cyberspace, this.tunnel, this.voxelScene, this.plasma, this.mainframe, this.garden, this.feedback,
        this.hyperspace, this.rain, this.spiral, this.aurora, this.nebula][this.scene].call(this);
+      if (was3d !== this.layer3d && this.onLayer) this.onLayer(this.layer3d);
       if ((HACKER[this.scene] || (x3 && x3.hacker)) && this.vj.hud && !this.racing) this.terminal();
       if (this.vj.parts) this.particles(dt * sp); else this.parts.length = 0;
       if (this.vj.words && !this.racing) this.words(dt); else this.word = null;
@@ -935,8 +937,10 @@
     // the picture goes through what the sound goes through: REPEAT / ROLL freeze it and tear it in time; REVERSE turns
     // it negative; TAPE STOP darkens and sags it, then a CRT's power-off line; LOWPASS dims it blue, HIGHPASS bleaches
     // it; CRUSH makes big pixels in few colours; GATE blacks it out in time; ECHO leaves ghosts
+    // over a 3D scene (layer3d) the picture is only what's drawn on top (the readouts, the words, the confetti): black is
+    // see-through, and the rest lets the smooth 3D layer below show through as much as it is dark
     post() {
-      const D = this.img.data, V = this.vig, fx = this.fx, calm = this.calm, t = this.t;
+      const D = this.img.data, V = this.vig, fx = this.fx, calm = this.calm, t = this.t, layer = !!this.layer3d;
       const has = (b) => (fx >> b) & 1, held = (b) => (has(b) ? Math.min(1, (t - this.fxSince[b]) / 1.4) : 0);
       let B = this.buf;
       if (fx & 7) {                                      // a repeat: the frame from the press, torn at the repeat's rate
@@ -975,6 +979,7 @@
           const yy = clamp(Math.round(my - sy - sag * (y / H)), 0, H - 1);
           const xs = Math.round(mx), xx = clamp(xs - sx + ro, 0, W - 1), p = yy * W + xx, o = (y * W + x) * 4, q = (y * W + x) * 3;
           let r = B[(yy * W + clamp(xx + fr2, 0, W - 1)) * 3], g = B[p * 3 + 1], b = B[(yy * W + clamp(xx - fr2, 0, W - 1)) * 3 + 2];
+          const a0 = layer ? Math.max(r, g, b) : 255;
           if (hueOn) { const r1 = r * h00 + g * h01 + b * h02, g1 = r * h10 + g * h11 + b * h12; b = r * h20 + g * h21 + b * h22; r = r1; g = g1; }
           if (inv) { r += (255 - r * 1.1 - r) * inv; g += (255 - g * 1.1 - g) * inv; b += (255 - b * 1.1 - b) * inv; }
           if (tape < 1) { const m = (r + g + b) / 3; r = (r + (m - r) * (1 - tape)) * tape; g = (g + (m - g) * (1 - tape)) * tape; b = (b + (m - b) * (1 - tape)) * tape; }
@@ -983,18 +988,25 @@
           if (crush) { r = Math.round(r / 85) * 85; g = Math.round(g / 85) * 85; b = Math.round(b / 85) * 85; }
           const v = V[y * W + x] * scan * gate;
           r = r * v + (255 - r * v) * fl; g = g * v + (255 - g * v) * fl; b = b * v + (255 - b * v) * fl;
+          let al = 255;
+          if (layer) { al = Math.min(255, a0 * v + 255 * fl); if (al < 1) r = g = b = 0; }
           if (echo) { r = Math.max(r, L[q] * 0.82); g = Math.max(g, L[q + 1] * 0.82); b = Math.max(b, L[q + 2] * 0.82); }
           else if (trl > 0) { r = Math.max(r, L[q] * trl); g = Math.max(g, L[q + 1] * trl); b = Math.max(b, L[q + 2] * trl); }
           L[q] = r; L[q + 1] = g; L[q + 2] = b;
-          D[o] = r; D[o + 1] = g; D[o + 2] = b; D[o + 3] = 255;
+          if (layer) {
+            if (echo || trl > 0) al = Math.max(al, r, g, b);
+            const k = al > 0 ? 255 / al : 0; r *= k; g *= k; b *= k;
+          }
+          D[o] = r; D[o + 1] = g; D[o + 2] = b; D[o + 3] = al;
         }
       }
       if (tape < 0.2) {                                  // the tube switching off: a bright line, shrinking
         const w = Math.round(W * tape * 5), y = (H / 2) | 0;
-        for (let x = (W - w) >> 1; x < (W + w) >> 1; x++) for (const yy of [y - 1, y, y + 1]) { const o = (yy * W + x) * 4; D[o] = D[o + 1] = D[o + 2] = 255; }
+        for (let x = (W - w) >> 1; x < (W + w) >> 1; x++) for (const yy of [y - 1, y, y + 1]) { const o = (yy * W + x) * 4; D[o] = D[o + 1] = D[o + 2] = D[o + 3] = 255; }
       }
       this.g.putImageData(this.img, 0, 0);
       if (this.onFrame) this.onFrame(this.img);              // (the projector's window gets a copy)
+      if (this.frameHooks) for (const f of this.frameHooks) f(this.img);   // (and the video recorder)
     }
   }
   // the scenes other files add (rave3d.js): { name, fn (drawn into this.buf like the rest), hacker }

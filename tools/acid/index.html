@@ -175,19 +175,7 @@
   </section>
 </main>
 
-<div class="gate" id="gate">
-  <canvas class="gate__boot" id="boot" width="240" height="150" aria-hidden="true"></canvas>
-  <button class="gate__power" id="power" type="button" aria-label="Power on">
-    <svg viewBox="0 0 14 14" width="84" height="84" shape-rendering="crispEdges" aria-hidden="true"><path fill="#B4FF2B" d="M6 1h2v6H6zM3 3h2v2H3zM9 3h2v2H9zM2 5h2v4H2zM10 5h2v4h-2zM3 9h2v2H3zM9 9h2v2H9zM5 11h4v2H5z"/></svg>
-    <span>Power on</span>
-  </button>
-  <div class="gate__card">
-    <h2 class="sr">Acid Flower</h2>
-    <p class="sr">An acid house machine. Program a bass line and a beat, then play the filter with your fingers.</p>
-    <button class="gate__go" id="start" type="button">Start the machine</button>
-    <p class="gate__hint" id="a2hs" hidden>For a full-screen machine with its own icon: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
-  </div>
-</div>
+<div class="gate" id="gate" aria-hidden="true"><pre class="gate__term" id="bootTerm"></pre></div>
 
 <dialog class="menu sheet" id="slotMenu" aria-labelledby="slotTitle">
   <h2 id="slotTitle">Pattern 1</h2>
@@ -382,6 +370,7 @@
     <button type="button" id="keysBtn">Keys&#8230;</button>
     <button type="button" id="installBtn" hidden>Install the app</button>
   </div>
+  <p class="menu__msg" id="a2hs" hidden>For a full-screen machine with its own icon: tap <b>Share</b>, then <b>Add to Home Screen</b>.</p>
   <h3>How it plays</h3>
   <ul>
     <li><b>Bass line:</b> each note sits at its pitch, like a piano roll: drag it up or down to change it; tap it to rest it. <b>Oct</b> lifts it an octave, then drops it; <b>Acc</b> accents it (louder, a sharper squelch); <b>Slide</b> glides it into the next note.</li>
@@ -435,7 +424,6 @@
   <form method="dialog"><button class="menu__close">Close</button></form>
 </dialog>
 
-<script src="boot-sound.js"></script>
 <script src="rave.js"></script>
 <script src="rave3d.js"></script>
 <script src="acid.js"></script>

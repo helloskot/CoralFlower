@@ -43,7 +43,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 /* ---------------------------------------------------------------------------------------------- the bar --- */
 .logo { display: flex; align-items: center; gap: 8px; padding: 0 6px; font-weight: 400; font-size: clamp(15px, 1.8vw, 22px); letter-spacing: .04em; white-space: nowrap; }
 .logo img { image-rendering: pixelated; }
-.logo b, .gate h2 b, .menu h2 b { font-weight: 400; color: var(--yellow); }
+.logo b, .menu h2 b { font-weight: 400; color: var(--yellow); }
 .play {
   flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 18px; border-radius: var(--r);
   background: var(--lime); color: var(--black); font-size: clamp(14px, 1.6vw, 18px); letter-spacing: .06em; text-transform: uppercase;
@@ -144,33 +144,12 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .dr.is-now { box-shadow: inset 0 0 0 2px var(--yellow); }
 .dr.is-on.is-now { filter: brightness(1.35); }
 
-/* -------------------------------------------------------------------------------------- gate and menu --- */
-.gate { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 40%, rgba(255, 47, 180, .25), transparent 60%), var(--black); }
-.gate[hidden] { display: none; }
-.gate__card { position: relative; z-index: 1; display: grid; gap: 14px; justify-items: center; text-align: center; max-width: 30rem; align-self: end; margin-bottom: max(4vh, env(safe-area-inset-bottom));
-  transition: opacity .5s ease-out, transform .5s ease-out; }
-.gate:not(.is-ready) .gate__card { opacity: 0; transform: translateY(12px); pointer-events: none; }
-/* Power: a pixel power symbol, glowing, until the first tap (the one that lets the iPad sound) */
-.gate__power { position: absolute; z-index: 2; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 14px;
-  padding: 26px 34px; border-radius: 24px; color: var(--lime); font-size: 18px; letter-spacing: .12em; text-transform: uppercase; }
-.gate__power svg { filter: drop-shadow(0 0 14px rgba(180, 255, 43, .7)); animation: pulse 1.2s ease-in-out infinite alternate; }
-@keyframes pulse { from { opacity: .55; } to { opacity: 1; } }
-.gate.is-on .gate__power { display: none; }
+/* ------------------------------------------------------------------------------------------- the menu --- */
 /* the pixel icons on the tabs and buttons */
 .pix { flex: 0 0 auto; image-rendering: pixelated; }
 .tabs button, .rave-btn { display: inline-flex; align-items: center; gap: 8px; }
-/* the power-on: the boot's own pixel picture, the whole screen */
-.gate__boot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; }
-.gate { background: #000; touch-action: none; }
-.gate p { text-shadow: 0 1px 6px #000; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.gate__card img { image-rendering: pixelated; animation: bob .5s ease-in-out infinite alternate; }
 @keyframes bob { to { transform: translateY(-8px); } }
-.gate h2, .menu h2 { font-weight: 400; font-size: clamp(34px, 6vw, 60px); letter-spacing: .04em; }
-.gate p { color: var(--muted); line-height: 1.5; }
-.gate__go { min-width: 260px; min-height: 64px; padding: 0 32px; border-radius: 999px; background: var(--lime); color: var(--black); font-size: 22px; letter-spacing: .04em; text-transform: uppercase; box-shadow: 0 0 30px rgba(180, 255, 43, .35); }
-.gate__hint { font-size: 14px; }
-.gate__hint b { color: var(--text); font-weight: 400; }
 .menu { margin: auto; width: min(36rem, 94vw); max-height: 92dvh; overflow: auto; padding: 22px; border: 0; border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: 0 0 0 2px var(--line), 0 20px 60px rgba(0,0,0,.6); overscroll-behavior: contain; }
 .menu::backdrop { background: rgba(3, 0, 6, .75); }
 .menu h2 { font-size: 30px; margin-bottom: 4px; }
@@ -191,7 +170,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .menu__fine { font-size: 13px !important; }
 .menu__fine a { color: var(--cyan); }
 .menu__close { width: 100%; background: var(--lime); color: var(--black); box-shadow: none; }
-@media (prefers-reduced-motion: reduce) { .gate__card img, .slot.is-next, .gate__power svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .slot.is-next { animation: none; } }
 
 /* rave mode: the display fills the screen (the rest of the machine waits underneath); drag on it to play the filter */
 .rave { position: relative; }
@@ -305,8 +284,6 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 :root.fold-tb .app.is-rave .rave__fx { top: calc(var(--seg-top-h) + var(--hinge-h) + 10px); bottom: calc(max(10px, env(safe-area-inset-bottom)) + 56px); height: auto;
   grid-template-columns: repeat(6, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 8px; }
 :root.fold-tb .app.is-rave .rave__fx .fxp b { font-size: 15px; }
-:root.fold-tb .gate__boot { height: var(--seg-top-h); bottom: auto; }
-:root.fold-tb .gate__power { top: calc(var(--seg-top-h) / 2); }
 
 /* -- half-folded, the hinge down the middle (book): the left page shows and shapes, the right page edits -- */
 :root.fold-lr .app {
@@ -328,9 +305,6 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 :root.fold-lr .app.is-rave .rave__fx { left: calc(var(--seg-left-w) + var(--hinge-w) + 10px); top: 12px; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 56px); height: auto;
   grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 8px; }
 :root.fold-lr .app.is-rave .rave__fx .fxp b { font-size: 15px; }
-:root.fold-lr .gate__boot { width: var(--seg-left-w); right: auto; }
-:root.fold-lr .gate__power { left: calc(var(--seg-left-w) / 2); }
-:root.fold-lr .gate__card { margin-left: calc(var(--seg-left-w) + var(--hinge-w)); }
 
 /* -- the Play button pulses: breathing while stopped (tap me), and on the beat while it plays (the bar's first
  * harder); not in Calm, nor with reduced motion -- */
@@ -973,3 +947,12 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .rave { isolation: isolate; }
 .viz3d { position: absolute; z-index: -1; pointer-events: none; display: block; background: #000; }
 #viz.is-layer { background: transparent; }
+
+/* the boot: a second of a terminal, then the machine */
+.gate { position: fixed; inset: 0; z-index: 10; display: flex; align-items: flex-start; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-left)); background: #000; cursor: pointer;
+  transition: opacity .2s ease-out; }
+.gate[hidden] { display: none; }
+.gate.is-gone { opacity: 0; pointer-events: none; }
+.gate__term { margin: 0; font: clamp(13px, 2.2vw, 20px) / 1.5 var(--font); color: #5CFF8A; text-shadow: 0 0 8px rgba(92, 255, 138, .6); white-space: pre; }
+.gate__term::after { content: "\2588"; animation: blink .5s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }

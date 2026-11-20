@@ -99,6 +99,8 @@
       <div class="vjrow"><span>Strobe<small>Not in Calm</small></span><div class="seg" data-vj="strobe"><button type="button" data-v="0">Off</button><button type="button" data-v="1">Kick</button><button type="button" data-v="2">Bar</button></div></div>
       <div class="vjrow"><span>Show</span><div class="seg vj__shows"><button type="button" data-show="hud">Readouts</button><button type="button" data-show="scan">Scanlines</button><button type="button" data-show="parts">Confetti</button><button type="button" data-show="words">Words</button></div></div>
       <label class="vjrow vjrow--text"><span>Words</span><input type="text" data-vj="text" maxlength="40" placeholder="Type, and it scrolls by" autocomplete="off" spellcheck="false"></label>
+      <label class="vjrow only3d"><span>Glow<small>The 3D scenes' light</small></span><input type="range" data-vj="glow" min="0" max="1.5" step="0.01"></label>
+      <div class="vjrow only3d"><span>3D quality<small>Auto follows the frame rate</small></span><div class="seg" data-vj="q3d"><button type="button" data-v="0">Auto</button><button type="button" data-v="1">Low</button><button type="button" data-v="2">High</button></div></div>
       <div class="vjrow"><span>Auto VJ<small>New colours and mirrors every 4 bars</small></span><div class="seg" data-vj="auto"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></div></div>
       <div class="vjrow"><span>Rec<small>What the red button records</small></span><div class="seg" data-vj="rec"><button type="button" data-v="sound">Sound</button><button type="button" data-v="video">Sound + picture</button></div></div>
       <div class="menu__row"><button type="button" id="vjOut">Open a second screen</button></div>
@@ -108,7 +110,7 @@
     <p class="rave__hint" id="raveHint" aria-live="polite"></p>
     <div class="rave__scenes" id="raveScenes" hidden>
       <div class="rave__scenelist" id="raveSceneList"></div>
-      <div class="seg" data-pref="scenes"><button type="button" data-v="auto">Every 8 bars</button><button type="button" data-v="hold">Stay</button></div>
+      <div class="seg" data-pref="scenes"><button type="button" data-v="auto">Every 8 bars</button><button type="button" data-v="3d" class="only3d">3D only</button><button type="button" data-v="hold">Stay</button></div>
     </div>
     <div class="rave__fx fxpads" id="ravePunch" aria-label="Punch-in effects"></div>
     <div class="rave__bar">
@@ -116,6 +118,8 @@
       <button type="button" id="raveRec" class="rave__b rave__rec" aria-pressed="false">Rec</button>
       <button type="button" id="raveLatch" class="rave__b" aria-pressed="false" title="Latch: a tap turns an effect on, another turns it off">Latch</button>
       <button type="button" id="raveRace" class="rave__b rave__race" aria-pressed="false" hidden title="A race on a track the pattern builds: steer with the arrow keys or a finger">Race</button>
+      <button type="button" id="race2p" class="rave__b rave__racing" aria-pressed="false" title="Two players: a screen each (A D, and the arrows)">2P</button>
+      <button type="button" id="raceShare" class="rave__b rave__racing" title="Share this race: the track and the score to beat">Share</button>
       <button type="button" id="raveScene" class="rave__b" title="Tap: the next scene. Hold: pick one">Scene &#8250;</button>
       <button type="button" id="raveExit" class="rave__b rave__exit">Done</button>
     </div>
@@ -392,24 +396,17 @@
     <li><b>On a keyboard:</b> Space plays, the number row holds the punch-ins (1 to 0, - and =), Shift with 1 to 8 picks a pattern, ← and → the tempo (with Shift, by 5), R the rave, ⌘Z undo.</li>
     <li><b>In Drift</b>, hold a finger on the picture for a note that stays until you let go (two fingers, two notes). <b>Freeze</b> holds everything as it is. <b>Sounds&#8230;</b> picks the pad, the bells and up to two textures underneath (rain, wind, the sea, fire, a city, birds, vinyl), a drone and a pulse. <b>Modes&#8230;</b>: Sleep, Wake and Focus. <b>Keep&#8230;</b>: your favourites (the &#9733;), played in turn if you like, and saving as audio. <b>Dim</b> blacks out the screen while it plays.</li>
     <li><b>Drift:</b> an ambient mode that plays itself, never quite repeating. The picture is its mood: drag for dark to bright and sparse to busy; tap it for a bell. The weather turns it from calm (a pad and bells) to a storm (the acid line creeps in, then soft drums). A seed word makes the piece: the same word, the same piece, to share as a link. Rain, vinyl or the sea underneath; a sleep timer; save 2, 5 or 10 minutes as audio.</li>
-    <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter. With two fingers: swipe left or right for another scene, pinch for more or less squelch (env mod), tap for Latch, swipe down to leave. Hold <b>Scene</b> to pick one. <b>Race</b> (where the 3D scenes run) builds a track from the pattern: steer with the arrow keys or a finger; catch the notes, hit the accents’ boost pads, dodge the claps’ barriers. The patterns and the tempo are along the top; <b>Lock</b> makes the picture ignore touches. The controls fade after a few seconds: touch to bring them back.</li>
+    <li><b>The rave:</b> tap it for the next scene. <b>Rave</b> fills the screen with it; there, drag anywhere to play the filter. With two fingers: swipe left or right for another scene, pinch for more or less squelch (env mod), tap for Latch, swipe down to leave. Hold <b>Scene</b> to pick one. <b>Race</b> (where the 3D scenes run) builds a track from the pattern (the same pattern, the same track: a loop, a tunnel, sometimes rain): steer with the arrow keys or a finger; catch the notes, hit the accents’ boost pads, dodge the barriers; an open hat gives a shield, some claps an EMP. Your best run comes back as a ghost, and the best five scores stay. <b>2P</b>: a screen each (A D, and the arrows; or a finger on each side). <b>Share</b> sends the track and the score to beat. In the 3D scenes the camera follows the music (a whip on a fill, a zoom on a filter sweep, slow motion in a drop); a fill sometimes dives into the code and out into another scene. The patterns and the tempo are along the top; <b>Lock</b> makes the picture ignore touches. The controls fade after a few seconds: touch to bring them back.</li>
   </ul>
   <h3>The rave</h3>
-  <div class="opt"><span>Scenes<small>Warehouse, Cyberspace, Tunnel, Voxel, Plasma, Mainframe, Garden, Feedback, Hyperspace, Acid rain, Spiral</small></span>
-    <div class="seg" data-pref="scenes"><button type="button" data-v="auto">Every 8 bars</button><button type="button" data-v="hold">Stay</button></div></div>
+  <div class="opt"><span>Scenes<small>Warehouse, Plasma, Garden, Feedback, Spiral, and the 3D ones: Data City, Grid Dive, Virus, File System, Antigrav, Fractal, Chrome, Skyflight</small></span>
+    <div class="seg" data-pref="scenes"><button type="button" data-v="auto">Every 8 bars</button><button type="button" data-v="3d" class="only3d">3D only</button><button type="button" data-v="hold">Stay</button></div></div>
   <div class="opt"><span>Motion<small>Calm: no strobe, no shaking, no flashing words</small></span>
     <div class="seg" data-pref="motion"><button type="button" data-v="full">Full</button><button type="button" data-v="calm">Calm</button></div></div>
   <div class="opt"><span>Text<small>Bigger labels on the steps, the knobs and the tabs</small></span>
     <div class="seg" data-pref="text"><button type="button" data-v="normal">Normal</button><button type="button" data-v="large">Large</button></div></div>
-  <h3>Pocket jam</h3>
-  <div class="opt"><span>Shake to mutate<small>Shake the phone or iPad: a few steps change</small></span>
-    <div class="seg" id="shakeSeg"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></div></div>
-  <div class="opt"><span>Light filter<small>The front camera's brightness opens the filter (nothing is recorded or sent)</small></span>
-    <div class="seg" id="lightSeg"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></div></div>
   <h3>Sound</h3>
   <div class="opt" id="outOpt" hidden><span>Output<small>Where the sound goes: your audio interface, headphones, speakers</small></span><select id="outSel"></select></div>
-  <div class="opt"><span>Response<small>Smooth uses a bigger audio buffer: try it if you hear crackles. Applies the next time you open the app.</small></span>
-    <div class="seg" data-pref="latency"><button type="button" data-v="interactive">Fast</button><button type="button" data-v="playback">Smooth</button></div></div>
   <h3>Your patterns</h3>
   <p>They are saved on this iPad. Keep a copy in Files.</p>
   <div class="menu__row">

@@ -97,7 +97,7 @@
   const makeCtx = () => {
     if (ctx) { ctx.resume().catch(() => {}); return ctx; }
     try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
-    ctx = new AudioContext({ latencyHint: pref("latency", "interactive") === "playback" ? "playback" : "interactive" });
+    ctx = new AudioContext({ latencyHint: "interactive" });
     ctx.resume().catch(() => {});
     try { const id = localStorage.getItem("acid-flower-output"); if (id && ctx.setSinkId) ctx.setSinkId(id).catch(() => {}); } catch {}
     return ctx;
@@ -785,27 +785,38 @@
   $("raveSceneList").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; rave.go(+b.dataset.scene); drawScenes(); closeScenes(); });
   // the race (rave3d.js): a track from the pattern; a finger or the arrow keys steer
   const racing = () => !!rave.racing;
-  function setRace(on) {
+  // two players: a screen each; A and D (or a finger on the left) steer one, the arrows (or a finger on the right) the other
+  function setRace(on, two) {
     if (on && !globalThis.AcidRave.has3D) return;
-    rave.race(on);
+    rave.race(on, two);
+    const info = rave.raceInfo();
     app.classList.toggle("is-racing", on);
     $("raveRace").setAttribute("aria-pressed", String(on));
-    if (on) { if (!playing) setPlaying(true); hint("RACE \u00b7 STEER WITH \u2190 \u2192 OR A FINGER"); }
+    $("race2p").setAttribute("aria-pressed", String(!!info.two));
+    if (on) { if (!playing) setPlaying(true); hint(info.two ? "TWO PLAYERS \u00b7 A D  /  \u2190 \u2192" : "RACE \u00b7 STEER WITH \u2190 \u2192 OR A FINGER"); }
     drawScenes();
   }
   $("raveRace").hidden = !globalThis.AcidRave.has3D;
+  document.documentElement.classList.toggle("has3d", !!globalThis.AcidRave.has3D);
+  const steerKeys = { a: [-1, 0], A: [-1, 0], d: [1, 0], D: [1, 0], ArrowLeft: [-1, 1], ArrowRight: [1, 1] };
   addEventListener("keydown", (e) => {
     if (!racing() || !raving() || e.target.closest("input, textarea, dialog")) return;
-    const k = e.key;
-    if (k === "ArrowLeft" || k === "a" || k === "A") { rave.raceSteer(-1); e.preventDefault(); e.stopImmediatePropagation(); }
-    else if (k === "ArrowRight" || k === "d" || k === "D") { rave.raceSteer(1); e.preventDefault(); e.stopImmediatePropagation(); }
+    const k = e.key, s = steerKeys[k];
+    if (s) { rave.raceSteer(s[0], rave.raceInfo().two ? s[1] : 0); e.preventDefault(); e.stopImmediatePropagation(); }
     else if (k === "Escape") { setRace(false); e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
   addEventListener("keyup", (e) => {
     if (!racing()) return;
-    const k = e.key;
-    if (["ArrowLeft", "ArrowRight", "a", "A", "d", "D"].includes(k)) rave.raceSteer(0);
+    const s = steerKeys[e.key];
+    if (s) rave.raceSteer(0, rave.raceInfo().two ? s[1] : 0);
   }, true);
+  // a race to share: the pattern (it makes the track) and the score to beat
+  $("raceShare").addEventListener("click", async () => {
+    const info = rave.raceInfo(), url = location.origin + location.pathname + "#p=" + (await encode(pat())) + "&race=1" + (info.best || info.score ? "&beat=" + Math.max(info.best, info.score) : "");
+    try { if (navigator.share) { await navigator.share({ title: "Acid Flower: race me", text: "A track made from my acid line. Beat my score:", url }); return; } }
+    catch (err) { if (err && err.name === "AbortError") return; }
+    try { await navigator.clipboard.writeText(url); toast("Race link copied"); } catch { window.prompt("Copy this link:", url); }
+  });
   const setRave = (on) => {
     if (!on && racing()) setRace(false);
     if (!on && drifting()) leaveDrift();
@@ -826,6 +837,7 @@
   onPress($("raveLock"), () => setLock(!locked));
   onPress($("raveFull"), () => setFull(!fsNow()));
   onPress($("raveRace"), () => setRace(!racing()));
+  onPress($("race2p"), () => setRace(true, !rave.raceInfo().two));
   // Scene: a tap the next one, a hold all of them
   { const sb = $("raveScene"); let hold = 0, held = false;
     sb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); held = false; hold = setTimeout(() => { held = true; buzz(15); openScenes(); }, 450); });
@@ -834,7 +846,9 @@
     sb.addEventListener("click", (e) => { if (e.detail === 0) rave.next(); }); }
   // the picture: one finger plays the filter (out of rave mode: a tap is the next scene); two fingers make a gesture,
   // decided when the first of them lifts
-  let solo = null, g2 = null, raceFinger = null;
+  let solo = null, g2 = null;
+  const raceFingers = new Map();                          // (a finger: which player it steers, and where)
+  const raceX = (e, pl) => { const x = at(e)[0]; return rave.raceInfo().two ? clamp01(pl ? (x - 0.5) * 2 : x * 2) : x; };
   const at = (ev) => { const r = (raving() && VJS.fill ? raveEl : vizEl).getBoundingClientRect(); return [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)]; };
   const padAt = (ev) => { const [x, y] = at(ev); S.params.cutoff = x; S.params.reso = 1 - y; sendParams(); save(); drawXY(); rave.setPad(x, y); };
   // (Drift: fingers on the mood; a still finger, after a moment, holds a note until it lets go)
@@ -849,7 +863,7 @@
       return;
     }
     if (!$("raveScenes").hidden) { closeScenes(); return; }
-    if (racing() && raving()) { try { vizEl.setPointerCapture(e.pointerId); } catch {} raceFinger = e.pointerId; rave.raceTo(at(e)[0]); return; }
+    if (racing() && raving()) { try { vizEl.setPointerCapture(e.pointerId); } catch {} const pl = rave.raceInfo().two && at(e)[0] > 0.5 ? 1 : 0; raceFingers.set(e.pointerId, pl); rave.raceTo(raceX(e, pl), pl); return; }
     try { vizEl.setPointerCapture(e.pointerId); } catch {}
     vTouch.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
     if (!raving()) { solo = { id: e.pointerId, moved: false }; return; }
@@ -868,7 +882,7 @@
       if (dq.moved && dq.first) { const [x, y] = at(e); DS.moodX = x; DS.moodY = 1 - y; sendDrift(); rave.setPad(x, y); }
       return;
     }
-    if (raceFinger === e.pointerId) { rave.raceTo(at(e)[0]); return; }
+    if (raceFingers.has(e.pointerId)) { const pl = raceFingers.get(e.pointerId); rave.raceTo(raceX(e, pl), pl); return; }
     const t = vTouch.get(e.pointerId);
     if (!t) return;
     t.x = e.clientX; t.y = e.clientY;
@@ -883,7 +897,7 @@
     } else if (solo && solo.id === e.pointerId && !g2) padAt(e);
   });
   const vEnd = (e) => {
-    if (raceFinger === e.pointerId) { raceFinger = null; rave.raceTo(null); return; }
+    if (raceFingers.has(e.pointerId)) { rave.raceTo(null, raceFingers.get(e.pointerId)); raceFingers.delete(e.pointerId); return; }
     const dq = dPtrs.get(e.pointerId);
     if (dq) {
       clearTimeout(dq.timer); dPtrs.delete(e.pointerId);
@@ -915,11 +929,14 @@
   const menu = $("menu"), msg = (t) => ($("msg").textContent = t);
   $("menuBtn").addEventListener("click", () => { msg(""); menu.showModal ? menu.showModal() : menu.setAttribute("open", ""); });
   menu.addEventListener("click", (e) => { if (e.target === menu) menu.close(); });
-  const PREF_DEF = { latency: "interactive", scenes: "auto", motion: matchMedia("(prefers-reduced-motion: reduce)").matches ? "calm" : "full", text: "normal" };
+  // "3D only": the scenes change by themselves among the 3D ones
+  const autoList = () => pref("scenes", "auto") === "3d" && globalThis.AcidRave.has3D ? globalThis.AcidRave.SCENES.map((_, i) => i).filter((i) => i >= globalThis.AcidRave.BUILTIN) : null;
+  const PREF_DEF = { scenes: "auto", motion: matchMedia("(prefers-reduced-motion: reduce)").matches ? "calm" : "full", text: "normal" };
   const applyPrefs = () => {
     document.querySelectorAll(".seg[data-pref]").forEach((s) => s.querySelectorAll("button").forEach((x) =>
       x.setAttribute("aria-pressed", String(x.dataset.v === pref(s.dataset.pref, PREF_DEF[s.dataset.pref])))));
-    rave.auto = pref("scenes", PREF_DEF.scenes) === "auto";
+    rave.auto = pref("scenes", PREF_DEF.scenes) !== "hold";
+    if (!rave.driftMode) rave.sceneList = autoList();
     rave.calm = pref("motion", PREF_DEF.motion) === "calm";
     app.classList.toggle("is-calm", rave.calm);
     document.documentElement.classList.toggle("is-large", pref("text", PREF_DEF.text) === "large");
@@ -1317,8 +1334,9 @@
   };
   async function fromLink() {
     if (driftFromLink()) return;
-    const m = location.hash.match(/^#p=(.+)$/);
+    const m = location.hash.match(/^#p=([^&]+)(&.*)?$/);
     if (!m) return;
+    const extra = new URLSearchParams((m[2] || "").slice(1));
     let d = null;
     try { d = /^2z?\./.test(m[1]) ? await decode2(m[1]) : decode(m[1]); } catch { d = null; }
     try { history.replaceState(null, "", location.pathname + location.search); } catch {}
@@ -1329,6 +1347,11 @@
     S.slots[i] = normPat(d.pattern); S.cur = i; nextSlot = -1;
     Object.assign(S.params, d.params);
     commit(); sendParams(); sendPattern(); save(); drawAll();
+    if (extra.get("race") && globalThis.AcidRave.has3D) {   // (a race link: straight onto its track, the score to beat)
+      setRave(true); setRace(true, false); rave.raceBeat(+extra.get("beat") || 0);
+      toast("A race on a track made from a shared pattern" + (extra.get("beat") ? ": beat " + extra.get("beat") : "") + ". Touch to start the sound.", null, null, 7000);
+      return;
+    }
     toast("A shared pattern" + (d.pattern.name ? " (" + d.pattern.name + ")" : "") + " is in slot " + (i + 1) + ": press Play", "Undo", undo, 7000);
   }
   addEventListener("hashchange", () => { if ($("gate").hidden) fromLink(); });
@@ -1684,7 +1707,7 @@
         if (!outAlive || now - outAlive > 4000 || now - lastOut < 32) return;
         lastOut = now;
         if (rave.layer3d && rave.glCanvas) {             // (a 3D scene: sent bigger, smooth)
-          const w = Math.min(960, rave.glCanvas.width) & ~1, h = Math.round((w * img.height) / img.width) & ~1;
+          const w = 960, h = Math.round((w * img.height) / img.width) & ~1;   // (always this big: the 3D layer may be smaller when the frame rate asks)
           if (outMix.width !== w || outMix.height !== h) { outMix.width = w; outMix.height = h; }
           composeTo(outG, w, h); bc.postMessage({ w, h, d: outG.getImageData(0, 0, w, h).data });
         } else bc.postMessage({ w: img.width, h: img.height, d: img.data });
@@ -1954,54 +1977,6 @@
   function drawTitle() { const p = pat(); document.title = (playing ? "▶ " : "") + (p.name || "Pattern " + (S.cur + 1)) + " · Acid Flower"; }
   playHooks.push(drawTitle);
 
-  // ------------------------------------------------------------------------------------------ pocket jam ---
-  // shake to mutate (the motion sensor), and the light filter (the front camera's brightness: the frames stay here,
-  // sampled at 16 x 12 and thrown away)
-  let shakeOn = false, shakeT = 0, lastAcc = null;
-  const onShake = (e) => {
-    const a = e.accelerationIncludingGravity || e.acceleration; if (!a || a.x == null) return;
-    if (lastAcc) {
-      const d = Math.abs(a.x - lastAcc.x) + Math.abs(a.y - lastAcc.y) + Math.abs(a.z - lastAcc.z), now = performance.now();
-      if (d > 28 && now - shakeT > 900) { shakeT = now; runAct($("mutate")); buzz(30); rave.burst && rave.burst(); }
-    }
-    lastAcc = { x: a.x, y: a.y, z: a.z };
-  };
-  const setShake = async (on) => {
-    if (on) {
-      try {
-        if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === "function" && (await DeviceMotionEvent.requestPermission()) !== "granted") { msg("Shake needs motion access."); on = false; }
-        else if (!("DeviceMotionEvent" in window)) { msg("This device has no motion sensor."); on = false; }
-      } catch (err) { msg("Shake isn’t available here: " + err.message); on = false; }
-    }
-    shakeOn = on; lastAcc = null;
-    if (on) addEventListener("devicemotion", onShake); else removeEventListener("devicemotion", onShake);
-    $("shakeSeg").querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(b2.dataset.v === (on ? "1" : "0"))));
-  };
-  let light = null;
-  const setLight = async (on) => {
-    if (light) { clearInterval(light.t); light.stream.getTracks().forEach((t) => t.stop()); light = null; }
-    if (on) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 160, height: 120 }, audio: false });
-        const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.srcObject = stream; await v.play();
-        const c = document.createElement("canvas"); c.width = 16; c.height = 12; const g = c.getContext("2d", { willReadFrequently: true });
-        let lo = 255, hi = 0;
-        light = { stream, t: setInterval(() => {
-          g.drawImage(v, 0, 0, 16, 12); const d = g.getImageData(0, 0, 16, 12).data; let sum = 0;
-          for (let i = 0; i < d.length; i += 4) sum += d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
-          const L = sum / (d.length / 4); lo = Math.min(lo + 0.05, L); hi = Math.max(hi - 0.05, L);   // (the range it has seen, slowly forgetting)
-          const x = hi - lo > 8 ? (L - lo) / (hi - lo) : 0.5;
-          S.params.cutoff += (clamp01(0.1 + x * 0.8) - S.params.cutoff) * 0.5; sendParams(); drawXY();
-        }, 60) };
-      } catch (err) { msg("The light filter needs the camera: " + (err.message || err.name)); on = false; }
-    }
-    $("lightSeg").querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(b2.dataset.v === (on ? "1" : "0"))));
-  };
-  $("shakeSeg").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) setShake(b2.dataset.v === "1"); });
-  $("lightSeg").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) setLight(b2.dataset.v === "1"); });
-  document.addEventListener("visibilitychange", () => { if (document.hidden && light) setLight(false); });
-  setShake(false); setLight(false);
-
   // ------------------------------------------------------------------------------------ no sound? help ---
   // if the sound stops (another app took it, a call, Bluetooth gone, the iPad asleep), a button to bring it back
   function watchSound() {
@@ -2045,7 +2020,8 @@
   // dark to bright and sparse to busy, tap for a bell, hold for a note that stays. The weather (or Auto), the seed word
   // (the same word, the same piece), Freeze; Sounds (the pad, the bells, two textures, a drone, a pulse); Modes (sleep,
   // wake, focus); Keep (favourites, played in turn; audio); Dim; a link to share the piece.
-  const SCN = globalThis.AcidRave.SCENES, DRIFT_SC = ["AURORA", "NEBULA", "SKYFLIGHT", "GARDEN", "ACID RAIN", "HYPERSPACE"].map((n) => SCN.indexOf(n)).filter((i) => i >= 0);
+  const SCN = globalThis.AcidRave.SCENES, DRIFT_SC = ["AURORA", "NEBULA", "SKYFLIGHT", "GARDEN"].map((n) => SCN.indexOf(n)).filter((i) => i >= 0);
+  const rainScene = () => (SCN.indexOf("SKYFLIGHT") >= 0 ? SCN.indexOf("SKYFLIGHT") : DRIFT_SC[0]);   // (rain: the weather's own sky)
   const SEED1 = ["night", "slow", "blue", "moss", "glass", "rain", "tide", "dust", "neon", "soft", "silver", "late", "quiet", "amber", "cloud", "velvet"];
   const SEED2 = ["bus", "garden", "harbour", "signal", "window", "river", "orbit", "static", "lantern", "meadow", "station", "echo", "flower", "dawn", "tram", "pier"];
   const newSeed = () => pick(SEED1) + pick(SEED2);
@@ -2095,7 +2071,7 @@
     setRave(true);
     app.classList.add("is-drift"); $("driftBtn").setAttribute("aria-pressed", "true");
     rave.calm = true; rave.driftMode = true; rave.sceneList = DRIFT_SC; rave.autoBars = 32; seedTint();
-    if (!DRIFT_SC.includes(rave.scene)) rave.go(DS.texture === "rain" || DS.texture2 === "rain" ? SCN.indexOf("ACID RAIN") : DRIFT_SC[0]);
+    if (!DRIFT_SC.includes(rave.scene)) rave.go(DS.texture === "rain" || DS.texture2 === "rain" ? rainScene() : DRIFT_SC[0]);
     post({ type: "drift", on: true, set: driftSet() });
     if (!playing) setPlaying(true);
     drawDrift(); poke();
@@ -2105,7 +2081,7 @@
     post({ type: "drift", on: false });
     if (playing) setPlaying(false);
     app.classList.remove("is-drift"); $("driftBtn").setAttribute("aria-pressed", "false");
-    rave.driftMode = false; rave.sceneList = null; rave.autoBars = 8; rave.calm = pref("motion", PREF_DEF.motion) === "calm"; rave.seedShift = null; rave.vj.speed = VJS.speed || 1;
+    rave.driftMode = false; rave.sceneList = autoList(); rave.autoBars = 8; rave.calm = pref("motion", PREF_DEF.motion) === "calm"; rave.seedShift = null; rave.vj.speed = VJS.speed || 1;
     if (DRIFT_SC.includes(rave.scene)) rave.go(0);
     setMode(null, true); setDim(false); DS.freeze = false; listStop();
   }
@@ -2139,7 +2115,7 @@
     const b2 = e.target.closest("button"), sg = b2 && b2.closest("[data-dset]"); if (!sg) return;
     const k = sg.dataset.dset; DS[k] = k === "arcs" ? b2.dataset.v === "1" : b2.dataset.v;
     saveDS(); sendDrift(); drawDrift();
-    if ((k === "texture" || k === "texture2") && DS[k] === "rain" && drifting()) rave.go(SCN.indexOf("ACID RAIN"));
+    if ((k === "texture" || k === "texture2") && DS[k] === "rain" && drifting()) rave.go(rainScene());
   });
   $("driftSounds").addEventListener("input", (e) => { const i = e.target.closest("[data-dk]"); if (!i) return; DS[i.dataset.dk] = +i.value; saveDS(); sendDrift(); });
   // ---- modes: sleep (darker, sparser, quieter, then a fade), wake (a sunrise), focus (25 on, 5 calm)

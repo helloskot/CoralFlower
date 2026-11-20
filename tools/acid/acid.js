@@ -785,27 +785,38 @@
   $("raveSceneList").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; rave.go(+b.dataset.scene); drawScenes(); closeScenes(); });
   // the race (rave3d.js): a track from the pattern; a finger or the arrow keys steer
   const racing = () => !!rave.racing;
-  function setRace(on) {
+  // two players: a screen each; A and D (or a finger on the left) steer one, the arrows (or a finger on the right) the other
+  function setRace(on, two) {
     if (on && !globalThis.AcidRave.has3D) return;
-    rave.race(on);
+    rave.race(on, two);
+    const info = rave.raceInfo();
     app.classList.toggle("is-racing", on);
     $("raveRace").setAttribute("aria-pressed", String(on));
-    if (on) { if (!playing) setPlaying(true); hint("RACE \u00b7 STEER WITH \u2190 \u2192 OR A FINGER"); }
+    $("race2p").setAttribute("aria-pressed", String(!!info.two));
+    if (on) { if (!playing) setPlaying(true); hint(info.two ? "TWO PLAYERS \u00b7 A D  /  \u2190 \u2192" : "RACE \u00b7 STEER WITH \u2190 \u2192 OR A FINGER"); }
     drawScenes();
   }
   $("raveRace").hidden = !globalThis.AcidRave.has3D;
+  document.documentElement.classList.toggle("has3d", !!globalThis.AcidRave.has3D);
+  const steerKeys = { a: [-1, 0], A: [-1, 0], d: [1, 0], D: [1, 0], ArrowLeft: [-1, 1], ArrowRight: [1, 1] };
   addEventListener("keydown", (e) => {
     if (!racing() || !raving() || e.target.closest("input, textarea, dialog")) return;
-    const k = e.key;
-    if (k === "ArrowLeft" || k === "a" || k === "A") { rave.raceSteer(-1); e.preventDefault(); e.stopImmediatePropagation(); }
-    else if (k === "ArrowRight" || k === "d" || k === "D") { rave.raceSteer(1); e.preventDefault(); e.stopImmediatePropagation(); }
+    const k = e.key, s = steerKeys[k];
+    if (s) { rave.raceSteer(s[0], rave.raceInfo().two ? s[1] : 0); e.preventDefault(); e.stopImmediatePropagation(); }
     else if (k === "Escape") { setRace(false); e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
   addEventListener("keyup", (e) => {
     if (!racing()) return;
-    const k = e.key;
-    if (["ArrowLeft", "ArrowRight", "a", "A", "d", "D"].includes(k)) rave.raceSteer(0);
+    const s = steerKeys[e.key];
+    if (s) rave.raceSteer(0, rave.raceInfo().two ? s[1] : 0);
   }, true);
+  // a race to share: the pattern (it makes the track) and the score to beat
+  $("raceShare").addEventListener("click", async () => {
+    const info = rave.raceInfo(), url = location.origin + location.pathname + "#p=" + (await encode(pat())) + "&race=1" + (info.best || info.score ? "&beat=" + Math.max(info.best, info.score) : "");
+    try { if (navigator.share) { await navigator.share({ title: "Acid Flower: race me", text: "A track made from my acid line. Beat my score:", url }); return; } }
+    catch (err) { if (err && err.name === "AbortError") return; }
+    try { await navigator.clipboard.writeText(url); toast("Race link copied"); } catch { window.prompt("Copy this link:", url); }
+  });
   const setRave = (on) => {
     if (!on && racing()) setRace(false);
     if (!on && drifting()) leaveDrift();
@@ -826,6 +837,7 @@
   onPress($("raveLock"), () => setLock(!locked));
   onPress($("raveFull"), () => setFull(!fsNow()));
   onPress($("raveRace"), () => setRace(!racing()));
+  onPress($("race2p"), () => setRace(true, !rave.raceInfo().two));
   // Scene: a tap the next one, a hold all of them
   { const sb = $("raveScene"); let hold = 0, held = false;
     sb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); held = false; hold = setTimeout(() => { held = true; buzz(15); openScenes(); }, 450); });
@@ -834,7 +846,9 @@
     sb.addEventListener("click", (e) => { if (e.detail === 0) rave.next(); }); }
   // the picture: one finger plays the filter (out of rave mode: a tap is the next scene); two fingers make a gesture,
   // decided when the first of them lifts
-  let solo = null, g2 = null, raceFinger = null;
+  let solo = null, g2 = null;
+  const raceFingers = new Map();                          // (a finger: which player it steers, and where)
+  const raceX = (e, pl) => { const x = at(e)[0]; return rave.raceInfo().two ? clamp01(pl ? (x - 0.5) * 2 : x * 2) : x; };
   const at = (ev) => { const r = (raving() && VJS.fill ? raveEl : vizEl).getBoundingClientRect(); return [clamp01((ev.clientX - r.left) / r.width), clamp01((ev.clientY - r.top) / r.height)]; };
   const padAt = (ev) => { const [x, y] = at(ev); S.params.cutoff = x; S.params.reso = 1 - y; sendParams(); save(); drawXY(); rave.setPad(x, y); };
   // (Drift: fingers on the mood; a still finger, after a moment, holds a note until it lets go)
@@ -849,7 +863,7 @@
       return;
     }
     if (!$("raveScenes").hidden) { closeScenes(); return; }
-    if (racing() && raving()) { try { vizEl.setPointerCapture(e.pointerId); } catch {} raceFinger = e.pointerId; rave.raceTo(at(e)[0]); return; }
+    if (racing() && raving()) { try { vizEl.setPointerCapture(e.pointerId); } catch {} const pl = rave.raceInfo().two && at(e)[0] > 0.5 ? 1 : 0; raceFingers.set(e.pointerId, pl); rave.raceTo(raceX(e, pl), pl); return; }
     try { vizEl.setPointerCapture(e.pointerId); } catch {}
     vTouch.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
     if (!raving()) { solo = { id: e.pointerId, moved: false }; return; }
@@ -868,7 +882,7 @@
       if (dq.moved && dq.first) { const [x, y] = at(e); DS.moodX = x; DS.moodY = 1 - y; sendDrift(); rave.setPad(x, y); }
       return;
     }
-    if (raceFinger === e.pointerId) { rave.raceTo(at(e)[0]); return; }
+    if (raceFingers.has(e.pointerId)) { const pl = raceFingers.get(e.pointerId); rave.raceTo(raceX(e, pl), pl); return; }
     const t = vTouch.get(e.pointerId);
     if (!t) return;
     t.x = e.clientX; t.y = e.clientY;
@@ -883,7 +897,7 @@
     } else if (solo && solo.id === e.pointerId && !g2) padAt(e);
   });
   const vEnd = (e) => {
-    if (raceFinger === e.pointerId) { raceFinger = null; rave.raceTo(null); return; }
+    if (raceFingers.has(e.pointerId)) { rave.raceTo(null, raceFingers.get(e.pointerId)); raceFingers.delete(e.pointerId); return; }
     const dq = dPtrs.get(e.pointerId);
     if (dq) {
       clearTimeout(dq.timer); dPtrs.delete(e.pointerId);
@@ -915,11 +929,14 @@
   const menu = $("menu"), msg = (t) => ($("msg").textContent = t);
   $("menuBtn").addEventListener("click", () => { msg(""); menu.showModal ? menu.showModal() : menu.setAttribute("open", ""); });
   menu.addEventListener("click", (e) => { if (e.target === menu) menu.close(); });
+  // "3D only": the scenes change by themselves among the 3D ones
+  const autoList = () => pref("scenes", "auto") === "3d" && globalThis.AcidRave.has3D ? globalThis.AcidRave.SCENES.map((_, i) => i).filter((i) => i >= globalThis.AcidRave.BUILTIN) : null;
   const PREF_DEF = { latency: "interactive", scenes: "auto", motion: matchMedia("(prefers-reduced-motion: reduce)").matches ? "calm" : "full", text: "normal" };
   const applyPrefs = () => {
     document.querySelectorAll(".seg[data-pref]").forEach((s) => s.querySelectorAll("button").forEach((x) =>
       x.setAttribute("aria-pressed", String(x.dataset.v === pref(s.dataset.pref, PREF_DEF[s.dataset.pref])))));
-    rave.auto = pref("scenes", PREF_DEF.scenes) === "auto";
+    rave.auto = pref("scenes", PREF_DEF.scenes) !== "hold";
+    if (!rave.driftMode) rave.sceneList = autoList();
     rave.calm = pref("motion", PREF_DEF.motion) === "calm";
     app.classList.toggle("is-calm", rave.calm);
     document.documentElement.classList.toggle("is-large", pref("text", PREF_DEF.text) === "large");
@@ -1317,8 +1334,9 @@
   };
   async function fromLink() {
     if (driftFromLink()) return;
-    const m = location.hash.match(/^#p=(.+)$/);
+    const m = location.hash.match(/^#p=([^&]+)(&.*)?$/);
     if (!m) return;
+    const extra = new URLSearchParams((m[2] || "").slice(1));
     let d = null;
     try { d = /^2z?\./.test(m[1]) ? await decode2(m[1]) : decode(m[1]); } catch { d = null; }
     try { history.replaceState(null, "", location.pathname + location.search); } catch {}
@@ -1329,6 +1347,11 @@
     S.slots[i] = normPat(d.pattern); S.cur = i; nextSlot = -1;
     Object.assign(S.params, d.params);
     commit(); sendParams(); sendPattern(); save(); drawAll();
+    if (extra.get("race") && globalThis.AcidRave.has3D) {   // (a race link: straight onto its track, the score to beat)
+      setRave(true); setRace(true, false); rave.raceBeat(+extra.get("beat") || 0);
+      toast("A race on a track made from a shared pattern" + (extra.get("beat") ? ": beat " + extra.get("beat") : "") + ". Touch to start the sound.", null, null, 7000);
+      return;
+    }
     toast("A shared pattern" + (d.pattern.name ? " (" + d.pattern.name + ")" : "") + " is in slot " + (i + 1) + ": press Play", "Undo", undo, 7000);
   }
   addEventListener("hashchange", () => { if ($("gate").hidden) fromLink(); });
@@ -1684,7 +1707,7 @@
         if (!outAlive || now - outAlive > 4000 || now - lastOut < 32) return;
         lastOut = now;
         if (rave.layer3d && rave.glCanvas) {             // (a 3D scene: sent bigger, smooth)
-          const w = Math.min(960, rave.glCanvas.width) & ~1, h = Math.round((w * img.height) / img.width) & ~1;
+          const w = 960, h = Math.round((w * img.height) / img.width) & ~1;   // (always this big: the 3D layer may be smaller when the frame rate asks)
           if (outMix.width !== w || outMix.height !== h) { outMix.width = w; outMix.height = h; }
           composeTo(outG, w, h); bc.postMessage({ w, h, d: outG.getImageData(0, 0, w, h).data });
         } else bc.postMessage({ w: img.width, h: img.height, d: img.data });
@@ -2105,7 +2128,7 @@
     post({ type: "drift", on: false });
     if (playing) setPlaying(false);
     app.classList.remove("is-drift"); $("driftBtn").setAttribute("aria-pressed", "false");
-    rave.driftMode = false; rave.sceneList = null; rave.autoBars = 8; rave.calm = pref("motion", PREF_DEF.motion) === "calm"; rave.seedShift = null; rave.vj.speed = VJS.speed || 1;
+    rave.driftMode = false; rave.sceneList = autoList(); rave.autoBars = 8; rave.calm = pref("motion", PREF_DEF.motion) === "calm"; rave.seedShift = null; rave.vj.speed = VJS.speed || 1;
     if (DRIFT_SC.includes(rave.scene)) rave.go(0);
     setMode(null, true); setDim(false); DS.freeze = false; listStop();
   }

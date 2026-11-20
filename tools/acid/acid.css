@@ -956,3 +956,9 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .gate__term { margin: 0; font: clamp(13px, 2.2vw, 20px) / 1.5 var(--font); color: #5CFF8A; text-shadow: 0 0 8px rgba(92, 255, 138, .6); white-space: pre; }
 .gate__term::after { content: "\2588"; animation: blink .5s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
+/* while racing: 2P and Share in the bar (Latch and Scene out of the way); the 3D-only settings only where there's 3D */
+.rave__racing { display: none; }
+.app.is-racing .rave__racing { display: inline-block; }
+.app.is-racing #raveLatch, .app.is-racing #raveScene { display: none; }
+#race2p[aria-pressed="true"] { background: var(--cyan, #2BF0FF); color: var(--black); box-shadow: none; }
+:root:not(.has3d) .only3d { display: none; }

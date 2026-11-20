@@ -962,3 +962,35 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .app.is-racing #raveLatch, .app.is-racing #raveScene { display: none; }
 #race2p[aria-pressed="true"] { background: var(--cyan, #2BF0FF); color: var(--black); box-shadow: none; }
 :root:not(.has3d) .only3d { display: none; }
+/* Random with its styles beside it (one button, split); Step…: the next step tapped opens its options */
+.split { display: inline-flex; align-items: stretch; }
+.split > .tool:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split .split__more { padding: 0 9px; border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1.5px; color: var(--muted); }
+#stepBtn[aria-pressed="true"] { background: var(--lime); color: var(--black); box-shadow: none; }
+.app.is-steppick .bass, .app.is-steppick .drums { outline: 2px dashed var(--lime); outline-offset: 2px; }
+/* phones: room for Step… and the styles' ▾ in the one row of tools */
+@media (max-width: 600px) and (orientation: portrait) {
+  .tools { gap: 3px; }
+  .tools .stepper button { min-width: 21px; padding: 0; }
+  .tools .stepper span { min-width: 1.6em; }
+  .tools .tool--icon { padding: 0 6px; }
+  .split .split__more { padding: 0 5px; }
+  .tool--lab { padding: 0 6px; }
+}
+@media (max-width: 360px) and (orientation: portrait) {
+  .tools { gap: 1px; }
+  .tools .stepper button { min-width: 18px; }
+  .tools .stepper span { min-width: 1.1em; }
+  .tools .stepper button { min-width: 17px; }
+  .tools .tool--icon { padding: 0 4px; }
+  .split .split__more { padding: 0 4px; }
+  .tool--lab { padding: 0 4px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .tools { gap: 3px; }
+  .tools .stepper button { min-width: 22px; padding: 0; }
+  .tools .stepper span { min-width: 1.7em; }
+  .tools .tool--icon { padding: 0 6px; }
+  .split .split__more { padding: 0 5px; }
+  .tool--lab { padding: 0 6px; }
+}

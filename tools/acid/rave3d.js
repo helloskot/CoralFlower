@@ -725,7 +725,7 @@ void main() {
   const meshOf = (g, key, make, prim, instanced) => g.meshes[key] || (g.meshes[key] = g.makeMesh(make(), prim == null ? g.gl.TRIANGLES : prim, false, instanced));
   const stOf = (g, key, init) => g.st[key] || (g.st[key] = init());
   // the 2D fallback when the GL is gone (a lost context)
-  const fallback = (rv) => rv.cyberspace();
+  const fallback = (rv) => rv.plasma();
   // ---- the director: everything in the 3D scenes moves on its own clock (t3, s3), slowed in a breakdown (two bars
   // without a kick); a fill whips the camera round; a fast filter sweep is a dolly zoom; every 4 bars, another angle
   const director = (g, rv) => {

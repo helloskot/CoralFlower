@@ -97,7 +97,7 @@
   const makeCtx = () => {
     if (ctx) { ctx.resume().catch(() => {}); return ctx; }
     try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
-    ctx = new AudioContext({ latencyHint: pref("latency", "interactive") === "playback" ? "playback" : "interactive" });
+    ctx = new AudioContext({ latencyHint: "interactive" });
     ctx.resume().catch(() => {});
     try { const id = localStorage.getItem("acid-flower-output"); if (id && ctx.setSinkId) ctx.setSinkId(id).catch(() => {}); } catch {}
     return ctx;
@@ -931,7 +931,7 @@
   menu.addEventListener("click", (e) => { if (e.target === menu) menu.close(); });
   // "3D only": the scenes change by themselves among the 3D ones
   const autoList = () => pref("scenes", "auto") === "3d" && globalThis.AcidRave.has3D ? globalThis.AcidRave.SCENES.map((_, i) => i).filter((i) => i >= globalThis.AcidRave.BUILTIN) : null;
-  const PREF_DEF = { latency: "interactive", scenes: "auto", motion: matchMedia("(prefers-reduced-motion: reduce)").matches ? "calm" : "full", text: "normal" };
+  const PREF_DEF = { scenes: "auto", motion: matchMedia("(prefers-reduced-motion: reduce)").matches ? "calm" : "full", text: "normal" };
   const applyPrefs = () => {
     document.querySelectorAll(".seg[data-pref]").forEach((s) => s.querySelectorAll("button").forEach((x) =>
       x.setAttribute("aria-pressed", String(x.dataset.v === pref(s.dataset.pref, PREF_DEF[s.dataset.pref])))));
@@ -1977,54 +1977,6 @@
   function drawTitle() { const p = pat(); document.title = (playing ? "▶ " : "") + (p.name || "Pattern " + (S.cur + 1)) + " · Acid Flower"; }
   playHooks.push(drawTitle);
 
-  // ------------------------------------------------------------------------------------------ pocket jam ---
-  // shake to mutate (the motion sensor), and the light filter (the front camera's brightness: the frames stay here,
-  // sampled at 16 x 12 and thrown away)
-  let shakeOn = false, shakeT = 0, lastAcc = null;
-  const onShake = (e) => {
-    const a = e.accelerationIncludingGravity || e.acceleration; if (!a || a.x == null) return;
-    if (lastAcc) {
-      const d = Math.abs(a.x - lastAcc.x) + Math.abs(a.y - lastAcc.y) + Math.abs(a.z - lastAcc.z), now = performance.now();
-      if (d > 28 && now - shakeT > 900) { shakeT = now; runAct($("mutate")); buzz(30); rave.burst && rave.burst(); }
-    }
-    lastAcc = { x: a.x, y: a.y, z: a.z };
-  };
-  const setShake = async (on) => {
-    if (on) {
-      try {
-        if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === "function" && (await DeviceMotionEvent.requestPermission()) !== "granted") { msg("Shake needs motion access."); on = false; }
-        else if (!("DeviceMotionEvent" in window)) { msg("This device has no motion sensor."); on = false; }
-      } catch (err) { msg("Shake isn’t available here: " + err.message); on = false; }
-    }
-    shakeOn = on; lastAcc = null;
-    if (on) addEventListener("devicemotion", onShake); else removeEventListener("devicemotion", onShake);
-    $("shakeSeg").querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(b2.dataset.v === (on ? "1" : "0"))));
-  };
-  let light = null;
-  const setLight = async (on) => {
-    if (light) { clearInterval(light.t); light.stream.getTracks().forEach((t) => t.stop()); light = null; }
-    if (on) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 160, height: 120 }, audio: false });
-        const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.srcObject = stream; await v.play();
-        const c = document.createElement("canvas"); c.width = 16; c.height = 12; const g = c.getContext("2d", { willReadFrequently: true });
-        let lo = 255, hi = 0;
-        light = { stream, t: setInterval(() => {
-          g.drawImage(v, 0, 0, 16, 12); const d = g.getImageData(0, 0, 16, 12).data; let sum = 0;
-          for (let i = 0; i < d.length; i += 4) sum += d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
-          const L = sum / (d.length / 4); lo = Math.min(lo + 0.05, L); hi = Math.max(hi - 0.05, L);   // (the range it has seen, slowly forgetting)
-          const x = hi - lo > 8 ? (L - lo) / (hi - lo) : 0.5;
-          S.params.cutoff += (clamp01(0.1 + x * 0.8) - S.params.cutoff) * 0.5; sendParams(); drawXY();
-        }, 60) };
-      } catch (err) { msg("The light filter needs the camera: " + (err.message || err.name)); on = false; }
-    }
-    $("lightSeg").querySelectorAll("button").forEach((b2) => b2.setAttribute("aria-pressed", String(b2.dataset.v === (on ? "1" : "0"))));
-  };
-  $("shakeSeg").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) setShake(b2.dataset.v === "1"); });
-  $("lightSeg").addEventListener("click", (e) => { const b2 = e.target.closest("button"); if (b2) setLight(b2.dataset.v === "1"); });
-  document.addEventListener("visibilitychange", () => { if (document.hidden && light) setLight(false); });
-  setShake(false); setLight(false);
-
   // ------------------------------------------------------------------------------------ no sound? help ---
   // if the sound stops (another app took it, a call, Bluetooth gone, the iPad asleep), a button to bring it back
   function watchSound() {
@@ -2068,7 +2020,8 @@
   // dark to bright and sparse to busy, tap for a bell, hold for a note that stays. The weather (or Auto), the seed word
   // (the same word, the same piece), Freeze; Sounds (the pad, the bells, two textures, a drone, a pulse); Modes (sleep,
   // wake, focus); Keep (favourites, played in turn; audio); Dim; a link to share the piece.
-  const SCN = globalThis.AcidRave.SCENES, DRIFT_SC = ["AURORA", "NEBULA", "SKYFLIGHT", "GARDEN", "ACID RAIN", "HYPERSPACE"].map((n) => SCN.indexOf(n)).filter((i) => i >= 0);
+  const SCN = globalThis.AcidRave.SCENES, DRIFT_SC = ["AURORA", "NEBULA", "SKYFLIGHT", "GARDEN"].map((n) => SCN.indexOf(n)).filter((i) => i >= 0);
+  const rainScene = () => (SCN.indexOf("SKYFLIGHT") >= 0 ? SCN.indexOf("SKYFLIGHT") : DRIFT_SC[0]);   // (rain: the weather's own sky)
   const SEED1 = ["night", "slow", "blue", "moss", "glass", "rain", "tide", "dust", "neon", "soft", "silver", "late", "quiet", "amber", "cloud", "velvet"];
   const SEED2 = ["bus", "garden", "harbour", "signal", "window", "river", "orbit", "static", "lantern", "meadow", "station", "echo", "flower", "dawn", "tram", "pier"];
   const newSeed = () => pick(SEED1) + pick(SEED2);
@@ -2118,7 +2071,7 @@
     setRave(true);
     app.classList.add("is-drift"); $("driftBtn").setAttribute("aria-pressed", "true");
     rave.calm = true; rave.driftMode = true; rave.sceneList = DRIFT_SC; rave.autoBars = 32; seedTint();
-    if (!DRIFT_SC.includes(rave.scene)) rave.go(DS.texture === "rain" || DS.texture2 === "rain" ? SCN.indexOf("ACID RAIN") : DRIFT_SC[0]);
+    if (!DRIFT_SC.includes(rave.scene)) rave.go(DS.texture === "rain" || DS.texture2 === "rain" ? rainScene() : DRIFT_SC[0]);
     post({ type: "drift", on: true, set: driftSet() });
     if (!playing) setPlaying(true);
     drawDrift(); poke();
@@ -2162,7 +2115,7 @@
     const b2 = e.target.closest("button"), sg = b2 && b2.closest("[data-dset]"); if (!sg) return;
     const k = sg.dataset.dset; DS[k] = k === "arcs" ? b2.dataset.v === "1" : b2.dataset.v;
     saveDS(); sendDrift(); drawDrift();
-    if ((k === "texture" || k === "texture2") && DS[k] === "rain" && drifting()) rave.go(SCN.indexOf("ACID RAIN"));
+    if ((k === "texture" || k === "texture2") && DS[k] === "rain" && drifting()) rave.go(rainScene());
   });
   $("driftSounds").addEventListener("input", (e) => { const i = e.target.closest("[data-dk]"); if (!i) return; DS[i.dataset.dk] = +i.value; saveDS(); sendDrift(); });
   // ---- modes: sleep (darker, sparser, quieter, then a fade), wake (a sunrise), focus (25 on, 5 calm)

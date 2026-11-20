@@ -344,8 +344,17 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
   const tapped = drift({ weather: 0 }, 1.5, (a) => { a.render(0.3); a.send({ type: "drift", tap: 0.8 }); });
   ok(vz(tapped).some((m) => m.drift && m.drift.bell >= 60), `Drift: a tap rings a bell`);
   const hf = (x, from, to) => { let n = 0; for (let i = from + 1; i < to; i++) n += Math.abs(x[i] - x[i - 1]); return n / (to - from); };
-  const dry = drift({ weather: 0, texture: "none" }, 2).L, rain = drift({ weather: 0, texture: "rain", tex: 1 }, 2).L;
-  ok(hf(rain, 2000, 80000) > hf(dry, 2000, 80000) * 2, `Drift: rain adds its hiss and drops (${hf(dry, 2000, 80000).toFixed(4)} to ${hf(rain, 2000, 80000).toFixed(4)})`);
+  const dry = drift({ weather: 0.2, texture: "none" }, 2).L, rain = drift({ weather: 0.2, texture: "rain", tex: 1 }, 2).L;
+  const only = rain.map((x, i) => x - dry[i]);            // (the same seed plays the same music: what is left is the rain)
+  ok(rms(only, 2000, 80000) > 0.01 && hf(only, 2000, 80000) > hf(dry, 2000, 80000) * 0.5, `Drift: rain adds its hiss and drops (the rain alone: rms ${rms(only, 2000, 80000).toFixed(3)})`);
+  const rainAt = (w) => { const d = drift({ weather: w, texture: "none" }, 2).L, r = drift({ weather: w, texture: "rain", tex: 1 }, 2).L; return rms(r.map((x, i) => x - d[i]), 2000, 80000); };
+  const light = rainAt(0), heavy = rainAt(0.9);
+  ok(heavy > light * 1.5, `Drift: the rain grows with the weather (${light.toFixed(3)} calm, ${heavy.toFixed(3)} stormy)`);
+  const birdsAt = (w) => { const d = drift({ weather: w, texture: "none" }, 4).L, r = drift({ weather: w, texture: "birds", tex: 1 }, 4).L; return rms(r.map((x, i) => x - d[i]), 2000, r.length); };
+  ok(birdsAt(0) > 0.003 && birdsAt(0) > birdsAt(1) * 2, `Drift: birds sing in the calm, hide from a storm (${birdsAt(0).toFixed(4)} / ${birdsAt(1).toFixed(4)})`);
+  for (const k of ["wind", "fire", "city", "vinyl", "ocean"]) { const d = drift({ weather: 0.4 }, 2).L, r = drift({ weather: 0.4, texture: k, tex: 1 }, 2).L, o = rms(r.map((x, i) => x - d[i]), 2000, r.length); ok(o > 0.004 && finite(r), `Drift: ${k} sounds (${o.toFixed(4)})`); }
+  { const d = drift({ weather: 0.3 }, 2).L, two = drift({ weather: 0.3, texture: "rain", texture2: "fire", tex: 1 }, 2).L, one = drift({ weather: 0.3, texture: "rain", tex: 1 }, 2).L;
+    ok(rms(two.map((x, i) => x - d[i]), 2000, 80000) > rms(one.map((x, i) => x - d[i]), 2000, 80000) * 1.1, `Drift: two textures at once`); }
   const sh = (amt) => { const r = drift({ weather: 0, shimmer: amt, space: 1 }, 7); ok(finite(r.L) && rms(r.L, Math.round(5 * SR), r.L.length) < 0.6, `Drift: shimmer ${amt} stays in bounds (rms ${rms(r.L, Math.round(5 * SR), r.L.length).toFixed(3)})`); return hf(r.L, Math.round(5 * SR), r.L.length - 1) / rms(r.L, Math.round(5 * SR), r.L.length); };   // (brightness: the highs for the loudness)
   const s0 = sh(0), s1 = sh(1);
   ok(s1 > s0 * 1.1, `Drift: the shimmer brightens the tail (${s0.toFixed(4)} to ${s1.toFixed(4)})`);
@@ -353,6 +362,57 @@ console.log("Acid Flower: tools/acid/acid-worklet.js");
   ok(rms(tail, Math.round(12 * SR), tail.length) < 0.004, `Drift off: it fades to silence (${rms(tail, Math.round(12 * SR), tail.length).toFixed(4)})`);
   const t0 = process.hrtime.bigint(); drift({ weather: 0.8, texture: "ocean", tex: 0.6 }, 10); const ms = Number(process.hrtime.bigint() - t0) / 1e6;
   ok(ms < 3000, `Drift: speed, 10 s rendered in ${ms.toFixed(0)} ms (${(10000 / ms).toFixed(0)}x real time)`);
+}
+{ // Drift's additions: five pads and three bells, a held note, freeze, the movements and a new key, the drone and the pulse,
+  // weather that drifts by itself
+  const drift = (set, secs, msgs) => { const a = load({ drift: { seed: "nightbus", weather: 0, ...set }, play: true }); if (msgs) msgs(a); const r = a.render(secs); return { ...r, a }; };
+  const vz = (r) => r.a.posted.filter((m) => m.type === "viz");
+  const sigs = {};
+  for (const pad of ["saw", "glass", "choir", "keys", "drone"]) {
+    const r = drift({ pad }, 6), lv = rms(r.L, Math.round(3 * SR), r.L.length);
+    sigs[pad] = r.L;
+    ok(finite(r.L) && peak(r.L) < 1 && lv > 0.01 && vz(r).at(-1).drift.pad === pad, `Drift pad "${pad}": plays (rms ${lv.toFixed(3)})`);
+  }
+  let alike = 0; const ks = Object.keys(sigs);
+  for (let i = 0; i < ks.length; i++) for (let j = i + 1; j < ks.length; j++) { let d = 0; for (let n = 132300; n < 264600; n += 13) d += Math.abs(sigs[ks[i]][n] - sigs[ks[j]][n]); if (d < 5) alike++; }
+  ok(alike === 0, `Drift pads: all five sound different`);
+  for (const bell of ["bell", "box", "glass"]) {
+    const r = drift({ bell, pad: "glass" }, 2, (a) => { a.render(0.2); a.send({ type: "drift", tap: 0.7 }); });
+    ok(finite(r.L) && vz(r).at(-1).drift.bellT === bell, `Drift bell "${bell}": rings`);
+  }
+  { // a held finger: it sounds while held, and fades when let go
+    const base = drift({ moodY: 0 }, 1.5).L;
+    const r = drift({ moodY: 0 }, 1.5, (a) => { a.send({ type: "drift", hold: { id: 1, x: 0.6, on: true } }); });
+    const held = rms(r.L.map((x, i) => x - base[i]), Math.round(0.8 * SR), r.L.length);
+    ok(held > 0.01, `Drift: a held finger holds a note (${held.toFixed(3)})`);
+    r.a.send({ type: "drift", hold: { id: 1, on: false } }); const after = r.a.render(20).L;
+    const left = r.a.p.drift.pads.filter((v) => v.held != null || (v.env > 0 && v.held === 1)).length;
+    ok(left === 0, `Drift: let go, the note fades`);
+  }
+  { // freeze: no new notes, the chord holds
+    const r = drift({ weather: 0.9, moodY: 1 }, 3, (a) => { a.render(2); a.send({ type: "drift", set: { freeze: true } }); });
+    const before = r.a.p.drift.abs, notes = vz(r).slice(-20).filter((m) => m.drift.bell >= 0).length, more = r.a.render(3);
+    const later = vz(r).slice(-60).filter((m) => m.drift.bell >= 0 || (m.hits & 1)).length;
+    ok(later === 0 && rms(more.L, 0, more.L.length) > 0.01 && vz(r).at(-1).drift.frozen, `Drift: frozen, nothing new plays but the chord holds (rms ${rms(more.L, 0, more.L.length).toFixed(3)})`);
+  }
+  { // the movements: build, full, thin, rest, a new key
+    const a = load({ drift: { seed: "nightbus", bpm: 180, moodY: 1 }, play: true });
+    const seen = new Set(), roots = new Set(); let lowArc = 1;
+    for (let k = 0; k < 40; k++) { a.render(5); const d = a.p.drift; seen.add(d.sect); roots.add(d.root); if (d.sect === "rest") lowArc = Math.min(lowArc, d.arc); }
+    ok(["build", "full", "thin", "rest"].every((x) => seen.has(x)) && roots.size >= 2 && lowArc < 0.4, `Drift: movements (${[...seen].join(", ")}), the rest quiet (arc ${lowArc.toFixed(2)}), then a new key (${roots.size} keys)`);
+  }
+  { // the drone and the pulse
+    const plain = drift({ drone: 0, pulse: 0, moodY: 0 }, 4).L, dr = drift({ drone: 1, pulse: 0, moodY: 0 }, 4).L, pu = drift({ drone: 0, pulse: 1, moodY: 0 }, 4).L;
+    const dOnly = dr.map((x, i) => x - plain[i]), pOnly = pu.map((x, i) => x - plain[i]);
+    const f = pitch(dOnly, Math.round(2 * SR), Math.round(3 * SR));
+    ok(rms(dOnly, Math.round(1 * SR), dOnly.length) > 0.004 && f < 120, `Drift: the drone hums low (${f.toFixed(0)} Hz)`);
+    ok(rms(pOnly, 0, pOnly.length) > 0.004, `Drift: the pulse beats (${rms(pOnly, 0, pOnly.length).toFixed(4)})`);
+  }
+  { // weather that drifts by itself
+    const a = load({ drift: { seed: "nightbus", weather: 0.05, autoW: true, bpm: 180 }, play: true }); const ws = [];
+    for (let k = 0; k < 12; k++) { a.render(5); ws.push(a.p.drift.set.weather); }
+    ok(Math.max(...ws) - Math.min(...ws) > 0.05, `Drift: auto weather wanders (${Math.min(...ws).toFixed(2)} to ${Math.max(...ws).toFixed(2)})`);
+  }
 }
 { // the power-on sounds (boot-sound.js): each part where the boot animation puts it, nothing clipped, then quiet
   const ctx = vm.createContext({ Math, Float32Array, globalThis: {} });

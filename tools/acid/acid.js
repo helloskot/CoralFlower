@@ -246,7 +246,7 @@
       c.note.dataset.rat = s.on && s.rat > 1 ? "\u00d7" + s.rat : "";
       c.pill.textContent = s.on ? NOTE[s.note] + (s.note === 12 ? "′" : "") : "rest";
       c.note.style.setProperty("--h", String(s.on ? s.note / 12 : 0.5));
-      c.note.setAttribute("aria-label", (track === "lead" ? "Lead" : "Bass") + " step " + (i + 1) + ": " + (s.on ? NOTE[s.note] + (s.acc ? ", accent" : "") + (s.slide ? ", slide" : "") + (s.prob < 100 ? ", " + s.prob + "% chance" : "") + (s.rat > 1 ? ", repeats " + s.rat : "") : "rest") + ". Drag to change, tap to rest, hold for more.");
+      c.note.setAttribute("aria-label", (track === "lead" ? "Lead" : "Bass") + " step " + (i + 1) + ": " + (s.on ? NOTE[s.note] + (s.acc ? ", accent" : "") + (s.slide ? ", slide" : "") + (s.prob < 100 ? ", " + s.prob + "% chance" : "") + (s.rat > 1 ? ", repeats " + s.rat : "") : "rest") + ". Drag to change, tap to rest; Step… then tap it for more.");
       c.oct.textContent = s.oct > 0 ? "Up" : s.oct < 0 ? "Down" : "";
       c.oct.classList.toggle("is-up", s.oct > 0); c.oct.classList.toggle("is-dn", s.oct < 0);
       c.oct.setAttribute("aria-pressed", String(s.oct !== 0));
@@ -281,7 +281,7 @@
       e.classList.toggle("is-used", used(S.slots[i]));
       const p = S.slots[i], nx = p.next == null ? -1 : p.next;
       e.dataset.next = nx >= 0 && nx !== i ? "\u2192" + (nx + 1) : "";
-      e.title = (p.name ? p.name + ": " : "") + "pattern " + (i + 1) + (nx >= 0 && nx !== i ? ", then " + (nx + 1) : "") + " (hold for more)";
+      e.title = (p.name ? p.name + ": " : "") + "pattern " + (i + 1) + (nx >= 0 && nx !== i ? ", then " + (nx + 1) : "") + " (tap again for more)";
     });
     drawStatus();
     drawTitle();
@@ -314,11 +314,11 @@
     if (!t) return;
     e.preventDefault();
     if (t.id === "play") return setPlaying(!playing);
-    if (t.classList.contains("slot")) {                // a tap picks it; a hold (or a right-click) opens its menu
-      const i = +t.dataset.slot;
+    if (t.classList.contains("slot")) {                // a tap picks it; the one you're on tapped again (or a hold, or a right-click) opens its menu
+      const i = +t.dataset.slot, again = i === S.cur && nextSlot < 0;
       if (e.button === 2) { openSlot(i); return; }
       pickSlot(i); buzz();
-      ptr.set(e.pointerId, { kind: "slot", i, x0: e.clientX, y0: e.clientY, mouse: e.pointerType === "mouse", hold: setTimeout(() => { ptr.delete(e.pointerId); buzz(15); openSlot(i); }, 480) });
+      ptr.set(e.pointerId, { kind: "slot", i, again, x0: e.clientX, y0: e.clientY, mouse: e.pointerType === "mouse", hold: setTimeout(() => { ptr.delete(e.pointerId); buzz(15); openSlot(i); }, 480) });
       try { app.setPointerCapture(e.pointerId); } catch {}
       return;
     }
@@ -338,8 +338,17 @@
       drawBass(); edited(); audition(i);
       return;
     }
-    if (t.classList.contains("dr__name")) {             // a tap hears it; a hold opens its knobs
+    if (stepPick && (t.classList.contains("dr") || t.classList.contains("st__note") || t.classList.contains("dr__name"))) {   // (Step…: this one's options)
+      setStepPick(false); buzz(15);
+      if (t.classList.contains("dr__name")) { const l = +t.dataset.lane; afterTap(() => openLane(l)); }
+      else if (t.classList.contains("dr")) { const l = +t.dataset.lane, s2 = stp(+t.dataset.s); if (!pat().drums[l][s2]) { pat().drums[l][s2] = true; drawDrums(); edited(); } afterTap(() => openStep("drum", l, s2)); }
+      else { const i = stp(+t.dataset.s); if (!trk()[i].on) { trk()[i].on = true; drawBass(); edited(); } afterTap(() => openStep(track, 0, i)); }
+      return;
+    }
+    if (t.classList.contains("dr__name")) {             // a tap hears it; tapped again (or held) opens its knobs
       const l = +t.dataset.lane;
+      if (lastName === l && performance.now() - lastNameT < 2500) { lastName = -1; buzz(15); afterTap(() => openLane(l)); return; }
+      lastName = l; lastNameT = performance.now();
       post({ type: "hit", lane: l });
       ptr.set(e.pointerId, { kind: "slot", hold: setTimeout(() => { ptr.delete(e.pointerId); buzz(15); openLane(l); }, 480) });
       try { app.setPointerCapture(e.pointerId); } catch {}
@@ -424,12 +433,23 @@
       if (n) { p.acc -= n * px; setParam(p.k, S.params[p.k] + n * sp.unit); drawStrip(p.el); }
     }
   });
+  // Step…: the next step (or drum name) tapped opens its options; a drum's name tapped twice opens its knobs
+  let stepPick = false, lastName = -1, lastNameT = 0;
+  // (a menu opened by a tap opens after the tap's own click, which would land on its backdrop and close it)
+  const afterTap = (f) => setTimeout(f, 90);
+  function setStepPick(on) {
+    stepPick = on; $("stepBtn").setAttribute("aria-pressed", String(on)); app.classList.toggle("is-steppick", on);
+    if (on) toast(tab() === "drums" ? "Tap a step, or a drum's name" : "Tap a step for its options");
+  }
+  $("stepBtn").addEventListener("click", () => setStepPick(!stepPick));
+  addEventListener("keydown", (e) => { if (stepPick && e.key === "Escape") setStepPick(false); });
   const up = (e) => {
     const p = ptr.get(e.pointerId);
     if (!p) return;
     ptr.delete(e.pointerId);
     if (p.kind === "slot") {
       clearTimeout(p.hold);
+      if (p.again && !p.drag && p.i != null && e.type === "pointerup") afterTap(() => openSlot(p.i));
       if (p.drag) {
         document.documentElement.classList.remove("is-slotdrag");
         document.querySelectorAll(".slot.is-drop").forEach((x) => x.classList.remove("is-drop"));
@@ -593,7 +613,7 @@
       else half.forEach((x, i) => { if (Math.random() < 0.45) x.on = false; x.oct = Math.min(1, x.oct); });
       pat()[track] = [...half, ...half.map((x) => ({ ...x }))];
     } else { const g = randomDrums(); pat().drums = g; }
-    edited(); drawAll(); toast("A new " + (tab() === "drums" ? "beat" : tab() === "lead" ? "lead line" : "bass line") + " (hold Random for styles)", "Undo", undo);
+    edited(); drawAll(); toast("A new " + (tab() === "drums" ? "beat" : tab() === "lead" ? "lead line" : "bass line") + " (\u25BE for styles)", "Undo", undo);
   };
   act("#mutate", () => {
     begin();
@@ -838,12 +858,8 @@
   onPress($("raveFull"), () => setFull(!fsNow()));
   onPress($("raveRace"), () => setRace(!racing()));
   onPress($("race2p"), () => setRace(true, !rave.raceInfo().two));
-  // Scene: a tap the next one, a hold all of them
-  { const sb = $("raveScene"); let hold = 0, held = false;
-    sb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); held = false; hold = setTimeout(() => { held = true; buzz(15); openScenes(); }, 450); });
-    sb.addEventListener("pointerup", () => { clearTimeout(hold); if (held) return; if (!$("raveScenes").hidden) closeScenes(); else { rave.next(); drawScenes(); } });
-    sb.addEventListener("pointercancel", () => clearTimeout(hold));
-    sb.addEventListener("click", (e) => { if (e.detail === 0) rave.next(); }); }
+  // Scenes: a tap shows them all (another tap, or a pick, closes it)
+  onPress($("raveScene"), () => { if ($("raveScenes").hidden) openScenes(); else closeScenes(); });
   // the picture: one finger plays the filter (out of rave mode: a tap is the next scene); two fingers make a gesture,
   // decided when the first of them lifts
   let solo = null, g2 = null;
@@ -1012,6 +1028,7 @@
     punch: [["......PPPP..", ".....PPPP...", "....PPPP....", "...PPPP.....", "..PPPPPPPP..", ".....PPPP...", "....PPPP....", "...PPPP.....", "..PPP.......", "..PP........", ".P..........", "............"], { P: "#FF2FB4" }],
     rave: [["...YYYYYY...", "..YYYYYYYY..", ".YYYYYYYYYY.", "YYYKYYYYKYYY", "YYYKYYYYKYYY", "YYYYYYYYYYYY", "YYKYYYYYYKYY", "YYYKYYYYKYYY", ".YYYKKKKYYY.", "..YYYYYYYY..", "...YYYYYY...", "............"], { Y: "#FFE100", K: "#110A02" }],
     random: [["............", ".WWWWWWWWW..", ".W.......WW.", ".W.P...P.WW.", ".W.......WW.", ".W...P...WW.", ".W.......WW.", ".W.P...P.WW.", ".W.......WW.", ".WWWWWWWWWW.", "..WWWWWWWWW.", "............"], { W: "#F4F1FF", P: "#FF2FB4" }],
+    step: [["............", "..L.........", "..L....P....", ".LLL...P....", "..L...PPP...", "..L....P....", "..L....P..Y.", "..L....P..Y.", "..L....P.YYY", "..L....P..Y.", "............", "............"], { L: "#B4FF2B", P: "#FF2FB4", Y: "#FFE100" }],
     mutate: [["............", ".....Y......", ".....Y......", "...Y.Y.Y....", "....YYY.....", "..YYYWYYY...", "....YYY.....", "...Y.Y.Y.L..", ".....Y...L..", ".....Y.LLLLL", ".........L..", ".........L.."], { Y: "#FFE100", W: "#FFFFFF", L: "#B4FF2B" }],
     clear: [["............", ".PP......PP.", ".PPP....PPP.", "..PPP..PPP..", "...PPPPPP...", "....PPPP....", "....PPPP....", "...PPPPPP...", "..PPP..PPP..", ".PPP....PPP.", ".PP......PP.", "............"], { P: "#FF6FAE" }],
     lead: [["............", "........PP..", ".......P.P..", "......P..P..", ".....P...P..", "....P....P..", "...P.....P..", "..P......P..", ".P.......PPP", "P........PPP", ".........PP.", "............"], { P: "#FF2FB4" }],
@@ -1028,7 +1045,7 @@
     g.forEach((row, y) => [...row].forEach((ch, x) => { if (col[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${col[ch]}"/>`; }));
     return `<svg class="pix" viewBox="0 0 12 12" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
   };
-  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="lead"]', "lead"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ["#driftBtn", "drift"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#random", "random"], ["#mutate", "mutate"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"], ["#raveLock", "lock"], ["#raveFull", "full"], ["#raveVJ", "vj"], ["#driftDice", "random"]]) {
+  for (const [sel, name] of [['[data-tab="bass"]', "bass"], ['[data-tab="lead"]', "lead"], ['[data-tab="drums"]', "drums"], ['[data-tab="punch"]', "punch"], ["#driftBtn", "drift"], ['[data-tab="filter"]', "filter"], ["#raveBtn", "rave"], ["#random", "random"], ["#mutate", "mutate"], ["#stepBtn", "step"], ["#clear", "clear"], ["#undo", "undo"], ["#redo", "redo"], ["#raveLock", "lock"], ["#raveFull", "full"], ["#raveVJ", "vj"], ["#driftDice", "random"]]) {
     const el = document.querySelector(sel);
     el.innerHTML = iconSvg(name) + `<span>${el.textContent}</span>`;
   }
@@ -1452,6 +1469,7 @@
     toast(STYLES.find((x) => x[0] === b2.dataset.style)[1] + " at " + tempo + " BPM", "Undo", undo);
   });
   $("genMenu").addEventListener("click", (e) => { if (e.target === $("genMenu")) $("genMenu").close(); });
+  $("styleBtn").addEventListener("click", () => show($("genMenu")));
   { const rb = $("random"); let hold = 0, held = false;
     rb.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); held = false; if (e.button === 2) { held = true; show($("genMenu")); return; } hold = setTimeout(() => { held = true; buzz(15); show($("genMenu")); }, 480); });
     rb.addEventListener("pointerup", () => { clearTimeout(hold); if (!held) doRandom(); });

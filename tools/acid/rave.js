@@ -51,7 +51,8 @@
     W: "10001100011000110101101011010101010", "!": "00100001000010000100001000000000100", " ": "00000000000000000000000000000000000",
     T: "11111001000010000100001000010000100", N: "10001110011010110011100011000110001", M: "10001110111010110101100011000110001",
     P: "11110100011000111110100001000010000", Y: "10001100010101000100001000010000100", G: "01111100001000010011100011000101111",
-    B: "11110100011000111110100011000111110", X: "10001100010101000100010101000110001", 0: "01110100011001110101110011000101110" };
+    B: "11110100011000111110100011000111110", X: "10001100010101000100010101000110001", 0: "01110100011001110101110011000101110",
+    1: "00100011000010000100001000010001110", 2: "01110100010000100010001000100011111", 3: "11110000010000101110000010000111110", 4: "00010001100101010010111110001000010", 5: "11111100001111000001000011000101110", 6: "00110010001000011110100011000101110", 7: "11111000010001000100010000100001000", 8: "01110100011000101110100011000101110", 9: "01110100011000101111000010001001100" };
   const WORDS = ["ACID", "FLOWER", "RAVE", "JACK", "LOVE", "HOUSE", "ACID!"];
   const HACKWORDS = ["ROOT", "ACCESS", "OVERRIDE", "SYSTEM", "0XACID", "BYPASS"];
   const SCENES = ["WAREHOUSE", "CYBERSPACE", "TUNNEL", "VOXEL", "PLASMA", "MAINFRAME", "GARDEN", "FEEDBACK", "HYPERSPACE", "ACID RAIN", "SPIRAL", "AURORA", "NEBULA"];
@@ -147,8 +148,8 @@
     burst() { this.scatter = 1; this.glitch = 0.4; this.flash = Math.max(this.flash, 0.3); }
     sceneCount() { return SCENES.length; }
     go(i) { this.scene = ((i % SCENES.length) + SCENES.length) % SCENES.length; this.sceneLabel = 1.6; this.barOfScene = 0; this.prev.fill(0); }
-    next() { const L = this.sceneList; if (L && L.length) { const i = L.indexOf(this.scene); this.go(L[(i + 1) % L.length]); } else this.go(this.scene + 1); }
-    back() { const L = this.sceneList; if (L && L.length) { const i = L.indexOf(this.scene); this.go(L[(i - 1 + L.length) % L.length]); } else this.go(this.scene - 1); }
+    next() { if (this.racing) return; const L = this.sceneList; if (L && L.length) { const i = L.indexOf(this.scene); this.go(L[(i + 1) % L.length]); } else this.go(this.scene + 1); }
+    back() { if (this.racing) return; const L = this.sceneList; if (L && L.length) { const i = L.indexOf(this.scene); this.go(L[(i - 1 + L.length) % L.length]); } else this.go(this.scene - 1); }
     setPad(x, y) { this.pad = x == null ? null : [x, y]; }
 
     // ------------------------------------------------------------------------------------- the sound's news ---
@@ -176,7 +177,7 @@
         if (m.step < this.lastStep || this.lastStep < 0) {   // a new bar
           this.bar++; this.barOfScene++;
           if (this.vj.auto && this.bar % 4 === 0 && this.onAuto) this.onAuto();
-          if (this.auto && this.barOfScene >= (this.autoBars || 8) && m.playing) this.next();
+          if (this.auto && this.barOfScene >= (this.autoBars || 8) && m.playing && !this.racing) this.next();
         }
         this.lastStep = m.step;
       }
@@ -868,11 +869,13 @@
       this.kick *= d(0.004); this.snare *= d(0.01); this.clap *= d(0.01); this.hat *= d(0.002); this.accent *= d(0.05);
       this.flash *= d(0.0015); this.shake *= d(0.0005); this.sceneLabel -= dt; this.bloom = (this.bloom || 0) * d(0.25); this.bolt = (this.bolt || 0) * d(0.002);
       if (!playing) { this.v = { ...this.v, cut: this.hooks.params().cutoff, reso: this.hooks.params().reso }; }
-      [this.warehouse, this.cyberspace, this.tunnel, this.voxelScene, this.plasma, this.mainframe, this.garden, this.feedback,
+      const x3 = EXTRA[this.scene - BUILTIN];              // (the 3D scenes, from rave3d.js, after the built-in ones)
+      if (x3) x3.fn.call(this);
+      else [this.warehouse, this.cyberspace, this.tunnel, this.voxelScene, this.plasma, this.mainframe, this.garden, this.feedback,
        this.hyperspace, this.rain, this.spiral, this.aurora, this.nebula][this.scene].call(this);
-      if (HACKER[this.scene] && this.vj.hud) this.terminal();
+      if ((HACKER[this.scene] || (x3 && x3.hacker)) && this.vj.hud && !this.racing) this.terminal();
       if (this.vj.parts) this.particles(dt * sp); else this.parts.length = 0;
-      if (this.vj.words) this.words(dt); else this.word = null;
+      if (this.vj.words && !this.racing) this.words(dt); else this.word = null;
       if (this.vj.text) this.banner();
       if (this.vj.hud) this.hud(playing);
       this.post();
@@ -897,6 +900,7 @@
       if (Math.floor(w.life * 12) % 3 !== 0) this.text5(w.s, x, y, k, pal(this.t * 200 + this.slotShift()), true);
     }
     hud(playing) {
+      if (this.racing) { if (this.raceHud) this.raceHud(); return; }   // (the race draws its own)
       if (this.driftMode) {                              // (Drift: no steps, no tempo; the mood pad's place when touched)
         if (this.pad) { const [v0, v1] = this.view, [px, py] = this.pad, x = v0 + px * (v1 - v0), y = py * H; this.disc(x, y, 3, [200, 220, 255], 0.6); this.line(x, 0, x, H - 1, [200, 220, 255], 0.15); this.line(0, y, W - 1, y, [200, 220, 255], 0.15); }
         return;
@@ -944,7 +948,7 @@
         B = this.freeze;
       } else { this.rowOff.fill(0); this.repIdx = -1; }
       const sx = calm ? 0 : Math.round((rnd() - 0.5) * 3 * this.shake), sy = calm ? 0 : Math.round((rnd() - 0.5) * 3 * this.shake);
-      const fr = !calm && this.accent > 0.3 ? 1 + (this.accent > 0.7 ? 1 : 0) : 0, fl = calm ? 0 : this.flash * 0.65;
+      const fr = !calm && !this.racing && this.accent > 0.3 ? 1 + (this.accent > 0.7 ? 1 : 0) : 0, fl = calm ? 0 : this.flash * 0.65;
       const inv = has(3) ? 0.9 : 0, tape = has(4) ? this.tape : 1, lp = held(5), hp = held(6), crush = has(7), echo = has(9);
       const gate = has(8) ? ((this.scroll * 4) % 1 < 0.5 ? 1 : (calm ? 0.35 : 0.04)) : 1;
       // the VJ: mirrors, a kaleidoscope, a zoom on the kick, bigger pixels, a wider colour split, trails, the hue
@@ -993,6 +997,10 @@
       if (this.onFrame) this.onFrame(this.img);              // (the projector's window gets a copy)
     }
   }
+  // the scenes other files add (rave3d.js): { name, fn (drawn into this.buf like the rest), hacker }
+  const BUILTIN = SCENES.length, EXTRA = [];
+  Rave.addScene = (sc) => { EXTRA.push(sc); SCENES.push(sc.name); return SCENES.length - 1; };
+  Rave.util = { pal, PAL, clamp, sn, rnd, YEL, LIME, PINK, CYAN, ORANGE, VIOLET, WHITE, INK, H };
   globalThis.AcidRave = Rave;
   globalThis.AcidRave.SCENES = SCENES;
   globalThis.AcidRave.VJ0 = VJ0;

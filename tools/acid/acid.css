@@ -683,9 +683,11 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .app.is-rave .rave__tempo { flex-basis: 100px; padding: 2px 24px; }
   .app.is-rave .rave__tempo .strip__l, .app.is-rave .rave__tempo .strip__r { width: 22px; }
   .rave__i { width: 40px; height: 40px; }
-  .rave__scenelist { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .app.is-rave .rave__bar { left: max(10px, env(safe-area-inset-left)); justify-content: space-between; }
+  .rave__scenelist { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .rave__scenelist button { min-height: 38px; font-size: 11px; padding: 0 3px; }
+  .app.is-rave .rave__bar { left: max(10px, env(safe-area-inset-left)); justify-content: space-between; gap: 5px; }
   .rave__b { padding: 0 10px; }
+  .app.is-rave .rave__bar .rave__b { flex: 1 1 auto; min-width: 0; padding: 0 5px; font-size: 12px; }
   .rave__exit { margin-left: 4px; }
 }
 /* the book fold: the top along the left page */
@@ -966,3 +968,4 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
   .drift__wl, .drift__wr { font-size: 11px; }
   .drift__seed span { display: none; }
 }
+.rave__race[aria-pressed="true"] { background: var(--yellow); color: var(--black); box-shadow: none; }

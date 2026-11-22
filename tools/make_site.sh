@@ -7,7 +7,7 @@
 #   OUT/ipad/            CoralFlower for iPad (tools/emu/ipad): the same firmware as a full-screen touch instrument, a
 #                        Home Screen web app; it loads ../play/coralflower.wasm and ../play/worklet.js
 #   OUT/acid/            Acid Flower (tools/acid): an acid house machine for iPad, a Home Screen web app of its own
-#   OUT/handwave/        Handwave (tools/handwave): a chord machine played with the hands, a Home Screen web app
+#   OUT/handwave/        Handwave (tools/handwave): an ambient house chord machine played with the hands, in the browser
 #   OUT/install/         the old installer address, forwarding to /#install
 # OUT/firmware/ (the released packages and releases.json) is not touched: pages.yml fills it from the releases, and a
 # local copy keeps what is there. A new site.css is a new address (?v=hash): a browser cannot keep an old one. The
@@ -33,8 +33,7 @@ cp tools/acid/index.html tools/acid/acid.js tools/acid/rave.js tools/acid/rave3d
    tools/acid/manifest.webmanifest tools/acid/icon.svg tools/acid/icon-180.png tools/acid/icon-512.png \
    tools/acid/favicon-40.png tools/acid/og-image.png tools/acid/vj.html "$OUT/acid/"
 cp tools/handwave/index.html tools/handwave/handwave.js tools/handwave/theory.js tools/handwave/handwave-worklet.js \
-   tools/handwave/handwave.css tools/handwave/sw.js tools/handwave/manifest.webmanifest tools/handwave/icon.svg \
-   tools/handwave/icon-180.png tools/handwave/icon-512.png "$OUT/handwave/"
+   tools/handwave/handwave.css tools/handwave/icon.svg "$OUT/handwave/"
 STAMP=$(cat web/site.css | shasum | cut -c1-10)
 # (sed -i.bak, then the .bak removed: the one form both BSD sed on macOS and GNU sed on the CI runner take)
 sed -i.bak "s|href=\"site.css\"|href=\"site.css?v=$STAMP\"|" "$OUT/index.html"

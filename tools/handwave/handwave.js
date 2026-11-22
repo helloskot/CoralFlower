@@ -25,7 +25,7 @@
 
   // ------------------------------------------------------------------------------------------- the state ---
   const KEY = "handwave-hands";
-  const DEF = { scene: "sky", mood: "night", vol: 0.8, hands: true, face: true, body: true, dials: true, v: 3 };
+  const DEF = { scene: "iso", mood: "night", vol: 0.8, hands: true, face: true, body: true, dials: true, v: 4 };
   const S = (() => { try { return { ...DEF, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { return { ...DEF }; } })();
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
   try { localStorage.removeItem("handwave-state"); } catch {}   // (the chord machine's, from before)
@@ -38,7 +38,7 @@
   if (!MOODS[S.mood]) S.mood = "night";
   if (S.hands === undefined) S.hands = true;
   if (S.dials === undefined) S.dials = true;
-  if (!["aurora", "nebula", "sky"].includes(S.scene) || (S.v || 0) < 3) { S.scene = "sky"; S.v = 3; S.face = S.face !== false; S.body = S.body !== false; save(); }   // (the flight first)
+  if (!["iso", "aurora", "nebula", "sky"].includes(S.scene) || (S.v || 0) < 4) { S.scene = "iso"; S.v = 4; S.face = S.face !== false; S.body = S.body !== false; save(); }   // (the island first)
 
   // ------------------------------------------------------------------------------------------- the sound ---
   let ctx = null, node = null, ready = null, started = false, paused = false, viz = { level: 0, pad: [], notes: [], kick: 0, stab: 0, near: 0, pitch: 0.45, energy: 0.55, space: 0.5, drive: 0.35, mouth: 0, dance: 0 };
@@ -203,7 +203,7 @@
   // each new chord and bell, the weather (the left hand near), the light (the right hand high: brighter), the flight
   const HEAD = `#version 300 es
 precision highp float;
-uniform vec2 uRes, uPos; uniform float uT, uLvl, uBloom, uW, uZ, uBolt, uNear, uYaw, uLook, uRoll, uKick; uniform vec2 uMood; uniform vec3 uC1, uC2, uC3;
+uniform vec2 uRes, uPos; uniform float uT, uLvl, uBloom, uW, uZ, uBolt, uNear, uYaw, uLook, uRoll, uKick, uE, uD; uniform vec2 uMood; uniform vec3 uC1, uC2, uC3;
 out vec4 o;
 mat2 rot(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
 float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -213,6 +213,72 @@ float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a
 float stars(vec2 frag, float scale) { vec2 g = floor(frag / scale); return step(0.9965, h21(g)) * (0.5 + 0.5 * sin(uT * 1.7 + h21(g + 3.1) * 40.0)); }
 `;
   const SHADERS = {
+    // ISO: isometric pixel art. A floating island of blocks seen from above at the classic angle, drawn small and shown
+    // big (each pixel a block on the screen), in a few colours with an ordered dither. The land scrolls under you and
+    // turns with the right hand; towers rise with the groove and bounce on the kick; their windows light as the filter
+    // opens; the water shimmers; the chord colours it all
+    iso: HEAD + `
+float bayer(vec2 f) { ivec2 p = ivec2(mod(f, 4.0)); int i = p.x + p.y * 4;
+  int[16] m = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5); return (float(m[i]) + 0.5) / 16.0; }
+vec2 TGT;
+float tower(vec2 c) { return h21(c * 1.37 + 3.1); }
+// a cell's top (its bottom is the island's underside); out past the island's edge, nothing
+float cellH(vec2 c) {
+  if (length(c + 0.5 - TGT) > 12.5) return -99.0;
+  float h = max(0.0, floor(fbm(c * 0.075 + 40.0) * 10.0) - 3.0);
+  float tw = tower(c);
+  if (h > 0.0 && tw > 0.9) h += 1.0 + floor(uE * 7.0 * (0.45 + 0.55 * h21(c + 7.0))) + (tw > 0.96 ? uKick * 1.2 : 0.0);
+  return h;
+}
+void main() {
+  vec2 f = gl_FragCoord.xy, p = f - uRes * 0.5;
+  float s = 30.0 / min(uRes.x, uRes.y), a = 0.785 + uYaw * 1.1, e = 0.6 + uLook * 0.5;
+  vec3 d = normalize(vec3(cos(e) * sin(a), -sin(e), cos(e) * cos(a)));
+  vec3 rt = normalize(cross(d, vec3(0.0, 1.0, 0.0))), up = cross(rt, d);
+  TGT = uPos * 0.35;
+  vec3 ro = vec3(TGT.x, 3.0, TGT.y) + (rt * p.x + up * p.y) * s - d * 40.0;
+  ro += d * ((14.0 - ro.y) / d.y);
+  // the sky behind the island: the mood's dark, pixel stars
+  float q = f.y / uRes.y;
+  vec3 c = mix(vec3(0.02, 0.02, 0.05) + uC1 * 0.05, vec3(0.06, 0.05, 0.13) + uC2 * 0.12, q) * (0.7 + uMood.y * 0.6);
+  vec2 sg = floor(f / 2.0); c += vec3(0.9) * step(0.993, h21(sg)) * (0.5 + 0.5 * sin(uT * 2.0 + h21(sg + 1.0) * 30.0)) * q;
+  // through the grid, cell by cell (the columns stand from the underside, y = -3, to their top)
+  vec2 cell = floor(ro.xz), st = sign(d.xz), td = abs(1.0 / d.xz), tm = ((cell + max(st, 0.0)) - ro.xz) / d.xz;
+  float t = 0.0; int side = -1, hit = 0; vec3 pos = ro; float hh = 0.0; vec2 hc = cell;
+  for (int i = 0; i < 90; i++) {
+    float h = cellH(cell), tx = min(tm.x, tm.y), y0 = ro.y + d.y * t, y1 = ro.y + d.y * tx;
+    if (h > -50.0 && y1 <= h && y0 >= -3.0) {
+      if (y0 <= h && side >= 0) { hit = 2 + side; pos = ro + d * t; } else { hit = 1; pos = ro + d * ((h - ro.y) / d.y); }
+      hh = h; hc = cell; break;
+    }
+    if (tm.x < tm.y) { t = tm.x; tm.x += td.x; cell.x += st.x; side = 0; } else { t = tm.y; tm.y += td.y; cell.y += st.y; side = 1; }
+    if (ro.y + d.y * t < -6.0) break;
+  }
+  if (hit > 0) {
+    float tw = tower(hc); bool isT = hh > 0.0 && tw > 0.9 && hh > max(0.0, floor(fbm(hc * 0.075 + 40.0) * 10.0) - 3.0);
+    vec3 grass = mix(vec3(0.25, 0.55, 0.3), uC1, 0.3), sand = vec3(0.85, 0.75, 0.5), rock = vec3(0.55, 0.5, 0.6), snow = vec3(0.92, 0.94, 1.0);
+    vec3 base = hh < 0.5 ? mix(vec3(0.15, 0.35, 0.75), uC3, 0.35) : hh < 1.5 ? sand : hh < 4.5 ? grass : hh < 6.5 ? rock : snow;
+    if (isT) base = mix(vec3(0.75, 0.74, 0.8), uC2, 0.35);
+    if (hit == 1) {
+      c = base;
+      vec2 fr = fract(pos.xz);
+      if (hh < 0.5) c += 0.12 * step(0.75, sin((pos.x + pos.z) * 3.0 + uT * 2.0 + h21(hc) * 6.0)) + uKick * 0.08;   // (the water shimmers)
+      if (min(min(fr.x, 1.0 - fr.x), min(fr.y, 1.0 - fr.y)) < 0.07) c *= 0.82;                                         // (each tile's edge)
+      if (isT && tw > 0.96) c = mix(c, vec3(1.0), uKick * 0.6);                                                       // (the tall ones flash on the kick)
+    } else {
+      float sh = hit == 2 ? 0.66 : 0.46;
+      c = (pos.y < 0.0 ? mix(vec3(0.35, 0.25, 0.22), vec3(0.2, 0.15, 0.18), clamp(-pos.y / 3.0, 0.0, 1.0)) : base) * sh;
+      if (isT && pos.y > 0.3) {                         // windows, lit as the filter opens
+        vec2 w = vec2((hit == 2 ? pos.z : pos.x) * 3.0, pos.y * 3.0), wc = floor(w), wf = fract(w);
+        if (wf.x > 0.25 && wf.x < 0.75 && wf.y > 0.3 && wf.y < 0.8) c = h21(wc + hc * 7.0) < 0.08 + uD * 0.85 ? mix(vec3(1.0, 0.85, 0.45), uC2, 0.25) * (1.0 + uKick * 0.3) : c * 0.6;
+      }
+    }
+    c *= 0.75 + uMood.y * 0.45 + uBloom * 0.15;
+  }
+  // a few colours, an ordered dither: pixel art
+  float lv = hit > 0 ? 6.0 : 24.0; c = floor(c * lv + bayer(f)) / lv;   // (the sky in finer steps: calm)
+  o = vec4(c, 1.0);
+}`,
     // AURORA: curtains of light over dark hills, swaying slowly, brighter with each bell; coloured by the chord
     aurora: HEAD + `
 void main() {
@@ -297,7 +363,7 @@ void main() {
       gl.attachShader(p, sh(gl.FRAGMENT_SHADER, SHADERS[name]));
       gl.bindAttribLocation(p, 0, "a"); gl.linkProgram(p);
       if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
-      const u = {}; for (const n of ["uRes", "uPos", "uT", "uLvl", "uBloom", "uW", "uZ", "uBolt", "uNear", "uYaw", "uLook", "uRoll", "uKick", "uMood", "uC1", "uC2", "uC3"]) u[n] = gl.getUniformLocation(p, n);
+      const u = {}; for (const n of ["uRes", "uPos", "uT", "uLvl", "uBloom", "uW", "uZ", "uBolt", "uNear", "uYaw", "uLook", "uRoll", "uKick", "uE", "uD", "uMood", "uC1", "uC2", "uC3"]) u[n] = gl.getUniformLocation(p, n);
       progs[name] = { p, u };
     } catch (err) { console.warn("Handwave: the " + name + " scene couldn't be drawn: " + err.message); progs[name] = null; }
     return progs[name];
@@ -314,11 +380,16 @@ void main() {
   // ----------------------------------------------------------------------------------------- the hands, drawn ---
   const hc = $("hands"), g = hc.getContext("2d");
   let W = 0, H = 0, dpr = 1, motes = [];
+  // (in pixel art, the iso scene, everything is drawn small, about 180 pixels across the short side, and shown big with
+  // each pixel a sharp block; the hands too)
+  const pixel = () => S.scene === "iso";
   function fit() {
-    dpr = Math.min(2, devicePixelRatio || 1); W = Math.round(innerWidth * dpr); H = Math.round(innerHeight * dpr);
+    if (pixel()) { const ps = Math.min(innerWidth, innerHeight) / 180; dpr = 1 / ps; W = Math.round(innerWidth / ps); H = Math.round(innerHeight / ps); }
+    else { dpr = Math.min(2, devicePixelRatio || 1); W = Math.round(innerWidth * dpr); H = Math.round(innerHeight * dpr); }
+    document.documentElement.classList.toggle("pixel", pixel());
     hc.width = W; hc.height = H; sizeSky();
   }
-  function sizeSky() { skyEl.width = Math.max(2, Math.round(W * q)); skyEl.height = Math.max(2, Math.round(H * q)); }
+  function sizeSky() { const k = pixel() ? 1 : q; skyEl.width = Math.max(2, Math.round(W * k)); skyEl.height = Math.max(2, Math.round(H * k)); }
   addEventListener("resize", fit); fit();
   const toC = (p) => [(1 - p.x) * W, p.y * H];
   function onViz(m) {
@@ -328,7 +399,7 @@ void main() {
     const hr = current().r;
     for (const n of m.notes || []) {
       const [x, y] = hr ? handPoint(hr) : [W / 2, H / 2];
-      motes.push({ x: x + (Math.random() - 0.5) * 70 * dpr, y: y + (Math.random() - 0.5) * 70 * dpr, h: (n % 12) * 30, life: 1, r: (1.5 + Math.random() * 2.2) * dpr, vy: -0.04 });
+      motes.push({ x: x + (Math.random() - 0.5) * 70 * dpr, y: y + (Math.random() - 0.5) * 70 * dpr, h: (n % 12) * 30, life: 1, r: Math.max(1, (1.5 + Math.random() * 2.2) * dpr), vy: -0.04 });
     }
     if (motes.length > 140) motes.splice(0, motes.length - 140);
   }
@@ -366,7 +437,7 @@ void main() {
       const was = tipsWas[side];
       TIP.forEach((k, i) => {
         const [x, y] = P(k); orb(x, y, w * (2.6 + pulse), rgb, 0.9);
-        if (was[i]) { const sp = Math.hypot(x - was[i][0], y - was[i][1]) / dpr; if (sp > 6 && motes.length < 220) for (let j = 0; j < Math.min(3, sp / 8); j++) motes.push({ x, y, h: side ? 275 : 185, life: 0.7, r: (1 + Math.random() * 1.6) * dpr, vy: -0.01 + (Math.random() - 0.5) * 0.04, vx: (x - was[i][0]) * 0.02 + (Math.random() - 0.5) * 0.6 }); }
+        if (was[i]) { const sp = Math.hypot(x - was[i][0], y - was[i][1]) / dpr; if (sp > 6 && motes.length < 220) for (let j = 0; j < Math.min(3, sp / 8); j++) motes.push({ x, y, h: side ? 275 : 185, life: 0.7, r: Math.max(1, (1 + Math.random() * 1.6) * dpr), vy: -0.01 + (Math.random() - 0.5) * 0.04, vx: (x - was[i][0]) * 0.02 + (Math.random() - 0.5) * 0.6 }); }
         was[i] = [x, y];
       });
     } else {
@@ -462,13 +533,14 @@ void main() {
         gl.viewport(0, 0, skyEl.width, skyEl.height); gl.useProgram(P.p); const u = P.u;
         gl.uniform2f(u.uRes, skyEl.width, skyEl.height); gl.uniform1f(u.uT, now / 1000); gl.uniform1f(u.uLvl, Math.min(1, viz.level * 5));
         gl.uniform1f(u.uBloom, bloom); gl.uniform1f(u.uW, 0); gl.uniform1f(u.uZ, skyZ); gl.uniform1f(u.uBolt, bolt); gl.uniform1f(u.uNear, viz.near);
+        gl.uniform1f(u.uE, viz.energy); gl.uniform1f(u.uD, viz.drive);
         gl.uniform2f(u.uPos, view.x, view.z); gl.uniform1f(u.uYaw, view.yaw); gl.uniform1f(u.uLook, view.look); gl.uniform1f(u.uRoll, view.roll); gl.uniform1f(u.uKick, kickP * Math.min(1, viz.energy * 2.5));
         gl.uniform2f(u.uMood, current().r ? current().r.x : 0.5, 0.25 + viz.pitch * 0.6);
         gl.uniform3fv(u.uC1, col.c1); gl.uniform3fv(u.uC2, col.c2); gl.uniform3fv(u.uC3, col.c3);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
       }
       // the quality: lighter when frames are slow, finer when there's room
-      frameAvg = lerp(frameAvg, dt * 1000, 0.05);
+      frameAvg = lerp(frameAvg, dt * 1000, 0.05); if (pixel()) frameAvg = 16.7;
       if (frameAvg > 20 && q > 0.3) { q = Math.max(0.3, q - 0.08); sizeSky(); frameAvg = 16.7; }
       else if (frameAvg < 14 && q < 0.85) { q = Math.min(0.85, q + 0.03); sizeSky(); frameAvg = 16.7; }
     }
@@ -520,8 +592,8 @@ void main() {
   drawFollow();
   const show = (d) => { if (!d.open) d.showModal(); };
   for (const d of document.querySelectorAll("dialog")) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
-  const SCENES = ["aurora", "nebula", "sky"];
-  $("sceneBtn").addEventListener("click", () => { S.scene = SCENES[(SCENES.indexOf(S.scene) + 1) % 3]; save(); drawMenu(); });
+  const SCENES = ["iso", "sky", "aurora", "nebula"];
+  $("sceneBtn").addEventListener("click", () => { S.scene = SCENES[(SCENES.indexOf(S.scene) + 1) % SCENES.length]; save(); fit(); drawMenu(); });
   $("menuBtn").addEventListener("click", () => { drawMenu(); show($("menuSheet")); });
   $("helpBtn").addEventListener("click", () => { $("menuSheet").close(); show($("helpSheet")); });
   $("pauseBtn").addEventListener("click", () => { paused = !paused; begin(); post({ type: "on", on: !paused }); drawMenu(); });
@@ -530,7 +602,7 @@ void main() {
   for (const k of ["hands", "face", "body"]) $(k + "Follow").addEventListener("click", () => { S[k] = !S[k]; save(); drawMenu(); drawFollow(); if (!S[k]) { if (k === "face") face = null; else if (k === "body") body = null; else camHands = { r: null, l: null }; } else if (handsOn) loadFaceBody(); });
   document.querySelectorAll("[data-set]").forEach((sg) => sg.addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
-    S[sg.dataset.set] = b.dataset.v; save(); drawMenu();
+    S[sg.dataset.set] = b.dataset.v; save(); drawMenu(); if (sg.dataset.set === "scene") fit();
     if (sg.dataset.set === "mood") { lastNotes = null; sendChord(true); sendParams(); }
   }));
   function drawMenu() {
@@ -564,5 +636,5 @@ void main() {
   }
   window.handwave = { S, begin, ctx: () => ctx, viz: () => viz, started: () => started, zone: () => zone, camOn: () => camOn, handsOn: () => handsOn, quality: () => q,
     readHand, handsToControl, makeHand, current, setHands: (h) => { testHands = h; }, setCamHands: (lms) => { camHands = handsToControl(lms, camHands); }, gl: () => !!gl, scenesOk: () => SCENES.map((n) => !!(gl && prog(n))),
-    view: () => ({ ...view }), dial: (i) => DIALS[i].shown, setFace: (f) => { face = f; }, setBody: (b) => { body = b; }, readFace, readBody, rings: () => rings.length, kicks: () => kickTotal, trackers: () => ({ hand: !!handTr, face: !!faceTr, pose: !!poseTr }) };
+    view: () => ({ ...view }), pixelSize: () => [skyEl.width, skyEl.height, hc.width], dial: (i) => DIALS[i].shown, setFace: (f) => { face = f; }, setBody: (b) => { body = b; }, readFace, readBody, rings: () => rings.length, kicks: () => kickTotal, trackers: () => ({ hand: !!handTr, face: !!faceTr, pose: !!poseTr }) };
 })();

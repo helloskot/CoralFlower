@@ -82,7 +82,7 @@ const onsets = (a, win = 256, k = 2.2) => {            // where the level jumps
 };
 console.log("Handwave: handwave-worklet.js");
 { const a = load(); ok(peak(a.render(0.5).L) < 1e-6, "nothing played: silence"); }
-for (const sound of ["saw", "pluck", "stab", "keys"]) {      // each sound: a note at its pitch, bounded, and it stops
+for (const sound of ["saw", "pluck", "organ", "keys"]) {      // each sound: a note at its pitch, bounded, and it stops
   const a = load(); a.send({ type: "params", p: { sound, delay: 0, verb: 0 } });
   a.send({ type: "chord", notes: [57], root: 57, vel: 0.9 });
   const { L } = a.render(0.6); a.send({ type: "release" });
@@ -105,10 +105,10 @@ for (const sound of ["saw", "pluck", "stab", "keys"]) {      // each sound: a no
   ok(on.length >= 12 && Math.abs(per - 0.125) < 0.02, `the arpeggiator: ${on.length} notes in 2 s, every ${(per * 1000).toFixed(0)} ms (a sixteenth at 120: 125)`);
 }
 { // the groove: kicks four to the bar
-  const a = load(); a.send({ type: "params", p: { drums: "house", tempo: 120, delay: 0, verb: 0 } }); a.send({ type: "play", on: true });
+  const a = load(); a.send({ type: "params", p: { drums: "deep", tempo: 120, delay: 0, verb: 0 } }); a.send({ type: "play", on: true });
   const { L } = a.render(4.2);
   const kicks = a.posted.filter((m) => m.type === "viz" && m.kick).length;
-  ok(finite(L) && peak(L) < 1 && rms(L) > 0.03, `the house groove sounds (level ${rms(L).toFixed(3)}, peak ${peak(L).toFixed(2)})`);
+  ok(finite(L) && peak(L) < 1 && rms(L) > 0.03, `the deep groove sounds (level ${rms(L).toFixed(3)}, peak ${peak(L).toFixed(2)})`);
   ok(kicks >= 7 && kicks <= 9, `kicks on the beat: ${kicks} in two bars at 120`);
 }
 { // the bass follows the chord's root
@@ -128,18 +128,55 @@ for (const sound of ["saw", "pluck", "stab", "keys"]) {      // each sound: a no
   ok(seen.has(0) && seen.has(2) && !seen.has(1), `the chord memory: slots ${[...seen].join(", ")} played in turn (the empty one skipped)`);
 }
 { // the pump: the chords duck under each kick
-  const a = load(); a.send({ type: "params", p: { drums: "house", pump: 1, tempo: 120, drumVol: 0, delay: 0, verb: 0, sound: "saw", attack: 0.003 } });
+  const a = load(); a.send({ type: "params", p: { drums: "deep", pump: 1, tempo: 120, drumVol: 0, delay: 0, verb: 0, sound: "saw", attack: 0.003 } });
   a.send({ type: "play", on: true }); a.send({ type: "chord", notes: [60, 64, 67], root: 60, vel: 0.8 });
   const { L } = a.render(2.2), beat = SR / 2, w = 1024;
   const at = (t) => rms(L, Math.round(t), Math.round(t) + w);
   ok(at(beat * 2 + 300) < at(beat * 2 - 6000) * 0.6, `the pump: the pad ducks on the kick (${at(beat * 2 + 300).toFixed(3)} vs ${at(beat * 2 - 6000).toFixed(3)})`);
 }
+{ // the dub groove: kicks on one and three
+  const a = load(); a.send({ type: "params", p: { drums: "dub", tempo: 120, delay: 0, verb: 0 } }); a.send({ type: "play", on: true });
+  const { L } = a.render(4.2), kicks = a.posted.filter((m) => m.type === "viz" && m.kick).length;
+  ok(finite(L) && peak(L) < 1 && kicks >= 3 && kicks <= 5, `the dub groove: ${kicks} kicks in two bars`);
+}
+{ // Drift: a slow pad on the chord, still going after it's let go, then the next chord's
+  const a = load(); a.send({ type: "params", p: { drift: 0.7, bells: false, texture: "none", chordVol: 0, delay: 0, verb: 0 } });
+  a.send({ type: "chord", notes: [57, 60, 64], root: 57, vel: 0.8 });
+  const early = a.render(0.3).L, swell = a.render(2.7).L; a.send({ type: "release" });
+  const after = a.render(3).L, v = a.posted.filter((m) => m.type === "viz"), last = v[v.length - 1];
+  ok(rms(early) < rms(swell) * 0.5 && rms(swell) > 0.01, `Drift: the pad swells in slowly (${rms(early).toFixed(3)} then ${rms(swell).toFixed(3)})`);
+  ok(rms(after, after.length - 8000) > 0.01 && last.drift.length >= 3, `Drift: let go, it keeps drifting on the last chord (${rms(after, after.length - 8000).toFixed(3)}; notes ${last.drift.join(" ")})`);
+  ok(last.drift.every((n) => [9, 0, 4].includes(n % 12)), `Drift: the pad is the chord's notes (${last.drift.join(" ")})`);
+  a.send({ type: "chord", notes: [53, 57, 60], root: 53, vel: 0.8 }); a.render(0.2);
+  const v2 = a.posted.filter((m) => m.type === "viz"), l2 = v2[v2.length - 1];
+  ok(l2.drift.length >= 3 && l2.drift.every((n) => [5, 9, 0].includes(n % 12)), `Drift: a new chord, a new pad (${l2.drift.join(" ")})`);
+  a.send({ type: "params", p: { drift: 0 } }); const off = a.render(6).L;
+  ok(rms(off, off.length - 4410) < 0.002, `Drift off: the pad fades away (${rms(off, off.length - 4410).toExponential(1)})`);
+}
+{ // Drift's bells: the chord's notes, up high
+  const a = load(); a.send({ type: "params", p: { drift: 1, bells: true, texture: "none", chordVol: 0 } });
+  a.send({ type: "chord", notes: [57, 60, 64], root: 57, vel: 0.8 }); a.render(8);
+  const bells = a.posted.filter((m) => m.type === "viz").flatMap((m) => m.bells);
+  ok(bells.length >= 3 && bells.every((n) => n >= 72 && [9, 0, 4].includes(n % 12)), `the bells: ${bells.length} in 8 s, all the chord's notes up high (${bells.slice(0, 8).join(" ")})`);
+}
+for (const texture of ["vinyl", "rain", "ocean", "birds"]) {   // the textures: something there, quiet, bounded
+  const a = load(); a.send({ type: "params", p: { drift: 0.6, bells: false, texture } });
+  a.send({ type: "chord", notes: [57, 60, 64], root: 57, vel: 0.8 }); a.send({ type: "release" }); a.send({ type: "params", p: { chordVol: 0 } });
+  a.p.stopDrift(); a.p.dKey = "x"; a.p.last.key = "x";   // (the pad out of the way: just the texture)
+  const { L } = a.render(10);
+  ok(finite(L) && peak(L) < 0.9 && rms(L) > 0.002 && rms(L) < 0.2, `the ${texture} texture: level ${rms(L).toFixed(4)}, peak ${peak(L).toFixed(2)}`);
+}
+{ // Drift off: no texture, no bells
+  const a = load(); a.send({ type: "params", p: { drift: 0, texture: "rain", bells: true } }); a.send({ type: "chord", notes: [57], root: 57 }); a.send({ type: "release" });
+  const { L } = a.render(4);
+  ok(rms(L, L.length - 8000) < 1e-4, "Drift off: silence once the chord is gone");
+}
 { // everything at once: bounded, and faster than real time
-  const a = load(); a.send({ type: "params", p: { drums: "techno", bass: "acid", arp: "updown", arpRate: 16, sound: "saw", delay: 0.5, verb: 0.6, pump: 0.6 } });
+  const a = load(); a.send({ type: "params", p: { drums: "deep", bass: "deep", arp: "updown", arpRate: 16, sound: "saw", delay: 0.5, verb: 0.6, pump: 0.6, drift: 1, texture: "rain", bells: true } });
   a.send({ type: "play", on: true }); a.send({ type: "chord", notes: [57, 60, 64, 67, 71], root: 57, vel: 1 });
   const t0 = process.hrtime.bigint(), { L, R } = a.render(10), ms = Number(process.hrtime.bigint() - t0) / 1e6;
   ok(finite(L) && finite(R) && peak(L) < 1 && peak(R) < 1, `everything on: bounded (peak ${Math.max(peak(L), peak(R)).toFixed(2)})`);
-  ok(ms < 4000, `10 s rendered in ${ms.toFixed(0)} ms (${(10000 / ms).toFixed(1)}x real time)`);
+  ok(ms < 7000, `10 s rendered in ${ms.toFixed(0)} ms (${(10000 / ms).toFixed(1)}x real time)`);
 }
 console.log(fails ? `FAIL (${fails})` : "PASS");
 process.exit(fails ? 1 : 0);

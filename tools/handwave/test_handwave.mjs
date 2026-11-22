@@ -75,57 +75,69 @@ const finite = (a) => a.every(Number.isFinite);
 // a band's energy: a one-pole split at hz (above, or below)
 const above = (a, hz) => { const k = 1 - Math.exp(-2 * Math.PI * hz / SR); let lp = 0, s = 0; for (const x of a) { lp += (x - lp) * k; s += (x - lp) ** 2; } return Math.sqrt(s / a.length); };
 const AM7 = { type: "chord", notes: [57, 60, 64, 67], root: 57, scale: [0, 2, 3, 5, 7, 8, 10], key: 9 };
-const quiet = (a) => { a.send({ type: "hands", r: null, l: { x: 0, y: 0, z: 0 } }); };   // (rain, dry, calm: the least texture)
+const IN_AM = [9, 11, 0, 2, 4, 5, 7];
+const vizs = (a) => a.posted.filter((m) => m.type === "viz");
+const sum = (a, k) => vizs(a).reduce((s, m) => s + m[k], 0), kicks = (a) => sum(a, "kick"), stabs = (a) => vizs(a).reduce((s, m) => s + m.stab, 0);
+const left = (x, y = 0.4, z = 0.4) => ({ type: "hands", r: null, l: { x, y, z } });
 console.log("Handwave: handwave-worklet.js");
 { const a = load(); a.send(AM7); ok(peak(a.render(0.5).L) < 1e-6, "not started: silence"); }
-{ // started, no hands: it drifts by itself, the pad on the chord's notes, swelling in slowly
-  const a = load(); a.send(AM7); a.send({ type: "on", on: true });
-  const early = a.render(0.4).L, later = a.render(4).L, v = a.last();
-  ok(finite(later) && peak(later) < 1 && rms(later) > 0.02 && rms(early) < rms(later) * 0.5, `no hands: it drifts by itself, swelling in (${rms(early).toFixed(3)} then ${rms(later).toFixed(3)})`);
+{ // started, no hands: it plays by itself, the pad on the chord, the groove four to the floor
+  const a = load(); a.send(AM7); a.send({ type: "params", p: { tempo: 120 } }); a.send({ type: "on", on: true });
+  const { L } = a.render(4.1), v = a.last();
+  ok(finite(L) && peak(L) < 1 && rms(L) > 0.03, `no hands: it plays by itself (level ${rms(L).toFixed(3)}, peak ${peak(L).toFixed(2)})`);
   ok(v.pad.length >= 3 && v.pad.every((n) => [9, 0, 4, 7].includes(n % 12)), `the pad: the chord's notes (${v.pad.join(" ")})`);
-  a.render(12); const bells = a.bells();
-  ok(bells.length >= 1 && bells.every((n) => [9, 11, 0, 2, 4, 5, 7].includes(n % 12)), `no hands: a bell now and then, in key (${bells.join(" ")})`);
+  ok(kicks(a) >= 7 && kicks(a) <= 9, `four to the floor: ${kicks(a)} kicks in two bars at 120`);
+  ok(stabs(a) >= 2, `dub chord stabs: ${stabs(a)} in two bars`);
 }
-{ // the right hand: nearer, louder; and the melody comes
-  const a = load(); a.send(AM7); a.send({ type: "on", on: true }); quiet(a); a.render(5);
-  const far = rms(a.render(2).L);
-  a.send({ type: "hands", r: { x: 0.5, y: 0.5, z: 1 }, l: { x: 0, y: 0, z: 0 } }); a.render(1.5); a.posted.length = 0;
-  const nearL = a.render(4).L, near = rms(nearL), mel = a.notes();
-  ok(near > far * 1.4, `right hand near the camera: it swells (${far.toFixed(3)} -> ${near.toFixed(3)})`);
-  ok(mel.length >= 5 && mel.every((n) => [9, 11, 0, 2, 4, 5, 7].includes(n % 12)), `right hand: a melody, every note in key (${mel.length} in 4 s: ${mel.slice(0, 10).join(" ")})`);
-  a.send({ type: "hands", r: null, l: { x: 0, y: 0, z: 0 } }); a.render(5);
-  ok(rms(a.render(2).L) < near * 0.8, "right hand gone: it settles back");
+{ // the left hand across: the groove builds, from the pad alone to everything
+  const run = (x) => { const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send(left(x)); a.render(1); a.posted.length = 0; const { L } = a.render(4); return { k: kicks(a), s: stabs(a), h: sum(a, "hats"), b: sum(a, "bass"), lo: rms(L) }; };
+  const none = run(0), mid = run(0.42), full = run(1);
+  ok(none.k === 0 && none.s === 0, `left hand at the left: no beat, the pad alone (${none.k} kicks, ${none.s} stabs)`);
+  ok(mid.k >= 7 && mid.s >= 2, `the middle: the kick and the stabs (${mid.k} kicks, ${mid.s} stabs)`);
+  ok(mid.h >= 7 && mid.b === 0 && full.h > mid.h * 2.5 && full.b >= 12, `further right: the hats, then the shaker and the bass (hats ${mid.h} -> ${full.h}, bass notes ${mid.b} -> ${full.b} in two bars)`);
 }
-{ // the right hand's height: low, low notes and dark; high, high and bright
-  const run = (y) => { const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send({ type: "hands", r: { x: 0.5, y, z: 0.8 }, l: { x: 0, y: 0, z: 0 } }); a.render(3); a.posted.length = 0;
-    const { L } = a.render(5), ns = a.notes(), v = a.last(); return { mel: ns.reduce((s, n) => s + n, 0) / Math.max(1, ns.length), pad: Math.min(...v.pad), bright: above(L, 2000) / Math.max(1e-9, rms(L)) }; };
-  const lo = run(0.05), hi = run(0.95);
-  ok(hi.mel > lo.mel + 10 && hi.pad > lo.pad, `right hand high: the melody higher (${lo.mel.toFixed(0)} -> ${hi.mel.toFixed(0)}), the pad an octave up (${lo.pad} -> ${hi.pad})`);
-  ok(hi.bright > lo.bright * 1.5, `and brighter (the share above 2 kHz ${lo.bright.toFixed(3)} -> ${hi.bright.toFixed(3)})`);
+{ // the left hand nearer: the filter opens
+  const run = (z) => { const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send(left(0.8, 0.4, z)); a.render(2); const { L } = a.render(4); return above(L, 2500) / rms(L); };
+  const shut = run(0), open = run(1);
+  ok(open > shut * 1.5, `left hand near: the filter opens (the share above 2.5 kHz ${shut.toFixed(3)} -> ${open.toFixed(3)})`);
 }
-{ // a new chord: a new pad
+{ // the left hand high: the dub echo and the reverb, a longer tail
+  const verb = (y) => { const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send(left(0.55, y, 0.5)); a.render(4); a.send({ type: "on", on: false }); a.render(0.1); return rms(a.render(0.3).L); };
+  const dry = verb(0), wet = verb(1);
+  ok(wet > dry * 1.5, `left hand high: more space (the tail ${dry.toFixed(4)} dry, ${wet.toFixed(4)} vast)`);
+}
+{ // the right hand: nearer, a swell and an arpeggio in time, in key; higher, higher notes
+  const run = (y, z, lx = 0.55) => { const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send({ type: "hands", r: { x: 0.5, y, z }, l: { x: lx, y: 0.4, z: 0.4 } }); a.render(2); a.posted.length = 0; const { L } = a.render(4); const ns = a.notes(); return { n: ns, avg: ns.reduce((s, x) => s + x, 0) / Math.max(1, ns.length), lv: rms(L), pad: Math.min(...a.last().pad) }; };
+  const far = run(0.5, 0), near = run(0.5, 1), lo = run(0.05, 0.8), hi = run(0.95, 0.8), farQ = run(0.5, 0, 0), nearQ = run(0.5, 1, 0);
+  ok(far.n.length === 0 && near.n.length >= 16, `right hand near: an arpeggio (${far.n.length} notes far, ${near.n.length} near in 4 s)`);
+  ok(near.n.every((x) => [9, 0, 4, 7].includes(x % 12)), `the arpeggio: the chord's notes (${near.n.slice(0, 8).join(" ")})`);
+  ok(nearQ.lv > farQ.lv * 1.4, `and it swells (with no beat: ${farQ.lv.toFixed(3)} -> ${nearQ.lv.toFixed(3)})`);
+  ok(hi.avg > lo.avg + 12 && hi.pad > lo.pad, `right hand high: higher (the arpeggio ${lo.avg.toFixed(0)} -> ${hi.avg.toFixed(0)}, the pad ${lo.pad} -> ${hi.pad})`);
+}
+{ // a new chord: a new pad, the stabs and the bass follow
   const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.render(2);
   a.send({ type: "chord", notes: [53, 57, 60, 64], root: 53, scale: [0, 2, 3, 5, 7, 8, 10], key: 9 }); a.render(0.2);
   const v = a.last(); ok(v.pad.length >= 3 && v.pad.every((n) => [5, 9, 0, 4].includes(n % 12)), `another chord: the pad moves to it (${v.pad.join(" ")})`);
 }
-{ // the left hand: the textures, crossfaded; the space; the weather
-  const tex = (x, z = 0.3) => { const a = load(); a.send({ type: "on", on: true }); a.send({ type: "hands", r: null, l: { x, y: 0.3, z } }); a.render(2); const { L } = a.render(6); return L; };
-  const lv = [0, 1 / 3, 2 / 3, 1].map((x) => tex(x));
-  ok(lv.every((L) => finite(L) && peak(L) < 0.95 && rms(L) > 0.002), `left hand across: rain, the sea, wind, birds, each there (${lv.map((L) => rms(L).toFixed(4)).join(", ")})`);
-  const calm = rms(tex(2 / 3, 0)), storm = rms(tex(2 / 3, 1));
-  ok(storm > calm * 1.6, `left hand near: the weather turns (wind ${calm.toFixed(4)} calm, ${storm.toFixed(4)} in a storm)`);
-  const verb = (y) => { const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send({ type: "hands", r: null, l: { x: 0, y, z: 0 } }); a.render(4); a.send({ type: "on", on: false }); a.render(0.05); const { L } = a.render(0.25); return rms(L); };
-  const dry = verb(0), wet = verb(1);
-  ok(wet > dry * 1.5, `left hand high: more space (the tail ${dry.toFixed(4)} dry, ${wet.toFixed(4)} vast)`);
+{ // the body: dancing builds the groove (no left hand); the face: an open mouth opens it up
+  const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send(left(0)); a.render(1); a.send({ type: "hands", r: null, l: null, b: { dance: 1, arms: 0 } }); a.render(3); a.posted.length = 0; a.render(4);
+  ok(kicks(a) >= 7, `dancing: the groove comes in with no hands (${kicks(a)} kicks in two bars)`);
+  const m = (mouth) => { const b = load(); b.send(AM7); b.send({ type: "on", on: true }); b.send({ type: "hands", r: null, l: { x: 0, y: 0.4, z: 0.4 }, f: { mouth } }); b.render(2); const { L } = b.render(3); return above(L, 1500) / rms(L); };
+  const shut = m(0), open = m(1);
+  ok(open > shut * 1.2, `an open mouth: brighter (${shut.toFixed(3)} -> ${open.toFixed(3)})`);
+}
+{ // the tempo: as the page sets it
+  const a = load(); a.send(AM7); a.send({ type: "params", p: { tempo: 126 } }); a.send({ type: "on", on: true }); a.render(0.05); a.posted.length = 0; a.render(3.81);
+  ok(kicks(a) === 8, `126 BPM: 8 kicks in 3.8 s (${kicks(a)})`);
 }
 { // stopped: it fades out
   const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.render(4); a.send({ type: "on", on: false });
   const { L } = a.render(8); ok(rms(L, L.length - 4410) < 0.002, `stopped: it fades away (${rms(L, L.length - 4410).toExponential(1)})`);
 }
 { // everything at once: bounded, and faster than real time
-  const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send({ type: "hands", r: { x: 0.5, y: 0.8, z: 1 }, l: { x: 0.5, y: 1, z: 1 } });
+  const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send({ type: "hands", r: { x: 0.5, y: 0.8, z: 1 }, l: { x: 1, y: 1, z: 1 }, f: { mouth: 1 }, b: { dance: 1, arms: 1 } });
   const t0 = process.hrtime.bigint(), { L, R } = a.render(10), ms = Number(process.hrtime.bigint() - t0) / 1e6;
-  ok(finite(L) && finite(R) && peak(L) < 1 && peak(R) < 1, `everything on (both hands near, a storm, vast): bounded (peak ${Math.max(peak(L), peak(R)).toFixed(2)})`);
+  ok(finite(L) && finite(R) && peak(L) < 1 && peak(R) < 1, `everything on: bounded (peak ${Math.max(peak(L), peak(R)).toFixed(2)})`);
   ok(ms < 7000, `10 s rendered in ${ms.toFixed(0)} ms (${(10000 / ms).toFixed(1)}x real time)`);
 }
 console.log(fails ? `FAIL (${fails})` : "PASS");

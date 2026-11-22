@@ -6,6 +6,17 @@
 // the flavour. The stage shows your hands in neon over a slow aurora. MIDI in (any key plays a chord in key) and out.
 "use strict";
 (() => {
+  // the page and this script are one build (tools/make_site.sh stamps both): a browser that kept an old copy of the page
+  // gets a fresh one, once, rather than half a Handwave
+  const BUILD = "dev";
+  {
+    const m = document.querySelector('meta[name="hw-build"]'), page = m ? m.content : "old";
+    if (page !== BUILD) {
+      const k = "handwave-heal-" + BUILD; let tried = false;
+      try { tried = !!sessionStorage.getItem(k); sessionStorage.setItem(k, "1"); } catch {}
+      if (!tried) { fetch(location.pathname, { cache: "reload" }).catch(() => {}).finally(() => location.reload()); return; }
+    }
+  }
   const T = globalThis.HWTheory, $ = (id) => document.getElementById(id), app = $("app");
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 

@@ -7,7 +7,7 @@
 #   OUT/ipad/            CoralFlower for iPad (tools/emu/ipad): the same firmware as a full-screen touch instrument, a
 #                        Home Screen web app; it loads ../play/coralflower.wasm and ../play/worklet.js
 #   OUT/acid/            Acid Flower (tools/acid): an acid house machine for iPad, a Home Screen web app of its own
-#   OUT/handwave/        Handwave (tools/handwave): an ambient house chord machine played with the hands, in the browser
+#   OUT/handwave/        Handwave (tools/handwave): generative ambient sound played with the hands, in the browser
 #   OUT/install/         the old installer address, forwarding to /#install
 # OUT/firmware/ (the released packages and releases.json) is not touched: pages.yml fills it from the releases, and a
 # local copy keeps what is there. A new site.css is a new address (?v=hash): a browser cannot keep an old one. The

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Handwave's sound: an AudioWorklet, generative ambient, played with the hands. It drifts by itself (a slow pad on the
-// chord, a sub under it, bells, a texture: rain, the sea, wind, birds) and the hands shape it as it goes: the page sends
-// the hands (each 0..1 across, up, and how near the camera) and the chord the right hand has moved to; this does the rest.
+// Handwave's sound: an AudioWorklet, ambient house and dub techno played with the hands. It plays by itself (a slow pad on
+// the chord, a soft four-to-the-floor, chord stabs into a dub echo, a deep bass) and the hands shape it as it goes: the
+// page sends the hands (each 0..1 across, up, and how near the camera) and the chord the right hand has moved to.
+"use strict";
 const SR = sampleRate, TAU = Math.PI * 2;
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
 const blep = (t, dt) => { if (t < dt) { t /= dt; return t + t - t * t - 1; } if (t > 1 - dt) { t = (t - 1) / dt; return t * t + t + t + 1; } return 0; };
@@ -23,6 +24,7 @@ const SOUND = {                                        // (attack, decay, sustai
   keys: { a: 0.003, d: 1.4, s: 0.35, r: 0.5, fenv: 0 },
   bell: { a: 0.002, d: 1.8, s: 0, r: 1.2, fenv: 0 },     // (Drift's bells)
   drift: { a: 2.4, d: 1, s: 0.9, r: 4.5, fenv: 0 },      // (Drift's slow pad)
+  stab: { a: 0.003, d: 0.22, s: 0.25, r: 0.16, fenv: 2.2 },  // (a dub techno chord stab)
 };
 const BELL_K = Math.exp(-1 / (0.6 * SR));
 class Voice {
@@ -60,7 +62,7 @@ class Voice {
       this.f.set(cutHz * Math.pow(2, S.fenv * this.fe * (0.4 + this.vel * 0.6)), P.reso);
     }
     let x = 0; const hz = this.hz;
-    if (this.type === "saw" || this.type === "drift") {   // three saws a little apart (Drift's pad two, darker)
+    if (this.type === "saw" || this.type === "drift" || this.type === "stab") {   // three saws a little apart (the pad two, darker)
       for (let i = this.type === "drift" ? 1 : 0; i < 3; i++) {
         const dt = (hz * (i === 0 ? 1 : i === 1 ? 1.0052 : 0.9951)) / SR;
         let p = this.ph[i] + dt; if (p >= 1) p -= 1; this.ph[i] = p;
@@ -87,26 +89,30 @@ class Voice {
 }
 
 
-// ---- the instrument: always drifting; the hands shape it. Right hand: x the harmony (the page picks the chord and
-// sends it), y the pitch and the brightness, z (nearer the camera) the swell, and with it the melody and the bells.
-// Left hand: x the texture (rain, the sea, wind, birds, crossfaded), y the space (dry to vast), z the weather (calm to a
-// storm: wind, rain, a pad that shivers, thunder far off). No hands: it drifts on by itself, softly.
-const TEX = ["rain", "ocean", "wind", "birds"];
+// ---- the instrument: ambient house, dub techno; always playing, the hands shaping it. Right hand: across the harmony
+// (the page picks the chord and sends it), up and down the pitch and the brightness, nearer the swell (an arpeggio, in
+// time, more of it the nearer). Left hand: across the groove (no beat at the left: the pad alone; then the kick, the
+// hats, the bass, the shaker and the rim, a clap and a rolling bass at the right), up and down the space (the dub echo
+// and the reverb), nearer the filter opening on it all. No hands: it plays on by itself.
 class Handwave extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.P = { vol: 0.8, reso: 0.15, bright: 0.5, attack: 0.3, release: 1.4 };
+    this.P = { vol: 0.8, tempo: 120, swing: 0.53, reso: 0.15, bright: 0.5, attack: 0.3, release: 1.4 };
     this.on = false; this.fade = 0;
-    // the hands, as sent (0..1 each; null: not seen) and as smoothed here
+    // the hands, as sent (0..1 each; null: not seen) and as smoothed here (the left hand's settings stay where it left them)
     this.R = null; this.L = null;
-    this.c = { pitch: 0.45, near: 0, rOn: 0, tex: 0.33, space: 0.6, storm: 0.15, lOn: 0 };
+    this.c = { pitch: 0.45, near: 0, rOn: 0, energy: 0.55, space: 0.5, drive: 0.35, mouth: 0, dance: 0, arms: 0 };
+    this.F = null; this.Bd = null;                       // the face ({ mouth }) and the body ({ dance, arms }), when they're tracked
     this.harm = null;                                   // { notes, root, scale (pitch classes), key }
-    this.padKey = null; this.pads = Array.from({ length: 16 }, () => new Voice());
-    this.mel = Array.from({ length: 10 }, () => new Voice()); this.melT = SR; this.melNote = 64; this.bellT = SR * 2;
-    this.sub = { ph: 0, hz: 55, g: 0 };
-    this.tx = { lp: 0, lp2: 0, drop: 0, swell: 0, dlp: 0, wlp: 0, wlp2: 0, wph: 0, gust: 0, gustT: 0, chirpT: SR * 2, chirpN: 0, chirpLeft: 0, cph: 0, cf: 0, thunder: 0, tlp: 0, tlp2: 0 };
-    this.lfo = 0; this.notesSeen = []; this.bellsSeen = [];
-    // the space: a ping-pong echo, a reverb (four combs and two allpasses a side)
+    this.padKey = null; this.pads = Array.from({ length: 12 }, () => new Voice());
+    this.stabs = Array.from({ length: 12 }, () => new Voice()); this.mel = Array.from({ length: 10 }, () => new Voice());
+    this.step = -1; this.spos = 0; this.stepLen = 1; this.bar = 0; this.stabPat = [3, 10]; this.arpI = 0;
+    this.k = { t: 1e9, ph: 0, vel: 1 }; this.cl = { t: 1e9, bp: new SVF(), rim: false }; this.hh = { t: 1e9, dec: 0.04, lp: 0, acc: 1 };
+    this.b = { on: false, env: 0, ph: 0, f: new SVF(), hz: 55, fe: 0, cnt: 0, gate: 0, t: 0 };
+    this.pumpE = 0; this.kickSeen = 0; this.hatSeen = 0; this.bassSeen = 0; this.notesSeen = []; this.stabSeen = 0;
+    this.mf = [new SVF(), new SVF()]; this.mfN = 0;     // the filter the left hand opens (on the drums, the bass, the stabs)
+    this.lfo = 0;
+    // the space: a ping-pong echo in time (a dotted eighth), a reverb (four combs and two allpasses a side)
     this.dl = [new Float32Array(SR * 2), new Float32Array(SR * 2)]; this.dw = 0; this.dlp = [0, 0];
     const sc = SR / 44100, mk = (n) => ({ b: new Float32Array(Math.round(n * sc)), i: 0, f: 0 });
     this.cb = [[1116, 1188, 1277, 1356].map(mk), [1139, 1211, 1300, 1379].map(mk)];
@@ -117,8 +123,8 @@ class Handwave extends AudioWorkletProcessor {
 
   onMessage(m) {
     if (m.type === "params") Object.assign(this.P, m.p);
-    else if (m.type === "on") this.on = !!m.on;
-    else if (m.type === "hands") { this.R = m.r || null; this.L = m.l || null; }
+    else if (m.type === "on") { this.on = !!m.on; if (this.on && this.step < 0) this.bar = 0; }
+    else if (m.type === "hands") { this.R = m.r || null; this.L = m.l || null; this.F = m.f || null; this.Bd = m.b || null; }
     else if (m.type === "chord") this.harm = { notes: m.notes.slice().sort((a, b) => a - b), root: m.root, scale: m.scale || [0, 2, 3, 5, 7, 8, 10], key: m.key || 0 };
   }
 
@@ -134,19 +140,45 @@ class Handwave extends AudioWorkletProcessor {
     this.padKey = key;
     for (const v of this.pads) if (v.on) v.release();
     const ns = new Set(h.notes.map((n) => { n += oct; while (n > 76) n -= 12; while (n < 45) n += 12; return n; }));
-    for (const n of ns) { const v = this.free(this.pads); v.start(n, 0.7, "drift", this.P, 0); v.pan = noise() * 0.5; }
-    this.sub.hz = mtof(24 + (((h.root % 12) + 12) % 12) + (h.root % 12 > 6 ? 0 : 12));
+    for (const n of ns) { const v = this.free(this.pads); v.start(n, 0.6, "drift", this.P, 0); v.pan = noise() * 0.5; }
   }
-  // the melody: notes of the scale near the right hand's height, the chord's own notes more often
-  melody(bell) {
-    const h = this.harm, c = this.c;
-    const target = bell ? 79 + Math.random() * 12 : 55 + c.pitch * 30;
-    if (!bell) this.melNote += (target - this.melNote) * 0.5 + (Math.random() - 0.5) * 5;   // (the melody wanders; a bell is up high)
-    const want = Math.round(bell ? target : this.melNote), pcs = Math.random() < 0.6 ? h.notes.map((n) => ((n % 12) + 12) % 12) : h.scale.map((s) => (s + h.key) % 12);
-    let best = want, bd = 99;
-    for (let n = want - 6; n <= want + 6; n++) if (pcs.includes(((n % 12) + 12) % 12) && Math.abs(n - want) < bd) { bd = Math.abs(n - want); best = n; }
-    const v = this.free(this.mel); v.start(best, bell ? 0.3 + Math.random() * 0.3 : 0.35 + c.near * 0.45, bell ? "bell" : "keys", this.P, bell ? 0 : Math.round(SR * 0.45)); v.pan = noise() * 0.7;
-    (bell ? this.bellsSeen : this.notesSeen).push(best);
+  bassNote(semis, gate) {
+    const B = this.b, r = (((this.harm.root % 12) + 12) % 12);
+    this.bassSeen++; B.on = true; B.hz = mtof(36 + r + (r > 6 ? -12 : 0) + semis); B.env = Math.max(B.env, 0.001); B.fe = 1; B.t = 0; B.gate = gate;
+  }
+  // a chord stab: the chord, close, short, into the echo
+  stab(vel) {
+    const ns = this.harm.notes.map((n) => { while (n > 67) n -= 12; while (n < 52) n += 12; return n; });
+    for (const n of ns) { const v = this.free(this.stabs); v.start(n, vel, "stab", this.P, Math.round(this.stepLen * 0.7)); v.pan = noise() * 0.3; }
+    this.stabSeen++;
+  }
+  // the arpeggio: the chord's notes, up from the right hand's height
+  arp() {
+    const h = this.harm, c = this.c, base = 52 + c.pitch * 28;
+    const ns = []; for (let o = -12; o <= 24; o += 12) for (const n of h.notes) { const x = n + o; if (x >= base - 2 && x <= base + 14) ns.push(x); }
+    if (!ns.length) return; ns.sort((a, b) => a - b);
+    const n = ns[this.arpI++ % ns.length], v = this.free(this.mel);
+    v.start(n, 0.35 + c.near * 0.5, c.pitch > 0.6 ? "pluck" : "keys", this.P, Math.round(this.stepLen * 0.8)); v.pan = noise() * 0.6;
+    this.notesSeen.push(n);
+  }
+  // the clock: sixteenths, a little swing; on each, the drums, the bass, the stabs, the arpeggio
+  tick(s) {
+    const c = this.c, e = Math.max(c.energy, c.dance), h = this.harm;   // (dancing builds the groove too)
+    if (s === 0) {                                      // a new bar: where the stabs fall, a little different now and then
+      this.bar++;
+      if (this.bar % 4 === 1 || !this.stabPat) { const opts = [[3, 10], [3, 6, 11], [2, 10], [3, 11, 14], [6, 14], [3, 7, 10, 14]]; this.stabPat = opts[Math.floor(Math.random() * opts.length)]; }
+    }
+    if (e >= 0.15 && s % 4 === 0) { this.k.t = 0; this.k.vel = e < 0.3 ? 0.55 : 1; this.pumpE = 1; this.kickSeen++; }
+    if (e >= 0.85 && s === 14 && this.bar % 2 === 0) { this.k.t = 0; this.k.vel = 0.6; }
+    if (e >= 0.35 && s % 4 === 2) { this.hatSeen++; this.hh.t = 0; this.hh.dec = 0.16; this.hh.acc = 0.9; }
+    else if (e >= 0.65) { this.hatSeen++; this.hh.t = 0; this.hh.dec = 0.035; this.hh.acc = s % 2 ? 0.6 : 0.85; }
+    if (e >= 0.65 && (s === 4 || s === 12)) { this.cl.t = 0; this.cl.rim = e < 0.8; }
+    if (h && e >= 0.5) {
+      if (s % 4 === 2) this.bassNote(0, Math.round(this.stepLen * 1.4));
+      else if (e >= 0.8 && s % 4 === 3) this.bassNote(12, Math.round(this.stepLen * 0.6));
+    }
+    if (h && e >= 0.25 && this.stabPat.includes(s)) this.stab(0.55 + (e - 0.25) * 0.5);
+    if (h && c.rOn > 0.5 && c.near > 0.15 && Math.random() < 0.15 + c.near * 0.85 && (c.near > 0.6 || s % 2 === 0)) this.arp();
   }
 
   process(_in, outs) {
@@ -154,93 +186,94 @@ class Handwave extends AudioWorkletProcessor {
     // the hands, smoothed (about a third of a second): the right hand's swell falls away when it goes
     const k = 1 - Math.exp(-n / (SR * 0.3)), kz = 1 - Math.exp(-n / (SR * (this.R ? 0.25 : 1.6)));
     const r = this.R, l = this.L;
-    c.rOn += ((r ? 1 : 0) - c.rOn) * kz; c.lOn += ((l ? 1 : 0) - c.lOn) * k;
+    c.rOn += ((r ? 1 : 0) - c.rOn) * kz;
     if (r) { c.pitch += (r.y - c.pitch) * k; c.near += (r.z - c.near) * kz; } else c.near += (0 - c.near) * kz;
-    if (l) { c.tex += (l.x - c.tex) * k; c.space += (l.y - c.space) * k; c.storm += (l.z - c.storm) * k; }
-    this.fade += ((this.on ? 1 : 0) - this.fade) * (1 - Math.exp(-n / (SR * (this.on ? 1.5 : 0.6))));
+    if (l) { c.energy += (l.x - c.energy) * k; c.space += (l.y - c.space) * k; c.drive += (l.z - c.drive) * k; }
+    // the face: an open mouth swells it and opens it up; the body: dancing builds the groove, arms wide the space
+    const f = this.F, bd = this.Bd, ks = 1 - Math.exp(-n / (SR * 0.15)), kd = 1 - Math.exp(-n / (SR * 1.2));
+    c.mouth += ((f ? f.mouth : 0) - c.mouth) * ks; c.dance += ((bd ? bd.dance : 0) - c.dance) * kd; c.arms += ((bd ? bd.arms : 0) - c.arms) * k;
+    this.fade += ((this.on ? 1 : 0) - this.fade) * (1 - Math.exp(-n / (SR * (this.on ? 1.2 : 0.6))));
     const live = this.on && this.harm;
     if (live) this.padOn();
     else if (this.padKey) { for (const v of this.pads) v.release(); this.padKey = null; }
-    // how it all sounds now
-    const swell = 0.35 + 0.65 * c.near, storm = c.storm, space = c.space;
-    this.lfo += n / SR * (0.09 + storm * 0.5);
-    const padCut = 220 * Math.pow(2, c.pitch * 3.3 + c.near * 0.9 + Math.sin(this.lfo * TAU) * (0.25 + storm * 0.6));
-    const shiver = storm * 0.35;
-    const dTime = Math.round(SR * 0.62), fb = 0.35 + space * 0.3, dMix = space * 0.45, vMix = 0.12 + space * 0.7, cfb = 0.78 + space * 0.15;
-    const tw = TEX.map((_, i) => Math.max(0, 1 - Math.abs(c.tex * 3 - i))), tLvl = (0.35 + storm * 0.9) * this.fade;
-    const T = this.tx;
-    // the melody and the bells: the right hand near, more notes; no hands, a bell now and then
-    if (live) {
-      this.melT -= n; this.bellT -= n;
-      if (this.melT <= 0) { if (c.rOn > 0.5) this.melody(false); this.melT = Math.round(SR * (0.35 + Math.random() * 1.1) / (0.4 + c.near * 2.2)); }
-      if (this.bellT <= 0) { this.melody(true); this.bellT = Math.round(SR * (1.5 + Math.random() * 5) / (0.3 + c.near * 2.5 + storm * 0.3)); }
-    }
-    if (storm > 0.72 && Math.random() < n / SR * (storm - 0.7) * 0.25) T.thunder = 1;
-    const subG = live ? 0.16 * (0.4 + c.near * 0.6) : 0;
+    const sixteenth = (60 / P.tempo / 4) * SR;
+    // how it sounds now
+    const swell = 0.45 + 0.55 * c.near + c.mouth * 0.4, space = Math.max(c.space, c.arms), drive = c.drive;
+    this.lfo += n / SR * 0.07;
+    const padCut = 220 * Math.pow(2, c.pitch * 3 + c.near * 0.8 + c.mouth * 1.4 + Math.sin(this.lfo * TAU) * 0.3);
+    const stabCut = 300 * Math.pow(2, c.pitch * 1.5 + drive * 3.2 + c.mouth * 1.2);
+    const dTime = Math.round(sixteenth * 3), fb = 0.3 + space * 0.42, dMix = 0.15 + space * 0.6, vMix = 0.1 + space * 0.55, cfb = 0.78 + space * 0.14;
+    if ((this.mfN++ & 1) === 0) { const hz = 250 * Math.pow(2, drive * 6); this.mf[0].set(hz, 0.25 + drive * 0.35); this.mf[1].set(hz, 0.25 + drive * 0.35); }
+    const B = this.b;
     let sumSq = 0;
     for (let i = 0; i < n; i++) {
-      // the pad, breathing; it shivers in a storm
+      // the clock
+      if (live) {
+        if (this.step < 0 || this.spos >= this.stepLen) {
+          this.spos = 0; this.step = (this.step + 1) % 16;
+          const sw = this.step % 2 ? 1 - (P.swing - 0.5) * 2 : 1 + (P.swing - 0.5) * 2;
+          this.stepLen = sixteenth * sw; this.tick(this.step);
+        }
+        this.spos++;
+      } else if (this.fade < 0.01) this.step = -1;
+      // the pump: the pad and the stabs breathe under the kick
+      this.pumpE *= 0.99985; const duck = 1 - 0.55 * this.pumpE * Math.min(1, Math.max(c.energy, c.dance) * 3);
+      // the pad
       let pl = 0, pr = 0;
-      const trem = 1 - shiver * (0.5 + 0.5 * Math.sin((this.lfo * 37 + i / SR * 7) * TAU));
-      for (const v of this.pads) if (v.on) { const x = v.run(P, padCut) * 0.42 * trem; pl += x * (0.5 - v.pan); pr += x * (0.5 + v.pan); }
-      let ml = 0, mr = 0;
-      for (const v of this.mel) if (v.on) { const x = v.run(P, 2600) * 0.32; ml += x * (0.5 - v.pan); mr += x * (0.5 + v.pan); }
-      const S = this.sub; S.g += (subG - S.g) * 0.0005; S.ph += S.hz / SR; if (S.ph >= 1) S.ph -= 1;
-      const sub = Math.sin(TAU * S.ph) * S.g;
-      const al = (pl + ml) * swell + sub, ar = (pr + mr) * swell + sub;
-      // the textures, crossfaded by the left hand
-      let tx = 0; const x = noise();
-      if (tw[0] > 0) {                                  // rain: a hush and drops, heavier in a storm
-        T.lp += (x - T.lp) * 0.5; T.lp2 += (T.lp - T.lp2) * 0.05; if (Math.random() < 0.0015 + storm * 0.006) T.drop = 0.12 + Math.random() * 0.2; T.drop *= 0.992;
-        tx += ((T.lp - T.lp2) * (0.06 + storm * 0.08) + noise() * T.drop * 0.3) * tw[0];
+      for (const v of this.pads) if (v.on) { const x = v.run(P, padCut) * 0.36; pl += x * (0.5 - v.pan); pr += x * (0.5 + v.pan); }
+      pl *= duck * swell; pr *= duck * swell;
+      // the stabs and the arpeggio
+      let sl = 0, sr = 0, ml = 0, mr = 0;
+      for (const v of this.stabs) if (v.on) { const x = v.run(P, stabCut) * 0.3; sl += x * (0.5 - v.pan); sr += x * (0.5 + v.pan); }
+      for (const v of this.mel) if (v.on) { const x = v.run(P, 1800 + c.pitch * 2500) * 0.3 * swell; ml += x * (0.5 - v.pan); mr += x * (0.5 + v.pan); }
+      sl *= 0.6 + 0.4 * duck; sr *= 0.6 + 0.4 * duck;
+      // the bass: a saw and a sine, short notes on the offbeat
+      let bs = 0;
+      if (B.on) {
+        if (B.t++ >= B.gate) B.env *= 0.9985; else B.env += (1 - B.env) * 0.02;
+        if (B.env < 1e-4 && B.t > B.gate) B.on = false;
+        if ((B.cnt++ & 31) === 0) { B.fe *= Math.pow(0.002, 32 / (0.14 * SR)); B.f.set(90 + 500 * drive + 700 * B.fe, 0.35); }
+        B.ph += B.hz / SR; if (B.ph >= 1) B.ph -= 1;
+        bs = (B.f.run(2 * B.ph - 1 - blep(B.ph, B.hz / SR)) * 0.5 + Math.sin(TAU * B.ph) * 0.6) * B.env * 0.5;
       }
-      if (tw[1] > 0) {                                  // the sea: dark noise swelling and falling
-        T.swell += 1 / (SR * (9 - storm * 4)); if (T.swell >= 1) T.swell -= 1; const w = Math.pow(0.5 - 0.5 * Math.cos(TAU * T.swell), 2);
-        T.dlp += (x - T.dlp) * (0.01 + w * 0.06); tx += T.dlp * (0.1 + w * 0.6) * tw[1];
-      }
-      if (tw[2] > 0) {                                  // wind: a band of noise that sweeps, and gusts
-        if (--T.gustT <= 0) { T.gustT = Math.round(SR * (1.5 + Math.random() * 4)); T.gustTo = 0.3 + Math.random() * (0.5 + storm); }
-        T.gust += ((T.gustTo || 0.4) - T.gust) * 0.00004; T.wph += 1 / (SR * 7);
-        const cf = 0.004 + 0.02 * (0.5 + 0.5 * Math.sin(TAU * T.wph)) * (0.5 + T.gust);
-        T.wlp += (x - T.wlp) * cf * 4; T.wlp2 += (T.wlp - T.wlp2) * cf;
-        tx += (T.wlp - T.wlp2) * T.gust * 1.6 * tw[2];
-      }
-      if (tw[3] > 0) {                                  // birds: a little air, a bird now and then
-        T.cl = (T.cl || 0) + (x - (T.cl || 0)) * 0.05; let b = T.cl * 0.025;
-        if (T.chirpLeft > 0) { const kk = 1 - T.chirpLeft / (SR * 0.09); T.cph += (T.cf * (1 + 0.5 * kk) + 300 * Math.sin(TAU * kk * 3)) / SR; b += Math.sin(TAU * T.cph) * Math.sin(Math.PI * kk) * 0.1; T.chirpLeft--; }
-        else if (--T.chirpT <= 0) { T.chirpLeft = Math.round(SR * 0.09); T.cf = 2400 + Math.random() * 1600;
-          if (T.chirpN > 0) { T.chirpN--; T.chirpT = Math.round(SR * 0.05); } else { T.chirpN = 1 + Math.floor(Math.random() * 3); T.chirpT = Math.round(SR * (2 + Math.random() * 6)); } }
-        tx += b * tw[3];
-      }
-      if (T.thunder > 0.001) {                          // thunder, far off: a low rumble rolling away
-        T.tlp += (noise() - T.tlp) * 0.02; T.tlp2 += (T.tlp - T.tlp2) * 0.02; tx += T.tlp2 * T.thunder * 2.2; T.thunder *= 0.99996;
-      }
-      tx *= tLvl;
-      // the echo: ping-pong, darker each time round
+      // the drums: a round kick, a rim or a soft clap, hats
+      let dr = 0, hat = 0;
+      const K = this.k;
+      if (K.t < SR * 0.5) { const t = K.t / SR, f = 46 + 95 * Math.exp(-t * 32); K.ph += f / SR; dr += Math.sin(TAU * K.ph) * Math.exp(-t * 6.5) * 0.95 * K.vel + (K.t < 40 ? 0.1 * noise() : 0); K.t++; } else K.ph = 0;
+      const C = this.cl;
+      if (C.t < SR * 0.3) { const t = C.t / SR;
+        if ((C.t & 15) === 0) C.bp.set(C.rim ? 1700 : 1000, C.rim ? 0.8 : 0.5);
+        dr += C.bp.run(noise()) * (C.rim ? Math.exp(-t * 60) * 1.2 : (t < 0.03 ? Math.exp(-((t * 1000) % 10) / 2.5) * 0.6 : 0) + Math.exp(-t * 20) * 0.4); C.t++; }
+      const Hh = this.hh;
+      if (Hh.t < SR * 0.4) { const t = Hh.t / SR, x = noise(), hp = x - Hh.lp; Hh.lp += (x - Hh.lp) * 0.4; hat = hp * Math.min(1, Hh.t / 60) * Math.exp(-t / Hh.dec) * 0.2 * Hh.acc; Hh.t++; }
+      // the left hand's filter, on the beat and the stabs
+      const gl = this.mf[0].run((dr * 0.9 + bs) + sl), gr = this.mf[1].run((dr * 0.9 + bs) + sr);
+      const fl = gl * 0.75 + (dr * 0.9 + bs) * 0.25 * drive, fr = gr * 0.75 + (dr * 0.9 + bs) * 0.25 * drive;   // (the kick's body still there when it's closed)
+      const hx = hat * (0.45 + 0.55 * drive), al = pl + ml + fl + hx, ar = pr + mr + fr + hx;   // (the hats: only a little filtered)
+      // the echo: ping-pong, darker each time round (the stabs most of all)
       const D = this.dl, w = this.dw, rd = (w - dTime + D[0].length) % D[0].length;
       const el = D[0][rd], er = D[1][rd];
-      this.dlp[0] += (er - this.dlp[0]) * 0.3; this.dlp[1] += (el - this.dlp[1]) * 0.3;
-      D[0][w] = (ml * 1.2 + pl * 0.4) * dMix + this.dlp[0] * fb; D[1][w] = (mr * 1.2 + pr * 0.4) * dMix + this.dlp[1] * fb;
+      this.dlp[0] += (er - this.dlp[0]) * 0.25; this.dlp[1] += (el - this.dlp[1]) * 0.25;
+      D[0][w] = (gl - (dr * 0.9 + bs) * 0.6 + ml * 0.8 + pl * 0.15) * dMix + this.dlp[0] * fb; D[1][w] = (gr - (dr * 0.9 + bs) * 0.6 + mr * 0.8 + pr * 0.15) * dMix + this.dlp[1] * fb;
       this.dw = (w + 1) % D[0].length;
       // the reverb
       let vl = 0, vr = 0;
-      const inV = (al + ar) * 0.5 * vMix + tx * 0.2 + (el + er) * 0.3 * vMix;
+      const inV = (pl + pr + ml + mr + sl + sr) * 0.5 * vMix + dr * 0.04 + (el + er) * 0.3 * vMix;
       for (let s = 0; s < 2; s++) {
         let acc = 0;
         for (const cc of this.cb[s]) { const y = cc.b[cc.i]; cc.f = y * 0.6 + cc.f * 0.4; cc.b[cc.i] = inV + cc.f * cfb; cc.i = (cc.i + 1) % cc.b.length; acc += y; }
         for (const a of this.ap[s]) { const y = a.b[a.i]; const x2 = acc + y * 0.5; a.b[a.i] = x2; acc = y - x2 * 0.5; a.i = (a.i + 1) % a.b.length; }
         if (s === 0) vl = acc; else vr = acc;
       }
-      const dry = 1 - space * 0.35;
-      let ol = (al * dry + el + vl * 0.5) * this.fade + tx, or = (ar * dry + er + vr * 0.5) * this.fade + tx;
+      let ol = (al + el + vl * 0.45) * this.fade, or = (ar + er + vr * 0.45) * this.fade;
       ol = Math.tanh(ol * P.vol * 1.2) * 0.92; or = Math.tanh(or * P.vol * 1.2) * 0.92;
       L[i] = ol; R[i] = or; sumSq += ol * ol;
     }
     this.lvl = Math.sqrt(sumSq / n);
     if ((this.vizN++ & 3) === 0) {
-      this.port.postMessage({ type: "viz", level: this.lvl, on: this.on, pitch: c.pitch, near: c.near, tex: c.tex, space: c.space, storm: c.storm, thunder: T.thunder,
-        pad: this.pads.filter((v) => v.on && v.stage < 3).map((v) => v.note), notes: this.notesSeen, bells: this.bellsSeen });
-      this.notesSeen = []; this.bellsSeen = [];
+      this.port.postMessage({ type: "viz", level: this.lvl, on: this.on, step: this.step, kick: this.kickSeen, stab: this.stabSeen, hats: this.hatSeen, bass: this.bassSeen, pitch: c.pitch, near: c.near, energy: Math.max(c.energy, c.dance), space, drive: c.drive, mouth: c.mouth, dance: c.dance,
+        pad: this.pads.filter((v) => v.on && v.stage < 3).map((v) => v.note), notes: this.notesSeen });
+      this.kickSeen = 0; this.stabSeen = 0; this.hatSeen = 0; this.bassSeen = 0; this.notesSeen = [];
     }
     return true;
   }

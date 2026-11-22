@@ -70,13 +70,12 @@ It runs in the browser on iPad, iPhone and foldables, and installs to the Home S
 
 <p align="center"><img src="tools/handwave/icon-512.png" width="128" alt="The Handwave icon: a neon hand over a wave"></p>
 
-Handwave is an ambient house chord machine you play with your hands. Every chord is in key, so there's no wrong note:
-tap the pads, or turn on the camera and play in the air. Your right hand's height picks the chord and a pinch plays it,
-and your left hand's fingers pick the flavour (triad, 7th, 9th, sus, power, wide). The camera only sees your hands: the
-stage shows them in neon over a slow aurora, with ripples where you play, and never shows your picture. A soft groove
-(deep, dub, garage, breaks, half-time), a bass that follows your chords, an arpeggiator and a chord memory turn it into
-a track, and Drift lays a bed under it all: a slow pad on your chord, bells wandering over it, and a texture (vinyl,
-rain, the sea, birds), still drifting on the last chord when you stop.
+Handwave is generative ambient sound you play with your hands in the air. It drifts by itself, a slow pad with bells
+and a texture, and your hands shape it: your right hand's place across moves through the chords, its height makes it
+lower and darker or higher and brighter, and bringing it nearer the camera swells it with a melody and bells. Your left
+hand picks the texture (rain, the sea, wind, birds), the space (close or vast) and the weather (calm to a storm). There
+are no notes to read: the screen is Drift's sky from Acid Flower (the aurora, the nebula, the flight over the hills),
+drawn smooth and full-size, with your hands in neon over it. No camera? Touch and drag, a finger for each hand.
 
 It runs in the browser: <https://helloskot.github.io/CoralFlower/handwave/>. Its source is in `tools/handwave/`. The
 hands are tracked on your device with MediaPipe; no picture is shown, kept or sent.

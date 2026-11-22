@@ -65,124 +65,67 @@ function load() {
     for (let b = 0; b < n; b++) { const l = new Float32Array(BLOCK), r = new Float32Array(BLOCK); p.process([], [[l, r]]); L.set(l, b * BLOCK); R.set(r, b * BLOCK); }
     return { L, R };
   };
-  return { p, send, render, posted };
+  const last = () => { const v = posted.filter((m) => m.type === "viz"); return v[v.length - 1]; };
+  const notes = () => posted.filter((m) => m.type === "viz").flatMap((m) => m.notes), bells = () => posted.filter((m) => m.type === "viz").flatMap((m) => m.bells);
+  return { p, send, render, posted, last, notes, bells };
 }
 const rms = (a, from = 0, to = a.length) => { let s = 0; for (let i = from; i < to; i++) s += a[i] * a[i]; return Math.sqrt(s / Math.max(1, to - from)); };
 const peak = (a) => { let m = 0; for (const v of a) m = Math.max(m, Math.abs(v)); return m; };
 const finite = (a) => a.every(Number.isFinite);
-const pitch = (a, from, to, lo = 40, hi = 600) => {
-  let best = 0, lag = 0;
-  for (let T2 = Math.floor(SR / hi); T2 <= Math.ceil(SR / lo); T2++) { let s = 0; for (let i = from; i < to - T2; i++) s += a[i] * a[i + T2]; if (s > best) { best = s; lag = T2; } }
-  return SR / lag;
-};
-const onsets = (a, win = 256, k = 2.2) => {            // where the level jumps
-  const e = []; for (let i = 0; i + win <= a.length; i += win) e.push(rms(a, i, i + win));
-  const out = []; for (let i = 2; i < e.length; i++) if (e[i] > e[i - 1] * k && e[i] > 0.01) out.push(i * win);
-  return out;
-};
+// a band's energy: a one-pole split at hz (above, or below)
+const above = (a, hz) => { const k = 1 - Math.exp(-2 * Math.PI * hz / SR); let lp = 0, s = 0; for (const x of a) { lp += (x - lp) * k; s += (x - lp) ** 2; } return Math.sqrt(s / a.length); };
+const AM7 = { type: "chord", notes: [57, 60, 64, 67], root: 57, scale: [0, 2, 3, 5, 7, 8, 10], key: 9 };
+const quiet = (a) => { a.send({ type: "hands", r: null, l: { x: 0, y: 0, z: 0 } }); };   // (rain, dry, calm: the least texture)
 console.log("Handwave: handwave-worklet.js");
-{ const a = load(); ok(peak(a.render(0.5).L) < 1e-6, "nothing played: silence"); }
-for (const sound of ["saw", "pluck", "organ", "keys"]) {      // each sound: a note at its pitch, bounded, and it stops
-  const a = load(); a.send({ type: "params", p: { sound, delay: 0, verb: 0 } });
-  a.send({ type: "chord", notes: [57], root: 57, vel: 0.9 });
-  const { L } = a.render(0.6); a.send({ type: "release" });
-  const tail = a.render(1.6).L;
-  const f = pitch(L, 4000, 20000, 100, 600);
-  ok(finite(L) && peak(L) < 1 && Math.abs(f - 220) < 8 && rms(L, 4000, 20000) > 0.02, `${sound}: A3 at ${f.toFixed(1)} Hz, level ${rms(L, 4000, 20000).toFixed(3)}, peak ${peak(L).toFixed(2)}`);
-  ok(rms(tail, tail.length - 4410, tail.length) < 0.002, `${sound}: let go, it dies away (${rms(tail, tail.length - 4410, tail.length).toExponential(1)})`);
+{ const a = load(); a.send(AM7); ok(peak(a.render(0.5).L) < 1e-6, "not started: silence"); }
+{ // started, no hands: it drifts by itself, the pad on the chord's notes, swelling in slowly
+  const a = load(); a.send(AM7); a.send({ type: "on", on: true });
+  const early = a.render(0.4).L, later = a.render(4).L, v = a.last();
+  ok(finite(later) && peak(later) < 1 && rms(later) > 0.02 && rms(early) < rms(later) * 0.5, `no hands: it drifts by itself, swelling in (${rms(early).toFixed(3)} then ${rms(later).toFixed(3)})`);
+  ok(v.pad.length >= 3 && v.pad.every((n) => [9, 0, 4, 7].includes(n % 12)), `the pad: the chord's notes (${v.pad.join(" ")})`);
+  a.render(12); const bells = a.bells();
+  ok(bells.length >= 1 && bells.every((n) => [9, 11, 0, 2, 4, 5, 7].includes(n % 12)), `no hands: a bell now and then, in key (${bells.join(" ")})`);
 }
-{ // a strum: the notes one after another
-  const a = load(); a.send({ type: "params", p: { sound: "pluck", strum: 0.3, delay: 0, verb: 0 } });
-  a.send({ type: "chord", notes: [48, 55, 64, 72], root: 48, vel: 0.9 });
-  a.render(0.6);
-  const counts = a.posted.filter((m) => m.type === "viz").map((m) => m.voices.length), first4 = counts.indexOf(4);
-  ok(counts[0] <= 2 && first4 > 0 && first4 * 512 / SR > 0.15, `a strum: the notes start one after another (${counts.slice(0, 30).join("")}: all four after ${(first4 * 512 / SR * 1000).toFixed(0)} ms)`);
+{ // the right hand: nearer, louder; and the melody comes
+  const a = load(); a.send(AM7); a.send({ type: "on", on: true }); quiet(a); a.render(5);
+  const far = rms(a.render(2).L);
+  a.send({ type: "hands", r: { x: 0.5, y: 0.5, z: 1 }, l: { x: 0, y: 0, z: 0 } }); a.render(1.5); a.posted.length = 0;
+  const nearL = a.render(4).L, near = rms(nearL), mel = a.notes();
+  ok(near > far * 1.4, `right hand near the camera: it swells (${far.toFixed(3)} -> ${near.toFixed(3)})`);
+  ok(mel.length >= 5 && mel.every((n) => [9, 11, 0, 2, 4, 5, 7].includes(n % 12)), `right hand: a melody, every note in key (${mel.length} in 4 s: ${mel.slice(0, 10).join(" ")})`);
+  a.send({ type: "hands", r: null, l: { x: 0, y: 0, z: 0 } }); a.render(5);
+  ok(rms(a.render(2).L) < near * 0.8, "right hand gone: it settles back");
 }
-{ // the arpeggiator: notes at its rate
-  const a = load(); a.send({ type: "params", p: { sound: "pluck", arp: "up", arpRate: 16, tempo: 120, delay: 0, verb: 0 } });
-  a.send({ type: "chord", notes: [60, 64, 67], root: 60, vel: 0.9 });
-  const on = onsets(a.render(2).L, 256, 1.6), per = (on[on.length - 1] - on[0]) / (on.length - 1) / SR;
-  ok(on.length >= 12 && Math.abs(per - 0.125) < 0.02, `the arpeggiator: ${on.length} notes in 2 s, every ${(per * 1000).toFixed(0)} ms (a sixteenth at 120: 125)`);
+{ // the right hand's height: low, low notes and dark; high, high and bright
+  const run = (y) => { const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send({ type: "hands", r: { x: 0.5, y, z: 0.8 }, l: { x: 0, y: 0, z: 0 } }); a.render(3); a.posted.length = 0;
+    const { L } = a.render(5), ns = a.notes(), v = a.last(); return { mel: ns.reduce((s, n) => s + n, 0) / Math.max(1, ns.length), pad: Math.min(...v.pad), bright: above(L, 2000) / Math.max(1e-9, rms(L)) }; };
+  const lo = run(0.05), hi = run(0.95);
+  ok(hi.mel > lo.mel + 10 && hi.pad > lo.pad, `right hand high: the melody higher (${lo.mel.toFixed(0)} -> ${hi.mel.toFixed(0)}), the pad an octave up (${lo.pad} -> ${hi.pad})`);
+  ok(hi.bright > lo.bright * 1.5, `and brighter (the share above 2 kHz ${lo.bright.toFixed(3)} -> ${hi.bright.toFixed(3)})`);
 }
-{ // the groove: kicks four to the bar
-  const a = load(); a.send({ type: "params", p: { drums: "deep", tempo: 120, delay: 0, verb: 0 } }); a.send({ type: "play", on: true });
-  const { L } = a.render(4.2);
-  const kicks = a.posted.filter((m) => m.type === "viz" && m.kick).length;
-  ok(finite(L) && peak(L) < 1 && rms(L) > 0.03, `the deep groove sounds (level ${rms(L).toFixed(3)}, peak ${peak(L).toFixed(2)})`);
-  ok(kicks >= 7 && kicks <= 9, `kicks on the beat: ${kicks} in two bars at 120`);
+{ // a new chord: a new pad
+  const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.render(2);
+  a.send({ type: "chord", notes: [53, 57, 60, 64], root: 53, scale: [0, 2, 3, 5, 7, 8, 10], key: 9 }); a.render(0.2);
+  const v = a.last(); ok(v.pad.length >= 3 && v.pad.every((n) => [5, 9, 0, 4].includes(n % 12)), `another chord: the pad moves to it (${v.pad.join(" ")})`);
 }
-{ // the bass follows the chord's root
-  const a = load(); a.send({ type: "params", p: { bass: "sub", delay: 0, verb: 0, chordVol: 0 } });
-  a.send({ type: "chord", notes: [57, 60, 64], root: 57, vel: 0.8 });
-  const { L } = a.render(0.8), f = pitch(L, 8000, 30000, 30, 200);
-  ok(Math.abs(f - 55) < 3, `the sub bass on A's root: ${f.toFixed(1)} Hz (A1: 55)`);
-  a.send({ type: "chord", notes: [53, 57, 60], root: 53, vel: 0.8 });
-  const f2 = pitch(a.render(0.8).L, 8000, 30000, 30, 200);
-  ok(Math.abs(f2 - 43.65) < 3, `then F's: ${f2.toFixed(1)} Hz (F1: 43.7)`);
+{ // the left hand: the textures, crossfaded; the space; the weather
+  const tex = (x, z = 0.3) => { const a = load(); a.send({ type: "on", on: true }); a.send({ type: "hands", r: null, l: { x, y: 0.3, z } }); a.render(2); const { L } = a.render(6); return L; };
+  const lv = [0, 1 / 3, 2 / 3, 1].map((x) => tex(x));
+  ok(lv.every((L) => finite(L) && peak(L) < 0.95 && rms(L) > 0.002), `left hand across: rain, the sea, wind, birds, each there (${lv.map((L) => rms(L).toFixed(4)).join(", ")})`);
+  const calm = rms(tex(2 / 3, 0)), storm = rms(tex(2 / 3, 1));
+  ok(storm > calm * 1.6, `left hand near: the weather turns (wind ${calm.toFixed(4)} calm, ${storm.toFixed(4)} in a storm)`);
+  const verb = (y) => { const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send({ type: "hands", r: null, l: { x: 0, y, z: 0 } }); a.render(4); a.send({ type: "on", on: false }); a.render(0.05); const { L } = a.render(0.25); return rms(L); };
+  const dry = verb(0), wet = verb(1);
+  ok(wet > dry * 1.5, `left hand high: more space (the tail ${dry.toFixed(4)} dry, ${wet.toFixed(4)} vast)`);
 }
-{ // the chord memory: a chord a bar
-  const a = load(); a.send({ type: "params", p: { tempo: 120, delay: 0, verb: 0, sound: "saw" } });
-  a.send({ type: "prog", on: true, slots: [{ notes: [57, 60, 64], root: 57 }, null, { notes: [53, 57, 60], root: 53 }] });
-  a.send({ type: "play", on: true });
-  const seen = new Set(); for (let k = 0; k < 4; k++) { a.render(2); const v = a.posted.filter((m) => m.type === "viz"); seen.add(v[v.length - 1].prog); }
-  ok(seen.has(0) && seen.has(2) && !seen.has(1), `the chord memory: slots ${[...seen].join(", ")} played in turn (the empty one skipped)`);
-}
-{ // the pump: the chords duck under each kick
-  const a = load(); a.send({ type: "params", p: { drums: "deep", pump: 1, tempo: 120, drumVol: 0, delay: 0, verb: 0, sound: "saw", attack: 0.003 } });
-  a.send({ type: "play", on: true }); a.send({ type: "chord", notes: [60, 64, 67], root: 60, vel: 0.8 });
-  const { L } = a.render(2.2), beat = SR / 2, w = 1024;
-  const at = (t) => rms(L, Math.round(t), Math.round(t) + w);
-  ok(at(beat * 2 + 300) < at(beat * 2 - 6000) * 0.6, `the pump: the pad ducks on the kick (${at(beat * 2 + 300).toFixed(3)} vs ${at(beat * 2 - 6000).toFixed(3)})`);
-}
-{ // the dub groove: kicks on one and three
-  const a = load(); a.send({ type: "params", p: { drums: "dub", tempo: 120, delay: 0, verb: 0 } }); a.send({ type: "play", on: true });
-  const { L } = a.render(4.2), kicks = a.posted.filter((m) => m.type === "viz" && m.kick).length;
-  ok(finite(L) && peak(L) < 1 && kicks >= 3 && kicks <= 5, `the dub groove: ${kicks} kicks in two bars`);
-}
-{ // Drift: a slow pad on the chord, still going after it's let go, then the next chord's
-  const a = load(); a.send({ type: "params", p: { drift: 0.7, bells: false, texture: "none", chordVol: 0, delay: 0, verb: 0 } });
-  a.send({ type: "chord", notes: [57, 60, 64], root: 57, vel: 0.8 });
-  const early = a.render(0.3).L, swell = a.render(2.7).L; a.send({ type: "release" });
-  const after = a.render(3).L, v = a.posted.filter((m) => m.type === "viz"), last = v[v.length - 1];
-  ok(rms(early) < rms(swell) * 0.5 && rms(swell) > 0.01, `Drift: the pad swells in slowly (${rms(early).toFixed(3)} then ${rms(swell).toFixed(3)})`);
-  ok(rms(after, after.length - 8000) > 0.01 && last.drift.length >= 3, `Drift: let go, it keeps drifting on the last chord (${rms(after, after.length - 8000).toFixed(3)}; notes ${last.drift.join(" ")})`);
-  ok(last.drift.every((n) => [9, 0, 4].includes(n % 12)), `Drift: the pad is the chord's notes (${last.drift.join(" ")})`);
-  a.send({ type: "chord", notes: [53, 57, 60], root: 53, vel: 0.8 }); a.render(0.2);
-  const v2 = a.posted.filter((m) => m.type === "viz"), l2 = v2[v2.length - 1];
-  ok(l2.drift.length >= 3 && l2.drift.every((n) => [5, 9, 0].includes(n % 12)), `Drift: a new chord, a new pad (${l2.drift.join(" ")})`);
-  a.send({ type: "params", p: { drift: 0 } }); const off = a.render(6).L;
-  ok(rms(off, off.length - 4410) < 0.002, `Drift off: the pad fades away (${rms(off, off.length - 4410).toExponential(1)})`);
-}
-{ // Drift through quick changes: each new chord gets its whole pad (the fading ones give way)
-  const a = load(); a.send({ type: "params", p: { drift: 0.7, bells: true, texture: "none", chordVol: 0 } });
-  const cs = [[57, 60, 64, 67], [53, 57, 60, 64], [48, 52, 55, 59], [55, 59, 62, 65], [57, 60, 64, 67], [52, 55, 59, 62]];
-  for (const c of cs) { a.send({ type: "chord", notes: c, root: c[0] }); a.render(0.4); }
-  const v = a.posted.filter((m) => m.type === "viz"), l = v[v.length - 1];
-  ok(l.drift.length === 4 && l.drift.every((n) => [4, 7, 11, 2].includes(n % 12)), `Drift: six quick chords, the last one's pad whole (${l.drift.join(" ")})`);
-}
-{ // Drift's bells: the chord's notes, up high
-  const a = load(); a.send({ type: "params", p: { drift: 1, bells: true, texture: "none", chordVol: 0 } });
-  a.send({ type: "chord", notes: [57, 60, 64], root: 57, vel: 0.8 }); a.render(8);
-  const bells = a.posted.filter((m) => m.type === "viz").flatMap((m) => m.bells);
-  ok(bells.length >= 3 && bells.every((n) => n >= 72 && [9, 0, 4].includes(n % 12)), `the bells: ${bells.length} in 8 s, all the chord's notes up high (${bells.slice(0, 8).join(" ")})`);
-}
-for (const texture of ["vinyl", "rain", "ocean", "birds"]) {   // the textures: something there, quiet, bounded
-  const a = load(); a.send({ type: "params", p: { drift: 0.6, bells: false, texture } });
-  a.send({ type: "chord", notes: [57, 60, 64], root: 57, vel: 0.8 }); a.send({ type: "release" }); a.send({ type: "params", p: { chordVol: 0 } });
-  a.p.stopDrift(); a.p.dKey = "x"; a.p.last.key = "x";   // (the pad out of the way: just the texture)
-  const { L } = a.render(10);
-  ok(finite(L) && peak(L) < 0.9 && rms(L) > 0.002 && rms(L) < 0.2, `the ${texture} texture: level ${rms(L).toFixed(4)}, peak ${peak(L).toFixed(2)}`);
-}
-{ // Drift off: no texture, no bells
-  const a = load(); a.send({ type: "params", p: { drift: 0, texture: "rain", bells: true } }); a.send({ type: "chord", notes: [57], root: 57 }); a.send({ type: "release" });
-  const { L } = a.render(4);
-  ok(rms(L, L.length - 8000) < 1e-4, "Drift off: silence once the chord is gone");
+{ // stopped: it fades out
+  const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.render(4); a.send({ type: "on", on: false });
+  const { L } = a.render(8); ok(rms(L, L.length - 4410) < 0.002, `stopped: it fades away (${rms(L, L.length - 4410).toExponential(1)})`);
 }
 { // everything at once: bounded, and faster than real time
-  const a = load(); a.send({ type: "params", p: { drums: "deep", bass: "deep", arp: "updown", arpRate: 16, sound: "saw", delay: 0.5, verb: 0.6, pump: 0.6, drift: 1, texture: "rain", bells: true } });
-  a.send({ type: "play", on: true }); a.send({ type: "chord", notes: [57, 60, 64, 67, 71], root: 57, vel: 1 });
+  const a = load(); a.send(AM7); a.send({ type: "on", on: true }); a.send({ type: "hands", r: { x: 0.5, y: 0.8, z: 1 }, l: { x: 0.5, y: 1, z: 1 } });
   const t0 = process.hrtime.bigint(), { L, R } = a.render(10), ms = Number(process.hrtime.bigint() - t0) / 1e6;
-  ok(finite(L) && finite(R) && peak(L) < 1 && peak(R) < 1, `everything on: bounded (peak ${Math.max(peak(L), peak(R)).toFixed(2)})`);
+  ok(finite(L) && finite(R) && peak(L) < 1 && peak(R) < 1, `everything on (both hands near, a storm, vast): bounded (peak ${Math.max(peak(L), peak(R)).toFixed(2)})`);
   ok(ms < 7000, `10 s rendered in ${ms.toFixed(0)} ms (${(10000 / ms).toFixed(1)}x real time)`);
 }
 console.log(fails ? `FAIL (${fails})` : "PASS");

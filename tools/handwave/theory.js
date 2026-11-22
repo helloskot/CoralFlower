@@ -10,9 +10,6 @@
     major: { name: "Major", steps: [0, 2, 4, 5, 7, 9, 11] },
     minor: { name: "Minor", steps: [0, 2, 3, 5, 7, 8, 10] },
     dorian: { name: "Dorian", steps: [0, 2, 3, 5, 7, 9, 10] },
-    mixolydian: { name: "Mixolydian", steps: [0, 2, 4, 5, 7, 9, 10] },
-    lydian: { name: "Lydian", steps: [0, 2, 4, 6, 7, 9, 11] },
-    phrygian: { name: "Phrygian", steps: [0, 1, 3, 5, 7, 8, 10] },
     harmonic: { name: "Harmonic minor", steps: [0, 2, 3, 5, 7, 8, 11] },
     hijaz: { name: "Hijaz", steps: [0, 1, 4, 5, 7, 8, 10] },
   };

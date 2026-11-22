@@ -10,10 +10,11 @@
 
   // ------------------------------------------------------------------------------------------- the state ---
   const KEY = "handwave-state";
-  const DEF = { key: 9, scale: "minor", flavour: 0, voicing: "smooth", octave: 0, hold: false, tempo: 122, memory: Array(8).fill(null),
+  const DEF = { key: 9, scale: "minor", flavour: 0, hold: false, tempo: 122, memory: Array(8).fill(null), mask: "off", pic: "bright",
     p: { sound: "saw", cutoff: 0.72, reso: 0.25, attack: 0.04, release: 0.8, swing: 0.54, arp: "off", arpRate: 16, strum: 0, bass: "sub", drums: "house",
          pump: 0.45, delay: 0.22, verb: 0.32, vol: 0.8, chordVol: 0.8, bassVol: 0.8, drumVol: 0.75 } };
   const S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s) return { ...DEF, ...s, p: { ...DEF.p, ...(s.p || {}) }, memory: (s.memory || DEF.memory).slice(0, 8) }; } catch {} return structuredClone(DEF); })();
+  if (!T.SCALES[S.scale]) S.scale = "minor";             // (a scale that's gone: minor)
   let saveT = 0;
   const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} }, 250); };
 
@@ -40,17 +41,16 @@
   // ------------------------------------------------------------------------------------------- the chords ---
   const hue = (d) => [280, 320, 350, 30, 190, 220, 250][d];
   let cur = null, curDeg = -1, lastNotes = null;           // the chord sounding, its degree
+  // a chord on a degree, voiced as near the last one as it can be (smooth changes); voicing 0: as it stands (the labels)
   function build(deg, flavour = S.flavour, voicing) {
-    const vmode = S.voicing, v = voicing != null ? voicing : vmode === "open" ? 3 : 0;
-    let c = T.chord(S.key, S.scale, deg, flavour, v, S.octave);
-    if (vmode === "smooth" && voicing == null) c = T.nearest(c, lastNotes);
-    return c;
+    const c = T.chord(S.key, S.scale, deg, flavour, 0, 0);
+    return voicing === 0 ? c : T.nearest(c, lastNotes);
   }
   // play a chord: on the pads, a key, a hand; vel 0..1, dir +1 down / -1 up (a strum's way)
   function play(deg, opts = {}) {
     audio().then(() => {
-      const c = opts.chord || build(deg, opts.flavour, opts.voicing);
-      cur = c; curDeg = deg; lastNotes = c.notes;
+      const c = opts.chord || build(deg, opts.flavour);
+      cur = c; curDeg = deg; lastNotes = c.notes; chordT = performance.now();
       post({ type: "chord", notes: c.notes, root: c.root, vel: opts.vel == null ? 0.85 : opts.vel, dir: opts.dir || 1 });
       midiChord(c.notes, opts.vel);
       drawNow(); drawPads();
@@ -136,7 +136,7 @@
   $("soundBtn").addEventListener("click", () => show($("soundSheet")));
   $("grooveBtn").addEventListener("click", () => show($("grooveSheet")));
   $("arpBtn").addEventListener("click", () => show($("arpSheet")));
-  $("fxBtn").addEventListener("click", () => show($("fxSheet")));
+  $("maskBtn").addEventListener("click", () => show($("maskSheet")));
   $("menuBtn").addEventListener("click", () => show($("menuSheet")));
   $("helpBtn").addEventListener("click", () => { $("menuSheet").close(); show($("helpSheet")); });
   $("keyGrid").innerHTML = T.NAMES.map((n, i) => `<button type="button" data-key="${i}">${n}</button>`).join("");
@@ -145,11 +145,13 @@
   $("scaleGrid").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; S.scale = b.dataset.scale; lastNotes = null; save(); drawAll(); });
   // the segments (data-set) and the sliders (data-p)
   const SOUNDS = { saw: "Pad", pluck: "Pluck", stab: "Stab", keys: "Keys" }, GROOVES = { off: "Off", house: "House", garage: "Garage", techno: "Techno", breaks: "Breaks", halftime: "Half-time" };
-  const ARPS = { off: "Off", up: "Up", down: "Down", updown: "Up-down", random: "Random" };
+  const ARPS = { off: "Off", up: "Up", down: "Down", updown: "Up-down" }, MASKS = { off: "Mask", wire: "Wireframe", visor: "Visor", outline: "Outline" };
+  if (!ARPS[S.p.arp]) S.p.arp = "up";
+  if (![8, 16, 24].includes(S.p.arpRate)) S.p.arpRate = 16;
   document.querySelectorAll("[data-set]").forEach((sg) => sg.addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     const k = sg.dataset.set, v = b.dataset.v;
-    if (k === "voicing") S.voicing = v; else if (k === "octave") { S.octave = +v; lastNotes = null; }
+    if (k === "mask") { S.mask = v; setMask(v); } else if (k === "pic") S.pic = v;
     else S.p[k] = k === "arpRate" ? +v : v;
     sendParams(); save(); drawAll();
     if (k === "sound" && curDeg >= 0) play(curDeg);
@@ -158,13 +160,15 @@
   $("holdBtn").addEventListener("click", () => { S.hold = !S.hold; save(); drawAll(); if (!S.hold && !padDown.size && !keysDown.size && !handPlaying) release(true); });
   function drawAll() {
     $("keyName").textContent = T.NAMES[S.key] + " " + T.SCALES[S.scale].name.toLowerCase();
+    $("keyShort").textContent = T.NAMES[S.key] + ({ major: "", minor: "m", dorian: " dor", harmonic: " hm", hijaz: " hij" }[S.scale] || "");
     $("soundName").textContent = SOUNDS[S.p.sound]; $("grooveName").textContent = GROOVES[S.p.drums]; $("arpName").textContent = ARPS[S.p.arp];
     $("tempo").textContent = S.tempo;
     $("holdBtn").setAttribute("aria-pressed", String(S.hold));
+    $("maskName").textContent = MASKS[S.mask]; $("maskBtn").dataset.on = S.mask !== "off" ? "1" : "";
     $("keyGrid").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.key === S.key)));
     $("scaleGrid").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.scale === S.scale)));
     document.querySelectorAll("[data-set]").forEach((sg) => sg.querySelectorAll("button").forEach((b) => {
-      const k = sg.dataset.set, v = k === "voicing" ? S.voicing : k === "octave" ? S.octave : S.p[k];
+      const k = sg.dataset.set, v = k === "mask" ? S.mask : k === "pic" ? S.pic : S.p[k];
       b.setAttribute("aria-pressed", String(String(v) === b.dataset.v));
     }));
     document.querySelectorAll("input[data-p]").forEach((i) => { if (document.activeElement !== i) i.value = S.p[i.dataset.p]; });
@@ -233,12 +237,14 @@
     g.setTransform(1, 0, 0, 1, 0, 0);
     // the backdrop: the camera (mirrored, dark) or a horizon grid that pulses on the kick
     const kick = Math.max(0, 1 - (now - kickT) / 300);
+    vfit = null;
     if (camOn && video.readyState >= 2) {
       g.save(); g.translate(W, 0); g.scale(-1, 1);
       const vr = video.videoWidth / video.videoHeight, cr = W / H; let sw = W, sh = H, sx = 0, sy = 0;
       if (vr > cr) { sw = H * vr; sx = (W - sw) / 2; } else { sh = W / vr; sy = (H - sh) / 2; }
       g.drawImage(video, sx, sy, sw, sh); g.restore();
-      g.fillStyle = "rgba(6,3,14,0.62)"; g.fillRect(0, 0, W, H);
+      vfit = { sx, sy, sw, sh };
+      g.fillStyle = `rgba(6,3,14,${S.pic === "dim" ? 0.62 : 0.2})`; g.fillRect(0, 0, W, H);
     } else {
       const grd = g.createLinearGradient(0, 0, 0, H); grd.addColorStop(0, "#0b0520"); grd.addColorStop(0.55, "#1a0838"); grd.addColorStop(1, "#05030b");
       g.fillStyle = grd; g.fillRect(0, 0, W, H);
@@ -260,7 +266,8 @@
     g.globalCompositeOperation = "lighter";
     for (const p of parts) { g.fillStyle = `hsla(${p.h},100%,65%,${p.life})`; g.beginPath(); g.arc(p.x, p.y, 2.2 * dpr, 0, 6.283); g.fill(); }
     g.globalCompositeOperation = "source-over";
-    if (camOn || demoT) drawHands();
+    if (face && S.mask !== "off") drawFace(now, kick);
+    if (handsOn || demoT) drawHands();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -299,7 +306,9 @@
     }
     return out;
   }
-  let camOn = false, tracker = null, lastHands = { chord: null, flav: null }, handPlaying = false, prevY = 0, demoT = 0;
+  let camOn = false, handsOn = false, lastHands = { chord: null, flav: null }, handPlaying = false, prevY = 0, demoT = 0, vfit = null, face = null, chordT = 0;
+  // a point on the camera's picture (0..1) to the stage, mirrored, as the picture is drawn there
+  const toC = (p) => (vfit && !demoT ? [W - (vfit.sx + p.x * vfit.sw), vfit.sy + p.y * vfit.sh] : [(1 - p.x) * W, p.y * H]);
   function applyHands(ctl) {
     lastHands = ctl;
     if (ctl.flav) {
@@ -312,12 +321,12 @@
       if (!handPlaying || c.deg !== curDeg) { handPlaying = true; play(c.deg, { vel: 0.85, dir }); }
     } else if (handPlaying) { handPlaying = false; if (!padDown.size && !keysDown.size) release(); }
     if (c) prevY = c.y;
-    $("hint").textContent = !ctl.chord && !ctl.flav ? (camOn ? "Raise your hands into the picture" : "")
+    $("hint").textContent = !ctl.chord && !ctl.flav ? (handsOn ? "Raise your hands into the picture" : "")
       : ctl.chord && !ctl.chord.pinch ? "Pinch to play · move up or down for another chord" : ctl.chord ? "Let go to stop · left hand: fingers for the flavour" : "Right hand: pinch to play";
   }
   function drawHands() {
     // the zones: on the right, the seven chords (low to high); on the left, the six flavours (by fingers)
-    const zx = W * 0.5, zh = (H * 0.76) / 7, z0 = H * 0.12;
+    const zx = W * 0.5, zy = (v) => (vfit && !demoT ? vfit.sy + v * vfit.sh : v * H), zh = zy(0.88) / 7 - zy(0.12) / 7, z0 = zy(0.12);
     g.font = `${Math.round(12 * dpr)}px ui-rounded, system-ui, sans-serif`; g.textBaseline = "middle";
     for (let d = 0; d < 7; d++) {
       const y = z0 + (6 - d) * zh, on = lastHands.chord && lastHands.chord.deg === d, c = build(d, S.flavour, 0);
@@ -331,7 +340,7 @@
     });
     for (const h of [lastHands.chord, lastHands.flav]) {
       if (!h || !h.lm) continue;
-      const P = (k) => [(1 - h.lm[k].x) * W, h.lm[k].y * H], pin = h === lastHands.chord && h.pinch;
+      const P = (k) => toC(h.lm[k]), pin = h === lastHands.chord && h.pinch;
       g.strokeStyle = h === lastHands.chord ? "rgba(43,240,255,.9)" : "rgba(196,140,255,.9)"; g.lineWidth = 3 * dpr; g.lineCap = "round";
       for (const [a, b] of BONES) { const [x1, y1] = P(a), [x2, y2] = P(b); g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); }
       for (const k of TIP) { const [x, y] = P(k); g.fillStyle = "#fff"; g.beginPath(); g.arc(x, y, 4 * dpr, 0, 6.283); g.fill(); }
@@ -339,46 +348,95 @@
     }
     if (demoT) { g.fillStyle = "rgba(255,210,63,.9)"; g.textAlign = "center"; g.fillText("DEMO", W / 2, 14 * dpr); g.textAlign = "left"; }
   }
-  // the tracker: MediaPipe's hand landmarker, from a CDN the first time (then the browser keeps it)
+  // the camera, shared by the hands and the mask; MediaPipe's trackers from a CDN the first time (then the browser
+  // keeps them): the hand landmarker, the face landmarker
   const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
-  const MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+  const MODELS = "https://storage.googleapis.com/mediapipe-models/";
+  let vision = null, files = null, handTr = null, faceTr = null, FACE = null, camLoop = 0, faceFake = null;   // (faceFake: the tests' made-up face)
+  async function visionLib() {
+    if (!vision) { toast("Loading the tracker (the first time takes a moment)…"); vision = await import(/* webpackIgnore: true */ MP + "/vision_bundle.mjs"); files = await vision.FilesetResolver.forVisionTasks(MP + "/wasm"); }
+    return vision;
+  }
+  async function cameraOn() {
+    if (camOn) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+    video.srcObject = stream; await video.play(); camOn = true;
+    let lastT = -1, n = 0; const me = ++camLoop;
+    const loop = () => {
+      if (!camOn || me !== camLoop) return;
+      if (video.readyState >= 2 && video.currentTime !== lastT) {
+        lastT = video.currentTime; n++;
+        const ts = performance.now();
+        if (handsOn && handTr) applyHands(handsToControl(handTr.detectForVideo(video, ts).landmarks || []));
+        if (S.mask !== "off" && faceTr && (!TOUCH || handsOn === false || n % 2 === 0)) { const res = faceTr.detectForVideo(video, ts + 0.5); face = faceFake || (res.faceLandmarks && res.faceLandmarks[0]) || null; }
+      }
+      requestAnimationFrame(loop);
+    };
+    loop();
+  }
+  function cameraOffIfIdle() {
+    if (handsOn || S.mask !== "off") return;
+    camOn = false; const st = video.srcObject; if (st) st.getTracks().forEach((t) => t.stop()); video.srcObject = null;
+  }
+  const camErr = (err, what) => toast(err && err.name === "NotAllowedError" ? "The camera wasn't allowed: allow it in the browser's settings for " + what : "The camera couldn't start: " + (err.message || err), null, null, 7000);
+  const TOUCH = matchMedia("(pointer: coarse)").matches;
   async function startHands() {
     try {
       toast("Starting the camera…");
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
-      video.srcObject = stream; await video.play();
-      if (!tracker) {
-        toast("Loading the hand tracker (the first time takes a moment)…");
-        const vision = await import(/* webpackIgnore: true */ MP + "/vision_bundle.mjs");
-        const files = await vision.FilesetResolver.forVisionTasks(MP + "/wasm");
-        tracker = await vision.HandLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL, delegate: "GPU" }, runningMode: "VIDEO", numHands: 2 });
-      }
-      camOn = true; $("handsBtn").setAttribute("aria-pressed", "true");
+      await cameraOn();
+      const v = await visionLib();
+      if (!handTr) handTr = await v.HandLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODELS + "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate: "GPU" }, runningMode: "VIDEO", numHands: 2 });
+      handsOn = true; $("handsBtn").setAttribute("aria-pressed", "true");
       toast("Hands on: right hand pinches to play, left hand's fingers pick the flavour");
-      let lastT = -1;
-      const loop = () => {
-        if (!camOn) return;
-        if (video.readyState >= 2 && video.currentTime !== lastT) {
-          lastT = video.currentTime;
-          const res = tracker.detectForVideo(video, performance.now());
-          applyHands(handsToControl(res.landmarks || []));
-        }
-        requestAnimationFrame(loop);
-      };
-      loop();
-    } catch (err) {
-      stopHands();
-      toast(err && err.name === "NotAllowedError" ? "The camera wasn't allowed: allow it in the browser's settings to play with your hands" : "The hands couldn't start: " + (err.message || err), null, null, 7000);
-    }
+    } catch (err) { stopHands(); camErr(err, "the hands"); }
   }
   function stopHands() {
-    camOn = false; $("handsBtn").setAttribute("aria-pressed", "false");
-    const s = video.srcObject; if (s) s.getTracks().forEach((t) => t.stop()); video.srcObject = null;
+    handsOn = false; $("handsBtn").setAttribute("aria-pressed", "false");
     if (handPlaying) { handPlaying = false; release(); }
     lastHands = { chord: null, flav: null }; $("hint").textContent = "";
+    cameraOffIfIdle();
   }
-  $("handsBtn").addEventListener("click", () => (camOn ? stopHands() : startHands()));
-  document.addEventListener("visibilitychange", () => { if (document.hidden && camOn) stopHands(); });
+  async function setMask(v) {
+    if (v === "off") { face = null; cameraOffIfIdle(); drawAll(); return; }
+    try {
+      await cameraOn();
+      const lib = await visionLib();
+      if (!faceTr) {
+        faceTr = await lib.FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODELS + "face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" }, runningMode: "VIDEO", numFaces: 1 });
+        const F = lib.FaceLandmarker, pairs = (a) => a.map((c) => [c.start, c.end]);
+        FACE = { mesh: pairs(F.FACE_LANDMARKS_TESSELATION), oval: pairs(F.FACE_LANDMARKS_FACE_OVAL), lines: pairs([...F.FACE_LANDMARKS_LEFT_EYE, ...F.FACE_LANDMARKS_RIGHT_EYE, ...F.FACE_LANDMARKS_LEFT_EYEBROW, ...F.FACE_LANDMARKS_RIGHT_EYEBROW, ...F.FACE_LANDMARKS_LIPS]) };
+      }
+      toast("Mask on: it follows your face (the red button records it)");
+    } catch (err) { S.mask = "off"; save(); drawAll(); camErr(err, "the mask"); }
+  }
+  // the masks: a glowing mesh, a visor over the eyes, an outline; coloured by the chord, pulsing on the kick, flashing
+  // on a new chord
+  function drawFace(now, kick) {
+    if (!FACE) return;
+    const h = curDeg >= 0 ? hue(curDeg) : 285, flash = Math.max(0, 1 - (now - chordT) / 450), P = (k) => toC(face[k]);
+    g.save(); g.globalCompositeOperation = "lighter"; g.lineCap = "round"; g.lineJoin = "round";
+    const edges = (list, w, a) => { g.lineWidth = w * dpr; g.strokeStyle = `hsla(${h},100%,${62 + flash * 20}%,${a})`; g.beginPath(); for (const [i, j] of list) { const [x1, y1] = P(i), [x2, y2] = P(j); g.moveTo(x1, y1); g.lineTo(x2, y2); } g.stroke(); };
+    if (S.mask === "wire") { edges(FACE.mesh, 1, 0.32 + kick * 0.3 + flash * 0.3); edges(FACE.oval, 2.5, 0.8); }
+    else if (S.mask === "outline") { g.shadowColor = `hsl(${h},100%,60%)`; g.shadowBlur = (10 + kick * 14) * dpr; edges(FACE.oval, 3.5, 0.95); edges(FACE.lines, 3, 0.95); }
+    else if (S.mask === "visor") {                      // over the outer corners of the eyes, tilted with the head
+      const [ax, ay] = P(33), [bx, by] = P(263), cx = (ax + bx) / 2, cy = (ay + by) / 2, d = Math.hypot(bx - ax, by - ay), ang = Math.atan2(by - ay, bx - ax);
+      const w = d * 1.75, ht = d * 0.48;
+      g.translate(cx, cy); g.rotate(ang); g.globalCompositeOperation = "source-over";
+      const gr = g.createLinearGradient(-w / 2, 0, w / 2, 0); gr.addColorStop(0, `hsla(${h + 40},100%,55%,.88)`); gr.addColorStop(1, `hsla(${h - 40},100%,55%,.88)`);
+      g.fillStyle = gr; g.beginPath(); g.roundRect(-w / 2, -ht / 2, w, ht, ht * 0.45); g.fill();
+      g.save(); g.clip();
+      g.fillStyle = "rgba(0,0,0,.25)"; for (let y = -ht / 2; y < ht / 2; y += 3 * dpr) g.fillRect(-w / 2, y, w, 1.2 * dpr);
+      const label = (cur ? cur.name + "  ·  " : "") + "HANDWAVE  ·  ", fs = ht * 0.5; g.font = `800 ${fs}px ui-rounded, system-ui, sans-serif`; g.textBaseline = "middle";
+      const tw = g.measureText(label).width, off = ((now / 1000) * fs * 2.2) % tw;
+      g.fillStyle = "rgba(255,255,255,.92)"; for (let x = -w / 2 - off; x < w / 2; x += tw) g.fillText(label, x, 0);
+      g.restore();
+      g.strokeStyle = `hsla(${h},100%,80%,${0.7 + kick * 0.3})`; g.lineWidth = (2 + flash * 3) * dpr; g.shadowColor = `hsl(${h},100%,60%)`; g.shadowBlur = 14 * dpr;
+      g.beginPath(); g.roundRect(-w / 2, -ht / 2, w, ht, ht * 0.45); g.stroke();
+    }
+    g.restore();
+  }
+  $("handsBtn").addEventListener("click", () => (handsOn ? stopHands() : startHands()));
+  document.addEventListener("visibilitychange", () => { if (document.hidden && camOn) { stopHands(); if (S.mask !== "off") { S.mask = "off"; setMask("off"); } } });
   // made-up hands (the demo, and the tests): a hand at (x, y) on the camera's picture, pinching or not, so many fingers up
   function makeHand(x, y, { pinch = false, fingers = 4, s = 0.22 } = {}) {
     const lm = Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 })), P = (k, dx, dy) => { lm[k] = { x: x + dx * s, y: y + dy * s, z: 0 }; };
@@ -478,10 +536,26 @@
     toastT = setTimeout(() => { el.hidden = true; }, ms);
   }
 
+  // ------------------------------------------------------------------------------------------- the fold ---
+  // a foldable, half-folded: the Viewport Segments API says where its two screens are (handwave.css measures them); a
+  // browser that only knows the Device Posture API ("folded") gets the screen's halves: across when it is held wide
+  // (tabletop), down the middle when held tall (book)
+  const foldMQ = { tb: matchMedia("(vertical-viewport-segments: 2)"), lr: matchMedia("(horizontal-viewport-segments: 2)") };
+  const applyFold = () => {
+    let tb = foldMQ.tb.matches, lr = foldMQ.lr.matches;
+    if (!tb && !lr && navigator.devicePosture && navigator.devicePosture.type === "folded") { if (innerWidth >= innerHeight) tb = true; else lr = true; }
+    document.documentElement.classList.toggle("fold-tb", tb); document.documentElement.classList.toggle("fold-lr", lr);
+  };
+  for (const m of Object.values(foldMQ)) m.addEventListener("change", applyFold);
+  if (navigator.devicePosture && navigator.devicePosture.addEventListener) navigator.devicePosture.addEventListener("change", applyFold);
+  addEventListener("resize", applyFold); applyFold();
+
   // -------------------------------------------------------------------------------------------- start ---
   drawAll();
+  if (S.mask !== "off") { S.mask = "off"; save(); drawAll(); }   // (the camera only on a tap: a mask from last time waits)
   try { if (!localStorage.getItem("handwave-seen")) { localStorage.setItem("handwave-seen", "1"); setTimeout(() => show($("helpSheet")), 400); } } catch {}
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
   // (for the tests)
-  window.handwave = { S, play, release, setFlavour, handsToControl, applyHands, makeHand, readHand, runDemo, ctx: () => ctx, viz: () => viz, cur: () => cur, curDeg: () => curDeg, HS };
+  window.handwave = { S, play, release, setFlavour, handsToControl, applyHands, makeHand, readHand, runDemo, ctx: () => ctx, viz: () => viz, cur: () => cur, curDeg: () => curDeg, HS,
+    setFace: (lm) => { faceFake = lm; face = lm; }, face: () => face, faceReady: () => !!FACE, camOn: () => camOn };
 })();

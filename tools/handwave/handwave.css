@@ -30,6 +30,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .chip { display: grid; align-content: center; justify-items: start; min-width: 0; padding: 0 12px; border-radius: var(--r); background: var(--panel); box-shadow: inset 0 0 0 1.5px var(--line); line-height: 1.1; text-align: left; }
 .chip b { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 #keyBtn { flex: 1 1 auto; }
+#keyShort { display: none; }
+@media (max-width: 420px) { #keyName { display: none; } #keyShort { display: inline; } }
+:root.fold-lr #keyName { display: none; } :root.fold-lr #keyShort { display: inline; }
 .bar > .play, .bar > .tempo, .chip--hands, .chip--rec, .chip--menu { flex: 0 0 auto; }
 .chip--hands { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
 .chip--rec { display: grid; place-items: center; width: 48px; padding: 0; }
@@ -81,6 +84,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 
 /* ---- the dock */
 .dock { grid-area: dock; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.dock__b[data-on="1"] { box-shadow: inset 0 0 0 2px var(--pink), 0 0 14px rgba(255, 61, 168, .35); }
 .dock__b { display: grid; justify-items: center; align-content: center; min-height: 46px; border-radius: 12px; background: var(--panel); box-shadow: inset 0 0 0 1.5px var(--line); line-height: 1.15; }
 .dock__b b { font-size: 14px; font-weight: 600; }
 .dock__b[aria-pressed="true"] { background: var(--yellow); color: #160f00; box-shadow: none; }
@@ -99,7 +103,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .grid--keys { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .grid--scales, .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.grid--5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.grid--4b { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .grid button, .seg button, .menu__row button { min-height: 44px; padding: 6px 8px; border-radius: 10px; background: var(--panel2); box-shadow: inset 0 0 0 1.5px var(--line); font-size: 14px; display: grid; place-items: center; line-height: 1.2; }
 .grid button small { font-size: 11px; color: var(--muted); }
 .grid button[aria-pressed="true"], .seg button[aria-pressed="true"] { background: var(--violet); color: #0b0716; box-shadow: none; }
@@ -153,13 +157,29 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     grid-template-areas: "bar bar" "stage flav" "stage pads" "stage mem" "stage dock"; }
   .pad { min-height: 0; }
 }
-/* ---- a foldable, folded: the stage on the top screen, the controls below */
-@media (vertical-viewport-segments: 2) {
-  .app { grid-template-rows: auto calc(env(viewport-segment-height 0 0, 50vh) - 70px) calc(env(viewport-segment-top 0 1, 50vh) - env(viewport-segment-bottom 0 0, 50vh)) auto auto auto auto;
-    grid-template-areas: "bar" "stage" "." "flav" "pads" "mem" "dock"; }
-}
-@media (horizontal-viewport-segments: 2) {
-  .app { grid-template-columns: calc(env(viewport-segment-width 0 0, 50vw) - 10px) calc(env(viewport-segment-left 1 0, 50vw) - env(viewport-segment-right 0 0, 50vw)) 1fr;
-    grid-template-rows: auto auto 1fr auto auto; grid-template-areas: "bar . flav" "stage . flav" "stage . pads" "stage . mem" "stage . dock"; }
-}
+/* ---- a foldable, folded (handwave.js sets the class: the Viewport Segments API, or the Device Posture API's "folded"
+   with the screen's halves): fold-tb a hinge across (tabletop): the stage on the top screen, the controls on the
+   bottom one; fold-lr a hinge down the middle (book): the stage on the left page, the controls on the right */
+:root { --seg-top-h: 50vh; --hinge-h: 0px; --seg-left-w: 50vw; --hinge-w: 0px; }
+@media (vertical-viewport-segments: 2) { :root { --seg-top-h: env(viewport-segment-height 0 0, 50vh); --hinge-h: calc(env(viewport-segment-top 0 1, 50vh) - env(viewport-segment-bottom 0 0, 50vh)); } }
+@media (horizontal-viewport-segments: 2) { :root { --seg-left-w: env(viewport-segment-width 0 0, 50vw); --hinge-w: calc(env(viewport-segment-left 1 0, 50vw) - env(viewport-segment-right 0 0, 50vw)); } }
+:root.fold-tb .app { grid-template-columns: 1fr; grid-template-rows: auto calc(var(--seg-top-h) - 78px - env(safe-area-inset-top)) calc(var(--hinge-h) + 4px) auto minmax(0, 1fr) auto auto;
+  grid-template-areas: "bar" "stage" "." "flav" "pads" "mem" "dock"; }
+:root.fold-tb .pad { min-height: 0; }
+:root.fold-lr .app { grid-template-columns: calc(var(--seg-left-w) - 14px - env(safe-area-inset-left)) calc(var(--hinge-w) + 8px) minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto; grid-template-areas: "stage . bar" "stage . flav" "stage . pads" "stage . mem" "stage . dock"; }
+:root.fold-lr .pad { min-height: 0; }
 @media (prefers-reduced-motion: reduce) { .pad { transition: none; } }
+:root.fold-lr .play span, :root.fold-lr .chip--hands span { display: none; }
+:root.fold-lr .play { padding: 0 14px; }
+:root.fold-lr .chip--hands { padding: 0 11px; }
+:root.fold-lr .tempo button { width: 26px; }
+:root.fold-lr .tempo span { min-width: 2.6em; }
+@media (max-width: 360px) {
+  .tempo button { width: 17px; }
+  .tempo span { min-width: 2.3em; }
+  .tempo b { font-size: 16px; }
+  #keyBtn { padding: 0 7px; min-width: 44px; }
+  #keyBtn small { display: none; }
+  .play { padding: 0 11px; }
+}

@@ -27,14 +27,14 @@ console.log("Handwave: theory.js");
       if (!c.notes.every((n) => pcs.has(((n % 12) + 12) % 12)) || c.notes.length < 3) bad++;
     }
   }
-  ok(bad === 0, `no wrong notes: ${count} chords (8 scales, 12 keys, 7 degrees, 6 flavours, 4 voicings), ${bad} out of key`);
+  ok(bad === 0, `no wrong notes: ${count} chords (5 scales, 12 keys, 7 degrees, 6 flavours, 4 voicings), ${bad} out of key`);
 }
 { // the names
   const n = (k, s, d, f) => T.chord(k, s, d, f).name;
   ok([0, 1, 2, 3, 4, 5, 6].map((d) => n(0, "major", d, 0)).join(" ") === "C Dm Em F G Am Bdim", "C major's triads: C Dm Em F G Am Bdim");
   ok([0, 1, 2, 3, 4, 5, 6].map((d) => n(9, "minor", d, 0)).join(" ") === "Am Bdim C Dm Em F G", "A minor's triads: Am Bdim C Dm Em F G");
   ok(n(0, "major", 4, 1) === "G7" && n(0, "major", 0, 1) === "Cmaj7" && n(0, "major", 6, 1) === "Bm7b5" && n(9, "minor", 0, 1) === "Am7", "sevenths: G7, Cmaj7, Bm7b5, Am7");
-  ok(n(0, "major", 1, 2) === "Dm9" && n(0, "major", 0, 3) === "Csus4" && n(0, "lydian", 0, 3) === "Csus2" && n(0, "major", 0, 4) === "C5", "Dm9, Csus4 (Csus2 in Lydian, no perfect fourth), C5");
+  ok(n(0, "major", 1, 2) === "Dm9" && n(0, "major", 0, 3) === "Csus4" && n(0, "major", 3, 3) === "Fsus2" && n(0, "major", 0, 4) === "C5", "Dm9, Csus4 (Fsus2 on IV: no perfect fourth there), C5");
   ok(n(0, "harmonic", 4, 1) === "G7" && n(0, "hijaz", 0, 0) === "C" && n(0, "hijaz", 1, 0) === "C#", "harmonic minor's V7, Hijaz's I and bII");
   ok(T.chord(0, "major", 0, 0).numeral === "I" && T.chord(0, "major", 1, 0).numeral === "ii" && T.chord(0, "major", 6, 0).numeral === "vii°", "numerals: I, ii, vii°");
 }

@@ -73,7 +73,8 @@ It runs in the browser on iPad, iPhone and foldables, and installs to the Home S
 Handwave is a chord machine you play with your hands. Every chord is in key, so there's no wrong note: tap the pads,
 or turn on the camera and play in the air. Your right hand's height picks the chord and a pinch plays it, and your left
 hand's fingers pick the flavour (triad, 7th, 9th, sus, power, wide). A groove, a bass that follows your chords, an
-arpeggiator and a chord memory turn it into a track.
+arpeggiator and a chord memory turn it into a track. A neon mask (a wireframe, a visor or an outline) can follow your face
+in the picture and in the videos you record.
 
 It runs in the browser and installs to the Home Screen: <https://helloskot.github.io/CoralFlower/handwave/>. Its
 source is in `tools/handwave/`. The hands are tracked on your device with MediaPipe; no picture leaves it.

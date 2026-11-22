@@ -76,8 +76,9 @@ hand's place across moves through the chords and turns the flight, its height ma
 brighter, and bringing it nearer the camera swells it with an arpeggio. Your left hand builds the groove (from no beat
 to the full beat), sets the space (dry or a deep dub echo) and opens the filter as it comes nearer. Turn your head to
 look around and open your mouth to open the sound up; dance and the groove builds. There are no notes to read: the
-screen is Drift's flight over the hills from Acid Flower (or its aurora, or its nebula), drawn smooth and full-size,
-with you in neon over it. No camera? Touch and drag, a finger for each hand.
+screen is a floating island in isometric pixel art, its towers rising with the groove and its windows lighting as the
+filter opens (or Drift's flight over the hills from Acid Flower, its aurora, or its nebula), with you over it in light.
+No camera? Touch and drag, a finger for each hand.
 
 It runs in the browser: <https://helloskot.github.io/CoralFlower/handwave/>. Its source is in `tools/handwave/`. The
 hands are tracked on your device with MediaPipe; no picture is shown, kept or sent.

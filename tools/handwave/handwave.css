@@ -17,6 +17,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 button { font: inherit; color: inherit; cursor: pointer; }
 .app { position: fixed; inset: 0; }
 #sky, #hands { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.pixel #sky, .pixel #hands { image-rendering: pixelated; image-rendering: crisp-edges; }
 
 /* a key: light grey, square-ish, a soft edge below; a little orange light when it's on */
 .key { position: relative; border: 0; border-radius: 10px; background: linear-gradient(#f7f6f2, var(--key)); color: var(--ink);

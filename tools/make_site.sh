@@ -47,6 +47,9 @@ for m in handwave.css theory.js handwave.js; do
     MS=$(cat "tools/handwave/$m" | shasum | cut -c1-10)
     sed -i.bak "s|\"$m\"|\"$m?v=$MS\"|" "$OUT/handwave/index.html"
 done
+BUILD=$(cat tools/handwave/*.js tools/handwave/*.css tools/handwave/index.html | shasum | cut -c1-10)
+sed -i.bak "s|name=\"hw-build\" content=\"dev\"|name=\"hw-build\" content=\"$BUILD\"|" "$OUT/handwave/index.html"
+sed -i.bak "s|const BUILD = \"dev\";|const BUILD = \"$BUILD\";|" "$OUT/handwave/handwave.js"
 WS=$(cat tools/handwave/handwave-worklet.js | shasum | cut -c1-10)
 sed -i.bak "s|addModule(\"handwave-worklet.js\")|addModule(\"handwave-worklet.js?v=$WS\")|" "$OUT/handwave/handwave.js"
 rm -f "$OUT/index.html.bak" "$OUT/play/index.html.bak" "$OUT/handwave/index.html.bak" "$OUT/handwave/handwave.js.bak"

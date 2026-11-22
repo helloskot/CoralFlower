@@ -18,13 +18,37 @@
   <video id="cam" playsinline muted hidden></video>
 
   <div class="tools">
-    <button type="button" class="tool tool--hands" id="handsBtn" aria-pressed="false" aria-label="Hands: play with the camera" title="Play with your hands in the air (the camera only sees your hands: no picture is shown or kept)"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5a1.5 1.5 0 0 1 3 0V11m0-5a1.5 1.5 0 0 1 3 0V12m0-3.5a1.5 1.5 0 0 1 3 0V15c0 4-2.5 6.5-6.5 6.5-3 0-4.6-1.3-6.2-3.5L4.2 14.2a1.5 1.5 0 0 1 2.4-1.8L8 14"/></svg></button>
-    <button type="button" class="tool" id="sceneBtn" aria-label="Next scene" title="Next scene"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 17c3-4 5-6 9-6s6 2 9 6M3 9c3-3 6-4 9-4s6 1 9 4"/></svg></button>
-    <button type="button" class="tool" id="menuBtn" aria-haspopup="dialog" aria-label="Menu"><b aria-hidden="true">&#8943;</b></button>
+    <button type="button" class="tool tool--hands key" id="handsBtn" aria-pressed="false" aria-label="Camera: play in the air" title="Play in the air with the camera (it only follows your movement: no picture is shown or kept)"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5a1.5 1.5 0 0 1 3 0V11m0-5a1.5 1.5 0 0 1 3 0V12m0-3.5a1.5 1.5 0 0 1 3 0V15c0 4-2.5 6.5-6.5 6.5-3 0-4.6-1.3-6.2-3.5L4.2 14.2a1.5 1.5 0 0 1 2.4-1.8L8 14"/></svg></button>
+    <button type="button" class="tool key" id="sceneBtn" aria-label="Next scene" title="Next scene"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M3 17c3-4 5-6 9-6s6 2 9 6M3 9c3-3 6-4 9-4s6 1 9 4"/></svg></button>
+    <button type="button" class="tool key" id="menuBtn" aria-haspopup="dialog" aria-label="Menu"><b aria-hidden="true">&#8943;</b></button>
   </div>
   <p class="hint" id="hint" aria-live="polite"></p>
+  <div class="strip" id="strip" aria-hidden="true" hidden>
+    <div class="lcd"><div class="lcd__top"><b id="lcdBpm">120 BPM</b><span id="lcdMood">NIGHT</span></div><canvas id="scope"></canvas>
+      <div class="lcd__dots"><span><i id="dotHands"></i>hand</span><span><i id="dotFace"></i>face</span><span><i id="dotBody"></i>body</span></div></div>
+    <div class="dials">
+      <div class="dial" data-c="blue" style="--c:var(--blue)" id="dPitch"><svg viewBox="-30 -30 60 60" aria-hidden="true"><path class="ring" d="M -16.97 16.97 A 24 24 0 1 1 16.97 16.97" pathLength="100"/><path class="val" d="M -16.97 16.97 A 24 24 0 1 1 16.97 16.97" pathLength="100" stroke-dasharray="0 100"/><circle class="cap" r="16"/><line class="tick" x1="5" y1="0" x2="12" y2="0"/></svg><span class="label">pitch</span><span class="num">00</span></div>
+      <div class="dial" data-c="green" style="--c:var(--green)" id="dSwell"><svg viewBox="-30 -30 60 60" aria-hidden="true"><path class="ring" d="M -16.97 16.97 A 24 24 0 1 1 16.97 16.97" pathLength="100"/><path class="val" d="M -16.97 16.97 A 24 24 0 1 1 16.97 16.97" pathLength="100" stroke-dasharray="0 100"/><circle class="cap" r="16"/><line class="tick" x1="5" y1="0" x2="12" y2="0"/></svg><span class="label">swell</span><span class="num">00</span></div>
+      <div class="dial" data-c="white" style="--c:var(--white)" id="dGroove"><svg viewBox="-30 -30 60 60" aria-hidden="true"><path class="ring" d="M -16.97 16.97 A 24 24 0 1 1 16.97 16.97" pathLength="100"/><path class="val" d="M -16.97 16.97 A 24 24 0 1 1 16.97 16.97" pathLength="100" stroke-dasharray="0 100"/><circle class="cap" r="16"/><line class="tick" x1="5" y1="0" x2="12" y2="0"/></svg><span class="label">groove</span><span class="num">00</span></div>
+      <div class="dial" data-c="orange" style="--c:var(--orange)" id="dFilter"><svg viewBox="-30 -30 60 60" aria-hidden="true"><path class="ring" d="M -16.97 16.97 A 24 24 0 1 1 16.97 16.97" pathLength="100"/><path class="val" d="M -16.97 16.97 A 24 24 0 1 1 16.97 16.97" pathLength="100" stroke-dasharray="0 100"/><circle class="cap" r="16"/><line class="tick" x1="5" y1="0" x2="12" y2="0"/></svg><span class="label">filter</span><span class="num">00</span></div>
+    </div>
+  </div>
 
-  <button type="button" class="start" id="start"><b>Handwave</b><span>Tap to begin</span><small>then raise your hands, or touch and drag</small></button>
+  <div class="start" id="start" role="dialog" aria-labelledby="startTitle">
+    <div class="start__box">
+      <div class="start__head"><b id="startTitle">handwave</b><span>HW-1 · AIR SYNTH</span></div>
+      <p>Ambient house and dub techno you play in the air.</p>
+      <h2 class="label">What should the camera follow?</h2>
+      <div class="follow">
+        <button type="button" class="key" data-follow="hands"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5a1.5 1.5 0 0 1 3 0V11m0-5a1.5 1.5 0 0 1 3 0V12m0-3.5a1.5 1.5 0 0 1 3 0V15c0 4-2.5 6.5-6.5 6.5-3 0-4.6-1.3-6.2-3.5L4.2 14.2a1.5 1.5 0 0 1 2.4-1.8L8 14"/></svg><b>Hands</b><small>the chords, the groove, the filter</small></button>
+        <button type="button" class="key" data-follow="face"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01"/><path d="M9 15.5c1.8 1.6 4.2 1.6 6 0"/></g></svg><b>Face</b><small>look around, open your mouth</small></button>
+        <button type="button" class="key" data-follow="body"><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2"/><path d="M12 7v7M12 14l-3.5 6.5M12 14l3.5 6.5M5 9.5l7 1.5 7-3"/></g></svg><b>Body</b><small>dance to build the groove</small></button>
+      </div>
+      <button type="button" class="key start__go" id="startCam">Start with the camera</button>
+      <button type="button" class="key start__alt" id="startTouch">Start without it (touch and drag)</button>
+      <small class="start__note">The camera only follows your movement: no picture is shown, kept or sent.</small>
+    </div>
+  </div>
 </main>
 
 <div class="toast" id="toast" role="status" hidden></div>
@@ -32,15 +56,15 @@
 <dialog class="sheet" id="menuSheet" aria-labelledby="menuTitle">
   <h2 id="menuTitle">Handwave</h2>
   <h3>Scene</h3>
-  <div class="seg" data-set="scene"><button type="button" data-v="sky">Sky flight</button><button type="button" data-v="aurora">Aurora</button><button type="button" data-v="nebula">Nebula</button></div>
-  <h3>The camera sees</h3>
-  <div class="seg"><button type="button" aria-pressed="true" disabled>Hands</button><button type="button" id="faceBtn" aria-pressed="true">Face</button><button type="button" id="bodyBtn" aria-pressed="true">Body</button></div>
+  <div class="seg" data-set="scene"><button type="button" class="key" data-v="sky">Sky flight</button><button type="button" class="key" data-v="aurora">Aurora</button><button type="button" class="key" data-v="nebula">Nebula</button></div>
+  <h3>The camera follows</h3>
+  <div class="seg"><button type="button" class="key" id="handsFollow" aria-pressed="true">Hands</button><button type="button" class="key" id="faceFollow" aria-pressed="true">Face</button><button type="button" class="key" id="bodyFollow" aria-pressed="true">Body</button></div>
   <h3>Mood</h3>
-  <div class="seg" data-set="mood"><button type="button" data-v="night">Night 120</button><button type="button" data-v="dawn">Dawn 124</button><button type="button" data-v="dream">Dream 116</button></div>
+  <div class="seg" data-set="mood"><button type="button" class="key" data-v="night">Night 120</button><button type="button" class="key" data-v="dawn">Dawn 124</button><button type="button" class="key" data-v="dream">Dream 116</button></div>
   <label class="knob"><span>Volume</span><input type="range" id="vol" min="0" max="1" step="0.01"></label>
-  <div class="row"><button type="button" id="helpBtn">How to play</button><button type="button" id="pauseBtn">Pause</button></div>
-  <p class="sheet__hint">Handwave runs in the browser. The camera only sees your hands: they're tracked on this device (MediaPipe, loaded the first time), and no picture is shown, kept or sent. Part of CoralFlower.</p>
-  <form method="dialog"><button class="sheet__done">Done</button></form>
+  <div class="row"><button type="button" class="key" id="helpBtn">How to play</button><button type="button" class="key" id="pauseBtn">Pause</button><button type="button" class="key" id="dialsBtn" aria-pressed="true">Dials</button></div>
+  <p class="sheet__hint">Handwave runs in the browser. The camera only follows your movement: your hands, face and body are tracked on this device (MediaPipe, loaded the first time), and no picture is shown, kept or sent. Part of CoralFlower.</p>
+  <form method="dialog"><button class="key sheet__done">Done</button></form>
 </dialog>
 
 <dialog class="sheet" id="helpSheet" aria-labelledby="helpTitle">
@@ -61,7 +85,7 @@
     <dd><b>Dance</b> and the groove builds; <b>lean</b> to turn; <b>arms wide</b> for space</dd>
   </dl>
   <p class="sheet__hint">No camera? Touch and drag: one finger is your right hand (hold it longer to come nearer), a second finger your left.</p>
-  <form method="dialog"><button class="sheet__done">Play</button></form>
+  <form method="dialog"><button class="key sheet__done">Play</button></form>
 </dialog>
 
 <script src="theory.js"></script>

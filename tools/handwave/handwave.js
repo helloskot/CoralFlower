@@ -25,7 +25,7 @@
 
   // ------------------------------------------------------------------------------------------- the state ---
   const KEY = "handwave-hands";
-  const DEF = { scene: "sky", mood: "night", vol: 0.8, face: true, body: true, v: 3 };
+  const DEF = { scene: "sky", mood: "night", vol: 0.8, hands: true, face: true, body: true, dials: true, v: 3 };
   const S = (() => { try { return { ...DEF, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { return { ...DEF }; } })();
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
   try { localStorage.removeItem("handwave-state"); } catch {}   // (the chord machine's, from before)
@@ -36,6 +36,8 @@
     dream: { key: 2, scale: "dorian", degs: [0, 3, 6, 1, 4, 2], hue: 175, tempo: 116 },
   };
   if (!MOODS[S.mood]) S.mood = "night";
+  if (S.hands === undefined) S.hands = true;
+  if (S.dials === undefined) S.dials = true;
   if (!["aurora", "nebula", "sky"].includes(S.scene) || (S.v || 0) < 3) { S.scene = "sky"; S.v = 3; S.face = S.face !== false; S.body = S.body !== false; save(); }   // (the flight first)
 
   // ------------------------------------------------------------------------------------------- the sound ---
@@ -81,20 +83,28 @@
   }
   // the hands to the two roles: the one further right is the right hand; one alone is the right hand if it's right of
   // the middle
-  function handsToControl(hands) {
+  function handsToControl(hands, prev) {
     const hs = hands.map(readHand).sort((a, b) => a.x - b.x);
     let r = null, l = null;
     if (hs.length >= 2) { l = hs[0]; r = hs[hs.length - 1]; } else if (hs.length === 1) { if (hs[0].x > 0.45) r = hs[0]; else l = hs[0]; }
-    return { r, l };
+    return prev ? { r: steady(r, prev.r), l: steady(l, prev.l) } : { r, l };
+  }
+  // a hand, steadied: a little of where it was, when it's barely moving (the tracker's jitter); none, when it moves
+  function steady(h, was) {
+    if (!h || !was || !was.lm) return h;
+    const mv = Math.hypot(h.x - was.x, h.y - was.y) * 40, a = clamp(0.35 + mv, 0.35, 1);
+    const m = (u, v) => v + (u - v) * a;
+    return { ...h, x: m(h.x, was.x), y: m(h.y, was.y), z: m(h.z, was.z), lm: h.lm.map((p, i) => ({ x: m(p.x, was.lm[i].x), y: m(p.y, was.lm[i].y), z: 0 })) };
   }
   // what the hands are doing now: from the camera, or from fingers on the screen
   let camHands = { r: null, l: null }, touchHands = { r: null, l: null }, testHands = null, face = null, body = null;
   const current = () => testHands || (camHands.r || camHands.l ? camHands : touchHands);
-  let sentAt = 0;
+  let sentAt = 0, lastSent = null;
   function sendHands() {
     const h = current(), pick = (o) => (o ? { x: o.x, y: o.y, z: o.z } : null);
     if (h.r) { zoneFrom(h.r.x); rightSeenT = performance.now(); }
     post({ type: "hands", r: pick(h.r), l: pick(h.l), f: face && S.face ? { mouth: face.mouth } : null, b: body && S.body ? { dance: body.dance, arms: body.arms } : null }); sentAt = performance.now();
+    lastSent = h;
   }
   // fingers on the screen: the first is the right hand, a second the left; held longer, nearer
   const fingers = new Map();
@@ -113,38 +123,44 @@
   $("hands").addEventListener("pointermove", (e) => { if (fingers.has(e.pointerId)) onFinger(e); });
   for (const t of ["pointerup", "pointercancel"]) $("hands").addEventListener(t, (e) => fingers.delete(e.pointerId));
 
-  // the camera, only to see the hands; MediaPipe's hand tracker from a CDN the first time (then the browser keeps it)
+  // the camera, only to follow you (your hands, your face, your body, as chosen); MediaPipe's trackers from a CDN the
+  // first time (then the browser keeps them)
   const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
   const MODELS = "https://storage.googleapis.com/mediapipe-models/";
   const video = $("cam");
   let vision = null, files = null, handTr = null, faceTr = null, poseTr = null, camOn = false, handsOn = false, camLoop = 0;
   async function cameraOn() {
     if (camOn) return;
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } }, audio: false });
     video.srcObject = stream; await video.play(); camOn = true;
-    let lastT = -1, n = 0; const me = ++camLoop;
+    let lastT = -1, n = 0; const me = ++camLoop, rvfc = "requestVideoFrameCallback" in video;
+    const next = () => (rvfc ? video.requestVideoFrameCallback(loop) : requestAnimationFrame(loop));
     const loop = () => {
       if (!camOn || me !== camLoop) return;
-      if (handsOn && handTr && video.readyState >= 2 && video.currentTime !== lastT) {
+      if (handsOn && video.readyState >= 2 && video.currentTime !== lastT) {
         lastT = video.currentTime; n++;
-        const ts = performance.now();
-        camHands = handsToControl(handTr.detectForVideo(video, ts).landmarks || []);
-        if (S.face && faceTr && n % 2 === 0) { const res = faceTr.detectForVideo(video, ts + 0.3); face = readFace(res); }
-        if (S.body && poseTr && n % 2 === 1) { const res = poseTr.detectForVideo(video, ts + 0.6); body = readBody(res.landmarks && res.landmarks[0], ts); }
+        const ts = performance.now(), others = (S.face && faceTr ? 1 : 0) + (S.body && poseTr ? 1 : 0);
+        if (S.hands && handTr) camHands = handsToControl(handTr.detectForVideo(video, ts).landmarks || [], camHands);
+        else camHands = { r: null, l: null };
+        // (with the hands too: the face and the body take turns every few frames; alone, they share every frame)
+        const turn = S.hands && handTr ? n % 3 : n % Math.max(1, others) + 1;
+        if (S.face && faceTr && turn === 1) face = readFace(faceTr.detectForVideo(video, ts + 0.3));
+        if (S.body && poseTr && turn === (S.face && faceTr ? 2 : 1)) body = readBody((poseTr.detectForVideo(video, ts + 0.6).landmarks || [])[0], ts);
       }
-      requestAnimationFrame(loop);
+      next();
     };
-    loop();
+    next();
   }
   function cameraOff() { camOn = false; const st = video.srcObject; if (st) st.getTracks().forEach((t) => t.stop()); video.srcObject = null; }
   async function startHands() {
+    if (!S.hands && !S.face && !S.body) { S.hands = true; save(); drawMenu(); }
     try {
-      toast("Starting the camera (only to see your hands)…");
+      toast("Starting the camera (it only follows your movement)…");
       await cameraOn();
-      if (!vision) { toast("Loading the hand tracker (the first time takes a moment)…"); vision = await import(/* webpackIgnore: true */ MP + "/vision_bundle.mjs"); files = await vision.FilesetResolver.forVisionTasks(MP + "/wasm"); }
-      if (!handTr) handTr = await vision.HandLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODELS + "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate: "GPU" }, runningMode: "VIDEO", numHands: 2 });
+      if (!vision) { toast("Loading the trackers (the first time takes a moment)…"); vision = await import(/* webpackIgnore: true */ MP + "/vision_bundle.mjs"); files = await vision.FilesetResolver.forVisionTasks(MP + "/wasm"); }
+      if (S.hands && !handTr) handTr = await vision.HandLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODELS + "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate: "GPU" }, runningMode: "VIDEO", numHands: 2, minHandPresenceConfidence: 0.4, minTrackingConfidence: 0.4 });
       handsOn = true; $("handsBtn").setAttribute("aria-pressed", "true");
-      toast("Hands on: move them across, up and down, nearer and further");
+      toast(S.hands ? "Camera on: move your hands across, up and down, nearer and further" : "Camera on");
       loadFaceBody();
     } catch (err) {
       stopHands();
@@ -155,6 +171,7 @@
   // the face and the body: their trackers loaded when they're wanted (the face's with its expressions, for the mouth)
   async function loadFaceBody() {
     try {
+      if (S.hands && !handTr) handTr = await vision.HandLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODELS + "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate: "GPU" }, runningMode: "VIDEO", numHands: 2, minHandPresenceConfidence: 0.4, minTrackingConfidence: 0.4 });
       if (S.face && !faceTr) faceTr = await vision.FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODELS + "face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" }, runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true });
       if (S.body && !poseTr) poseTr = await vision.PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODELS + "pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task", delegate: "GPU" }, runningMode: "VIDEO", numPoses: 1 });
     } catch (err) { console.warn("Handwave: the face or body tracker couldn't start: " + err.message); }
@@ -289,7 +306,7 @@ void main() {
   // the colours: the mood's, turned by the chord; eased toward
   const hsl = (h, s, l) => { h = ((h % 360) + 360) % 360 / 360; const f = (n) => { const k = (n + h * 12) % 12; return l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1)); }; return [f(0), f(8), f(4)]; };
   const col = { c1: [0.4, 0.3, 0.9], c2: [0.6, 0.3, 0.9], c3: [0.2, 0.6, 0.9] };
-  let q = 0.6, frameAvg = 16, skyZ = 0, bloom = 0, bolt = 0, tPrev = 0, kickP = 0;
+  let q = 0.5, frameAvg = 16, skyZ = 0, bloom = 0, bolt = 0, tPrev = 0, kickP = 0;
   // the view: it turns with the right hand across (and the head, and a lean), looks up and down with its height, banks
   // as it turns; the flight goes the way it faces
   const view = { yaw: 0, look: 0, roll: 0, x: 0, z: 0, vy: 0 };
@@ -321,42 +338,107 @@ void main() {
   // the trails: where each hand has been, fading
   const trails = [{ pts: [], pulse: 0 }, { pts: [], pulse: 0 }];
   const handPoint = (h) => (h.lm ? toC(h.lm[9]) : h.touch ? [h.px * dpr, h.py * dpr] : [h.x * W, (1 - h.y) * H]);
-  function drawFace(f) {
-    const P = (k) => toC(f.lm[k]);
-    g.save(); g.globalCompositeOperation = "lighter"; g.strokeStyle = `rgba(255,190,240,${0.28 + f.mouth * 0.4})`; g.lineWidth = 2 * dpr; g.shadowColor = "rgba(255,120,220,1)"; g.shadowBlur = 12 * dpr;
-    g.beginPath(); OVAL.forEach((k, i) => { const [x, y] = P(k); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
-    const [mx1, my1] = P(13), [mx2, my2] = P(14); g.beginPath(); g.ellipse((mx1 + mx2) / 2, (my1 + my2) / 2, 14 * dpr, Math.max(2 * dpr, Math.abs(my2 - my1) * 0.6), 0, 0, 6.283); g.stroke();
-    g.restore();
-  }
-  function drawBody(lm) {
-    const P = (k) => toC(lm[k]);
-    g.save(); g.globalCompositeOperation = "lighter"; g.strokeStyle = `rgba(255,214,120,${0.22 + (body.dance || 0) * 0.45})`; g.lineWidth = (3 + (body.dance || 0) * 4) * dpr; g.lineCap = "round"; g.shadowColor = "rgba(255,190,90,1)"; g.shadowBlur = 14 * dpr;
-    g.beginPath(); for (const [a, b2] of POSE) { if ((lm[a].visibility ?? 1) < 0.3 || (lm[b2].visibility ?? 1) < 0.3) continue; const [x1, y1] = P(a), [x2, y2] = P(b2); g.moveTo(x1, y1); g.lineTo(x2, y2); } g.stroke();
-    g.restore();
-  }
-  function drawHand(h, colr, now, pulse = 0) {
-    const [cx, cy] = handPoint(h), R = (18 + h.z * 46 + pulse * 10) * dpr;
-    g.save(); g.globalCompositeOperation = "lighter";
-    // the palm's glow: bigger as the hand comes nearer
-    const rg = g.createRadialGradient(cx, cy, 0, cx, cy, R * 2.2); rg.addColorStop(0, colr.replace("A", String(0.18 + h.z * 0.3))); rg.addColorStop(1, colr.replace("A", "0"));
-    g.fillStyle = rg; g.beginPath(); g.arc(cx, cy, R * 2.2, 0, 6.283); g.fill();
+  // the look: light painted in the air, not wire. A stroke in layers (a wide faint glow, a brighter body, a white-hot
+  // core) is the light; no blur filters (they're slow)
+  const glowLine = (pts, w, rgb, a) => {
+    if (pts.length < 2) return;
+    const path = () => { g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length - 1; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2; g.quadraticCurveTo(pts[i][0], pts[i][1], mx, my); } g.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]); };
+    for (const [k, al] of [[3.2, 0.07], [1.8, 0.16], [1, 0.45]]) { g.strokeStyle = `rgba(${rgb},${al * a})`; g.lineWidth = w * k; path(); g.stroke(); }
+    g.strokeStyle = `rgba(255,255,255,${0.75 * a})`; g.lineWidth = Math.max(1, w * 0.28); path(); g.stroke();
+  };
+  const orb = (x, y, r, rgb, a) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(255,255,255,${a})`); gr.addColorStop(0.25, `rgba(${rgb},${a * 0.8})`); gr.addColorStop(1, `rgba(${rgb},0)`); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); };
+  const FINGERS = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]], PALM = [0, 1, 5, 9, 13, 17];
+  const tipsWas = [[], []];
+  // a hand: each finger a stroke of light, the palm lit from inside, the fingertips bright (sparks fly off them as they
+  // move); bigger and brighter as it comes nearer, a pulse on the kick
+  function drawHand(h, rgb, now, pulse = 0, side = 0) {
+    g.save(); g.globalCompositeOperation = "lighter"; g.lineCap = "round"; g.lineJoin = "round";
     if (h.lm) {
-      const P = (k) => toC(h.lm[k]);
-      g.shadowColor = colr.replace("A", "1"); g.shadowBlur = (10 + h.z * 16) * dpr; g.strokeStyle = colr.replace("A", "0.95"); g.lineWidth = (2.5 + h.z * 2) * dpr; g.lineCap = "round"; g.lineJoin = "round";
-      g.beginPath(); for (const [a, b] of BONES) { const [x1, y1] = P(a), [x2, y2] = P(b); g.moveTo(x1, y1); g.lineTo(x2, y2); } g.stroke();
-      g.fillStyle = "#fff"; for (const k of TIP) { const [x, y] = P(k); g.beginPath(); g.arc(x, y, 3.2 * dpr, 0, 6.283); g.fill(); }
+      const P = (k) => toC(h.lm[k]), sc = Math.hypot(P(0)[0] - P(9)[0], P(0)[1] - P(9)[1]), w = sc * (0.09 + h.z * 0.04) * (1 + pulse * 0.25), a = 0.7 + h.z * 0.3;
+      // the palm
+      const [cx, cy] = P(9).map((v, i) => (v + P(0)[i]) / 2), pg = g.createRadialGradient(cx, cy, 0, cx, cy, sc * 1.1);
+      pg.addColorStop(0, `rgba(${rgb},${0.38 * a + pulse * 0.2})`); pg.addColorStop(1, `rgba(${rgb},0)`);
+      g.fillStyle = pg; g.beginPath(); PALM.forEach((k, i) => { const [x, y] = P(k); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.fill();
+      orb(cx, cy, sc * (1.6 + h.z * 0.8), rgb, 0.18 + h.z * 0.12 + pulse * 0.15);
+      // the fingers, from the wrist's side out
+      for (const f of FINGERS) glowLine([f[0] === 1 ? P(0) : P(f[0]), ...f.map(P)].filter((_, i) => i > 0 || f[0] === 1), w, rgb, a);
+      // the fingertips; sparks when they move fast
+      const was = tipsWas[side];
+      TIP.forEach((k, i) => {
+        const [x, y] = P(k); orb(x, y, w * (2.6 + pulse), rgb, 0.9);
+        if (was[i]) { const sp = Math.hypot(x - was[i][0], y - was[i][1]) / dpr; if (sp > 6 && motes.length < 220) for (let j = 0; j < Math.min(3, sp / 8); j++) motes.push({ x, y, h: side ? 275 : 185, life: 0.7, r: (1 + Math.random() * 1.6) * dpr, vy: -0.01 + (Math.random() - 0.5) * 0.04, vx: (x - was[i][0]) * 0.02 + (Math.random() - 0.5) * 0.6 }); }
+        was[i] = [x, y];
+      });
     } else {
-      g.strokeStyle = colr.replace("A", "0.9"); g.lineWidth = 2.5 * dpr; g.shadowColor = colr.replace("A", "1"); g.shadowBlur = 16 * dpr;
-      g.beginPath(); g.arc(cx, cy, R * (0.55 + 0.05 * Math.sin(now / 300)), 0, 6.283); g.stroke();
-      g.fillStyle = "#fff"; g.beginPath(); g.arc(cx, cy, 4 * dpr, 0, 6.283); g.fill();
+      // a finger on the glass: a ball of light, bigger the longer it's held
+      const [cx, cy] = handPoint(h), R = (22 + h.z * 40 + pulse * 10) * dpr;
+      orb(cx, cy, R * 2.4, rgb, 0.35 + h.z * 0.25); orb(cx, cy, R * 0.6, rgb, 0.9);
+      g.strokeStyle = `rgba(${rgb},0.5)`; g.lineWidth = 2 * dpr; g.beginPath(); g.arc(cx, cy, R * (0.9 + 0.05 * Math.sin(now / 300)), 0, 6.283); g.stroke();
     }
     g.restore();
+  }
+  // the face: a constellation, its points glimmering on the beat; the eyes and the lips drawn in light; the lips glow as
+  // the mouth opens
+  const EYE_L = [33, 160, 158, 133, 153, 144, 33], EYE_R = [362, 385, 387, 263, 373, 380, 362];
+  const LIPS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61];
+  function drawFace(f) {
+    const P = (k) => toC(f.lm[k]), rgb = "255,150,225", pulse = kickP * 0.6, sc = Math.hypot(P(33)[0] - P(263)[0], P(33)[1] - P(263)[1]) || 40 * dpr;
+    g.save(); g.globalCompositeOperation = "lighter"; g.lineCap = "round"; g.lineJoin = "round";
+    const [cx, cy] = P(1); orb(cx, cy, sc * 2.2, rgb, 0.1 + pulse * 0.08);
+    g.fillStyle = `rgba(255,215,245,${0.35 + pulse * 0.4})`;
+    const d = Math.max(1, sc * 0.018);
+    for (let i = 0; i < f.lm.length; i += 2) { const [x, y] = P(i); g.fillRect(x - d / 2, y - d / 2, d, d); }
+    glowLine(OVAL.map(P), sc * 0.03, rgb, 0.45);
+    glowLine(EYE_L.map(P), sc * 0.035, rgb, 0.8); glowLine(EYE_R.map(P), sc * 0.035, rgb, 0.8);
+    glowLine(LIPS.map(P), sc * (0.04 + f.mouth * 0.05), rgb, 0.7 + f.mouth * 0.3);
+    if (f.mouth > 0.15) { const [mx, my] = [(P(13)[0] + P(14)[0]) / 2, (P(13)[1] + P(14)[1]) / 2]; orb(mx, my, sc * (0.4 + f.mouth * 0.9), rgb, 0.3 + f.mouth * 0.5); }
+    g.restore();
+  }
+  // the body: soft limbs of warm light, the chest glowing; brighter the more you dance
+  const LIMBS = [[11, 13, 15], [12, 14, 16], [23, 25, 27], [24, 26, 28], [11, 12], [23, 24], [11, 23], [12, 24]];
+  function drawBody(lm) {
+    const P = (k) => toC(lm[k]), ok = (k) => (lm[k].visibility ?? 1) > 0.35, dn = body.dance || 0, rgb = "255,200,110";
+    const sc = Math.hypot(P(11)[0] - P(12)[0], P(11)[1] - P(12)[1]) || 80 * dpr, a = 0.35 + dn * 0.5 + kickP * dn * 0.3;
+    g.save(); g.globalCompositeOperation = "lighter"; g.lineCap = "round"; g.lineJoin = "round";
+    if (ok(11) && ok(12)) { const [x1, y1] = P(11), [x2, y2] = P(12), hy = ok(23) ? P(23)[1] : y1 + sc; orb((x1 + x2) / 2, (y1 + y2 + hy * 2) / 4, sc * 1.3, rgb, 0.12 + dn * 0.15); }
+    for (const L of LIMBS) { const pts = L.filter(ok).map(P); if (pts.length === L.length) glowLine(pts, sc * 0.07, rgb, a); }
+    for (const k of [15, 16]) if (ok(k)) { const [x, y] = P(k); orb(x, y, sc * 0.35, rgb, 0.4 + dn * 0.4); }
+    g.restore();
+  }
+
+  // the strip: four dials that turn as you move (blue the pitch and green the swell, the right hand's; white the groove and
+  // orange the filter, the left hand's), and a little black display (the tempo, the mood, the sound's line, who's seen)
+  const DIALS = [["dPitch", () => viz.pitch], ["dSwell", () => Math.min(1, viz.near + (viz.mouth || 0) * 0.3)], ["dGroove", () => viz.energy], ["dFilter", () => viz.drive]].map(([id, f]) => {
+    const el = $(id); return { f, val: el.querySelector(".val"), tick: el.querySelector(".tick"), num: el.querySelector(".num"), shown: -1 };
+  });
+  const scope = $("scope"), sg = scope.getContext("2d"), hist = new Float32Array(96);
+  let histI = 0, scopeT = 0;
+  function drawStrip(now) {
+    if (!started || !S.dials) return;
+    for (const d of DIALS) {
+      const v = clamp(d.f() || 0, 0, 1), q2 = Math.round(v * 99);
+      if (q2 === d.shown) continue;
+      d.shown = q2; d.val.setAttribute("stroke-dasharray", `${(v * 100).toFixed(1)} 100`);
+      d.tick.setAttribute("transform", `rotate(${(135 + v * 270).toFixed(1)})`); d.num.textContent = String(q2).padStart(2, "0");
+    }
+    if (now - scopeT < 33) return;
+    scopeT = now;
+    hist[histI++ % hist.length] = Math.min(1, viz.level * 5 + kickP * 0.4);
+    const w = scope.clientWidth * dpr, h = scope.clientHeight * dpr;
+    if (scope.width !== Math.round(w)) { scope.width = Math.round(w); scope.height = Math.round(h); }
+    sg.clearRect(0, 0, scope.width, scope.height); sg.strokeStyle = "#e9f2e4"; sg.lineWidth = 1.5 * dpr; sg.beginPath();
+    const n = hist.length;
+    for (let i = 0; i < n; i++) { const v = hist[(histI + i) % n], x = (i / (n - 1)) * scope.width, y = scope.height / 2 + Math.sin(i * 0.9 + now / 120) * v * scope.height * 0.42; i ? sg.lineTo(x, y) : sg.moveTo(x, y); }
+    sg.stroke();
+    $("lcdBpm").textContent = MOODS[S.mood].tempo + " BPM"; $("lcdMood").textContent = (paused ? "PAUSED" : S.mood).toUpperCase();
+    const h2 = current();
+    $("dotHands").classList.toggle("on", !!(h2.r || h2.l)); $("dotFace").classList.toggle("on", !!(face && S.face)); $("dotBody").classList.toggle("on", !!(body && S.body));
   }
 
   // ------------------------------------------------------------------------------------------- a frame ---
   function frame(now) {
     const dt = Math.min(0.1, tPrev ? (now - tPrev) / 1000 : 0.016); tPrev = now;
-    if (started) { touchUpdate(); if (now - sentAt > 33) sendHands(); }
+    if (started) { touchUpdate(); sendHands(); }
     // no right hand for a while: the chords wander by themselves
     if (started && !paused && now - rightSeenT > 15000 && now - wanderT > 14000) { wanderT = now; if (now - rightSeenT > 16000) { zone = clamp(zone + (Math.random() < 0.5 ? -1 : 1), 0, 5); if (zone === 0 || zone === 5) zone = Math.random() < 0.5 ? 1 : 4; sendChord(); } }
     // the colours, toward the chord's
@@ -368,9 +450,9 @@ void main() {
     const hh = current(), fYaw = face && S.face ? face.yaw : 0, bLean = body && S.body ? body.lean : 0;
     const wantYaw = clamp((hh.r ? (hh.r.x - 0.5) * 1.3 : Math.sin(now / 20000) * 0.25) + fYaw * 0.7 + bLean * 0.6, -1.4, 1.4);
     const wantLook = hh.r ? (hh.r.y - 0.5) * 0.35 : 0, oldYaw = view.yaw;
-    view.yaw = lerp(view.yaw, wantYaw, Math.min(1, dt * 2.2)); view.look = lerp(view.look, wantLook, Math.min(1, dt * 2));
+    view.yaw = lerp(view.yaw, wantYaw, Math.min(1, dt * 5)); view.look = lerp(view.look, wantLook, Math.min(1, dt * 5));
     view.vy = lerp(view.vy, (view.yaw - oldYaw) / Math.max(dt, 0.001), Math.min(1, dt * 4));
-    view.roll = lerp(view.roll, clamp(-view.vy * 0.35, -0.5, 0.5) + (face && S.face ? face.roll * 0.6 : 0), Math.min(1, dt * 3));
+    view.roll = lerp(view.roll, clamp(-view.vy * 0.25, -0.5, 0.5) + (face && S.face ? face.roll * 0.6 : 0), Math.min(1, dt * 5));
     const speed = 4 + viz.near * 6 + viz.energy * 5 + (viz.dance || 0) * 4;
     view.x += Math.sin(view.yaw) * speed * dt; view.z += Math.cos(view.yaw) * speed * dt; skyZ = view.z;
     kickP *= Math.pow(0.004, dt);
@@ -387,12 +469,12 @@ void main() {
       }
       // the quality: lighter when frames are slow, finer when there's room
       frameAvg = lerp(frameAvg, dt * 1000, 0.05);
-      if (frameAvg > 26 && q > 0.34) { q = Math.max(0.34, q - 0.08); sizeSky(); frameAvg = 18; }
-      else if (frameAvg < 15 && q < 1) { q = Math.min(1, q + 0.04); sizeSky(); frameAvg = 17; }
+      if (frameAvg > 20 && q > 0.3) { q = Math.max(0.3, q - 0.08); sizeSky(); frameAvg = 16.7; }
+      else if (frameAvg < 14 && q < 0.85) { q = Math.min(0.85, q + 0.03); sizeSky(); frameAvg = 16.7; }
     }
     // the hands and the motes
     g.clearRect(0, 0, W, H);
-    for (const m of motes) { m.life -= dt * 0.3; m.y += m.vy * H * dt; m.x += Math.sin(now / 900 + m.h) * dt * 6 * dpr; }
+    for (const m of motes) { m.life -= dt * (m.vx !== undefined ? 1.2 : 0.3); m.y += m.vy * H * dt; m.x += (m.vx || 0) * dt * 60 + Math.sin(now / 900 + m.h) * dt * 6 * dpr; if (m.vx) m.vx *= 0.96; }
     motes = motes.filter((m) => m.life > 0);
     g.globalCompositeOperation = "lighter";
     for (const m of motes) { const rg = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r * 5); rg.addColorStop(0, `hsla(${m.h},100%,82%,${m.life})`); rg.addColorStop(1, `hsla(${m.h},100%,60%,0)`); g.fillStyle = rg; g.fillRect(m.x - m.r * 5, m.y - m.r * 5, m.r * 10, m.r * 10); }
@@ -415,9 +497,10 @@ void main() {
     g.save(); g.globalCompositeOperation = "lighter";
     for (const rg of rings) { const f = rg.t / 1.4; g.strokeStyle = `rgba(255,255,255,${(1 - f) * 0.6})`; g.lineWidth = (3 - f * 2) * dpr; g.beginPath(); g.arc(rg.x, rg.y, 20 * dpr + f * Math.min(W, H) * 0.5, 0, 6.283); g.stroke(); }
     g.restore();
-    if (h.r) drawHand(h.r, "rgba(43,240,255,A)", now, trails[0].pulse);
-    if (h.l) drawHand(h.l, "rgba(196,140,255,A)", now, trails[1].pulse);
-    $("hint").textContent = !started ? "" : handsOn && !h.r && !h.l && !face && !body ? "Raise your hands in front of the camera" : !handsOn && !h.r && !h.l && now - startT < 9000 ? "Tap the hand to play in the air, or touch and drag" : "";
+    if (h.r) drawHand(h.r, "60,235,255", now, trails[0].pulse, 0); else tipsWas[0] = [];
+    if (h.l) drawHand(h.l, "200,140,255", now, trails[1].pulse, 1); else tipsWas[1] = [];
+    drawStrip(now);
+    $("hint").textContent = !started ? "" : handsOn && !h.r && !h.l && !face && !body ? "Step into the camera's view" : !handsOn && !h.r && !h.l && now - startT < 9000 ? "Touch and drag, or tap the hand to use the camera" : "";
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -426,11 +509,15 @@ void main() {
   let startT = 0;
   function begin() {
     if (started) return;
-    started = true; startT = performance.now(); $("start").classList.add("is-gone");
-    try { if (!localStorage.getItem("handwave-hands-seen")) { localStorage.setItem("handwave-hands-seen", "1"); show($("helpSheet")); } } catch {}   // (the first time: how to play)
+    started = true; startT = performance.now(); $("start").classList.add("is-gone"); $("strip").hidden = !S.dials;
     audio().then(() => post({ type: "on", on: true }));
   }
-  $("start").addEventListener("click", begin);
+  // the start: choose what the camera follows, then start with it, or without (touch and drag)
+  const drawFollow = () => { document.querySelectorAll("[data-follow]").forEach((b) => b.setAttribute("aria-pressed", String(!!S[b.dataset.follow]))); $("startCam").disabled = !S.hands && !S.face && !S.body; };
+  document.querySelectorAll("[data-follow]").forEach((b) => b.addEventListener("click", () => { S[b.dataset.follow] = !S[b.dataset.follow]; save(); drawFollow(); drawMenu(); }));
+  $("startCam").addEventListener("click", () => { begin(); startHands(); });
+  $("startTouch").addEventListener("click", begin);
+  drawFollow();
   const show = (d) => { if (!d.open) d.showModal(); };
   for (const d of document.querySelectorAll("dialog")) d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
   const SCENES = ["aurora", "nebula", "sky"];
@@ -438,8 +525,9 @@ void main() {
   $("menuBtn").addEventListener("click", () => { drawMenu(); show($("menuSheet")); });
   $("helpBtn").addEventListener("click", () => { $("menuSheet").close(); show($("helpSheet")); });
   $("pauseBtn").addEventListener("click", () => { paused = !paused; begin(); post({ type: "on", on: !paused }); drawMenu(); });
+  $("dialsBtn").addEventListener("click", () => { S.dials = !S.dials; save(); drawMenu(); $("strip").hidden = !S.dials || !started; });
   $("vol").addEventListener("input", () => { S.vol = +$("vol").value; sendParams(); save(); });
-  for (const k of ["face", "body"]) $(k + "Btn").addEventListener("click", () => { S[k] = !S[k]; save(); drawMenu(); if (!S[k]) { if (k === "face") face = null; else body = null; } else if (handsOn) loadFaceBody(); });
+  for (const k of ["hands", "face", "body"]) $(k + "Follow").addEventListener("click", () => { S[k] = !S[k]; save(); drawMenu(); drawFollow(); if (!S[k]) { if (k === "face") face = null; else if (k === "body") body = null; else camHands = { r: null, l: null }; } else if (handsOn) loadFaceBody(); });
   document.querySelectorAll("[data-set]").forEach((sg) => sg.addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     S[sg.dataset.set] = b.dataset.v; save(); drawMenu();
@@ -448,9 +536,10 @@ void main() {
   function drawMenu() {
     document.querySelectorAll("[data-set]").forEach((sg) => sg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(S[sg.dataset.set] === b.dataset.v))));
     $("vol").value = S.vol; $("pauseBtn").textContent = paused ? "Play" : "Pause";
-    $("faceBtn").setAttribute("aria-pressed", String(!!S.face)); $("bodyBtn").setAttribute("aria-pressed", String(!!S.body));
+    for (const k of ["hands", "face", "body"]) $(k + "Follow").setAttribute("aria-pressed", String(!!S[k]));
+    $("dialsBtn").setAttribute("aria-pressed", String(!!S.dials));
   }
-  addEventListener("keydown", (e) => { if (e.code === "Space" && !e.target.closest("dialog")) { e.preventDefault(); if (!started) begin(); else $("pauseBtn").click(); } });
+  addEventListener("keydown", (e) => { if (e.code === "Space" && !e.target.closest("dialog") && started) { e.preventDefault(); $("pauseBtn").click(); } });
   drawMenu();
 
   // ------------------------------------------------------------------------------------------ the toast ---
@@ -474,6 +563,6 @@ void main() {
     return lm;
   }
   window.handwave = { S, begin, ctx: () => ctx, viz: () => viz, started: () => started, zone: () => zone, camOn: () => camOn, handsOn: () => handsOn, quality: () => q,
-    readHand, handsToControl, makeHand, current, setHands: (h) => { testHands = h; }, setCamHands: (lms) => { camHands = handsToControl(lms); }, gl: () => !!gl, scenesOk: () => SCENES.map((n) => !!(gl && prog(n))),
-    view: () => ({ ...view }), setFace: (f) => { face = f; }, setBody: (b) => { body = b; }, readFace, readBody, rings: () => rings.length, kicks: () => kickTotal, trackers: () => ({ hand: !!handTr, face: !!faceTr, pose: !!poseTr }) };
+    readHand, handsToControl, makeHand, current, setHands: (h) => { testHands = h; }, setCamHands: (lms) => { camHands = handsToControl(lms, camHands); }, gl: () => !!gl, scenesOk: () => SCENES.map((n) => !!(gl && prog(n))),
+    view: () => ({ ...view }), dial: (i) => DIALS[i].shown, setFace: (f) => { face = f; }, setBody: (b) => { body = b; }, readFace, readBody, rings: () => rings.length, kicks: () => kickTotal, trackers: () => ({ hand: !!handTr, face: !!faceTr, pose: !!poseTr }) };
 })();

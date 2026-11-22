@@ -24,13 +24,28 @@ button { font: inherit; color: inherit; cursor: pointer; }
   color: rgba(255, 255, 255, .7); text-shadow: 0 1px 8px rgba(0, 0, 0, .6); pointer-events: none; transition: opacity .8s; padding: 0 16px; }
 .hint:empty { opacity: 0; }
 
-/* the start: one big quiet button over the sky */
-.start { position: absolute; inset: 0; z-index: 3; border: 0; background: radial-gradient(ellipse at center, rgba(4, 3, 12, .25), rgba(4, 3, 12, .7));
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; transition: opacity .9s; }
-.start b { font-size: clamp(38px, 9vw, 72px); font-weight: 800; letter-spacing: .02em; text-shadow: 0 0 30px rgba(180, 140, 255, .6); }
-.start span { font-size: 19px; padding: 12px 26px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .08); }
-.start small { font-size: 14px; color: var(--muted); }
+/* the start: what the camera follows, then go */
+.start { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background: radial-gradient(ellipse at center, rgba(4, 3, 12, .3), rgba(4, 3, 12, .75)); transition: opacity .9s; overflow: auto; }
+.start__box { width: min(460px, 100%); display: flex; flex-direction: column; align-items: stretch; gap: 10px; text-align: center; }
+.start__box > b { font-size: clamp(38px, 10vw, 64px); font-weight: 800; letter-spacing: .02em; text-shadow: 0 0 30px rgba(180, 140, 255, .6); }
+.start__box > p { margin: 0 0 6px; color: var(--muted); font-size: 16px; }
+.start__box h2 { margin: 8px 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); font-weight: 700; }
+.follow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.follow button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 6px 12px; border-radius: 18px; border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .05); color: rgba(255, 255, 255, .6); transition: background .2s, color .2s, box-shadow .2s; }
+.follow button b { font-size: 16px; }
+.follow button small { font-size: 12px; line-height: 1.25; color: inherit; opacity: .85; }
+.follow button[aria-pressed="true"] { color: #fff; background: rgba(120, 90, 255, .28); border-color: rgba(190, 160, 255, .7); box-shadow: 0 0 24px rgba(150, 110, 255, .35); }
+.follow button[aria-pressed="true"] svg { filter: drop-shadow(0 0 6px rgba(160, 230, 255, .8)); }
+.start__go { margin-top: 8px; min-height: 54px; border-radius: 999px; border: 0; background: linear-gradient(90deg, #39e8ff, #b48cff); color: #0a0620; font-weight: 800; font-size: 17px; }
+.start__go:disabled { opacity: .4; }
+.start__alt { min-height: 46px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .06); font-size: 15px; }
+.start__note { color: var(--muted); font-size: 13px; }
 .start.is-gone { opacity: 0; pointer-events: none; }
+@media (max-height: 560px) { .start__box { gap: 5px; } .start__box > b { font-size: 30px; } .start__box > p { display: none; } .start__box h2 { margin-top: 2px; }
+  .follow button { padding: 6px; gap: 2px; } .follow button small { display: none; } .follow svg { width: 24px; height: 24px; }
+  .start__go { min-height: 44px; margin-top: 4px; } .start__alt { min-height: 38px; } .start__note { font-size: 12px; } }
 
 /* the sheets */
 .sheet { width: min(420px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; border: 1px solid var(--line); border-radius: 22px;

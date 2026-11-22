@@ -183,8 +183,8 @@ class Handwave extends AudioWorkletProcessor {
 
   process(_in, outs) {
     const out = outs[0], L = out[0], R = out[1] || out[0], n = L.length, P = this.P, c = this.c;
-    // the hands, smoothed (about a third of a second): the right hand's swell falls away when it goes
-    const k = 1 - Math.exp(-n / (SR * 0.3)), kz = 1 - Math.exp(-n / (SR * (this.R ? 0.25 : 1.6)));
+    // the hands, smoothed a little (a few hundredths of a second): the right hand's swell falls away slowly when it goes
+    const k = 1 - Math.exp(-n / (SR * 0.07)), kz = 1 - Math.exp(-n / (SR * (this.R ? 0.06 : 1.2)));   // (quick: the hands are felt at once)
     const r = this.R, l = this.L;
     c.rOn += ((r ? 1 : 0) - c.rOn) * kz;
     if (r) { c.pitch += (r.y - c.pitch) * k; c.near += (r.z - c.near) * kz; } else c.near += (0 - c.near) * kz;

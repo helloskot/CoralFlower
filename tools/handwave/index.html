@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Handwave</title>
-<meta name="description" content="Generative ambient sound you play with your hands in the air: move them across, up and down, nearer and further, and the sound and the sky follow.">
+<meta name="description" content="Ambient house and dub techno you play with your hands, your face and your body in the air, flying over Drift's hills as you go.">
 <meta name="theme-color" content="#04030c">
 <meta name="hw-build" content="dev">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -32,9 +32,11 @@
 <dialog class="sheet" id="menuSheet" aria-labelledby="menuTitle">
   <h2 id="menuTitle">Handwave</h2>
   <h3>Scene</h3>
-  <div class="seg" data-set="scene"><button type="button" data-v="aurora">Aurora</button><button type="button" data-v="nebula">Nebula</button><button type="button" data-v="sky">Sky flight</button></div>
+  <div class="seg" data-set="scene"><button type="button" data-v="sky">Sky flight</button><button type="button" data-v="aurora">Aurora</button><button type="button" data-v="nebula">Nebula</button></div>
+  <h3>The camera sees</h3>
+  <div class="seg"><button type="button" aria-pressed="true" disabled>Hands</button><button type="button" id="faceBtn" aria-pressed="true">Face</button><button type="button" id="bodyBtn" aria-pressed="true">Body</button></div>
   <h3>Mood</h3>
-  <div class="seg" data-set="mood"><button type="button" data-v="night">Night</button><button type="button" data-v="dawn">Dawn</button><button type="button" data-v="dream">Dream</button></div>
+  <div class="seg" data-set="mood"><button type="button" data-v="night">Night 120</button><button type="button" data-v="dawn">Dawn 124</button><button type="button" data-v="dream">Dream 116</button></div>
   <label class="knob"><span>Volume</span><input type="range" id="vol" min="0" max="1" step="0.01"></label>
   <div class="row"><button type="button" id="helpBtn">How to play</button><button type="button" id="pauseBtn">Pause</button></div>
   <p class="sheet__hint">Handwave runs in the browser. The camera only sees your hands: they're tracked on this device (MediaPipe, loaded the first time), and no picture is shown, kept or sent. Part of CoralFlower.</p>
@@ -43,16 +45,20 @@
 
 <dialog class="sheet" id="helpSheet" aria-labelledby="helpTitle">
   <h2 id="helpTitle">How to play</h2>
-  <p class="sheet__hint">It plays by itself, softly. Your hands shape it.</p>
+  <p class="sheet__hint">It plays by itself: ambient house, dub techno. You shape it, and steer the flight.</p>
   <dl class="map">
     <dt>Right hand</dt>
-    <dd><b>Across</b> moves through the chords</dd>
+    <dd><b>Across</b> moves through the chords, and turns the sky</dd>
     <dd><b>Up and down</b> lower and darker, or higher and brighter</dd>
-    <dd><b>Nearer the camera</b> swells it, with a melody and bells</dd>
+    <dd><b>Nearer the camera</b> swells it, with an arpeggio</dd>
     <dt>Left hand</dt>
-    <dd><b>Across</b> the texture: rain, the sea, wind, birds</dd>
-    <dd><b>Up and down</b> the space: close and dry, or vast</dd>
-    <dd><b>Nearer the camera</b> the weather: calm, then a storm</dd>
+    <dd><b>Across</b> builds the groove: from no beat to the full beat</dd>
+    <dd><b>Up and down</b> the space: dry, or a deep dub echo</dd>
+    <dd><b>Nearer the camera</b> opens the filter</dd>
+    <dt>Face</dt>
+    <dd><b>Turn your head</b> to look around; <b>tilt</b> it to bank; <b>open your mouth</b> to open the sound up</dd>
+    <dt>Body</dt>
+    <dd><b>Dance</b> and the groove builds; <b>lean</b> to turn; <b>arms wide</b> for space</dd>
   </dl>
   <p class="sheet__hint">No camera? Touch and drag: one finger is your right hand (hold it longer to come nearer), a second finger your left.</p>
   <form method="dialog"><button class="sheet__done">Play</button></form>

@@ -49,6 +49,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .map { margin: 8px 0; font-size: 15px; line-height: 1.4; }
 .map dt { margin-top: 12px; font-weight: 800; color: var(--cyan); }
 .map dt:nth-of-type(2) { color: var(--violet); }
+.map dt:nth-of-type(3) { color: #ffbef0; }
+.map dt:nth-of-type(4) { color: #ffd678; }
+.seg button:disabled { opacity: .7; }
 .map dd { margin: 4px 0 0; color: var(--text); }
 .map dd b { color: #fff; }
 

@@ -70,14 +70,16 @@ It runs in the browser on iPad, iPhone and foldables, and installs to the Home S
 
 <p align="center"><img src="tools/handwave/icon-512.png" width="128" alt="The Handwave icon: a neon hand over a wave"></p>
 
-Handwave is a chord machine you play with your hands. Every chord is in key, so there's no wrong note: tap the pads,
-or turn on the camera and play in the air. Your right hand's height picks the chord and a pinch plays it, and your left
-hand's fingers pick the flavour (triad, 7th, 9th, sus, power, wide). A groove, a bass that follows your chords, an
-arpeggiator and a chord memory turn it into a track. A neon mask (a wireframe, a visor or an outline) can follow your face
-in the picture and in the videos you record.
+Handwave is an ambient house chord machine you play with your hands. Every chord is in key, so there's no wrong note:
+tap the pads, or turn on the camera and play in the air. Your right hand's height picks the chord and a pinch plays it,
+and your left hand's fingers pick the flavour (triad, 7th, 9th, sus, power, wide). The camera only sees your hands: the
+stage shows them in neon over a slow aurora, with ripples where you play, and never shows your picture. A soft groove
+(deep, dub, garage, breaks, half-time), a bass that follows your chords, an arpeggiator and a chord memory turn it into
+a track, and Drift lays a bed under it all: a slow pad on your chord, bells wandering over it, and a texture (vinyl,
+rain, the sea, birds), still drifting on the last chord when you stop.
 
-It runs in the browser and installs to the Home Screen: <https://helloskot.github.io/CoralFlower/handwave/>. Its
-source is in `tools/handwave/`. The hands are tracked on your device with MediaPipe; no picture leaves it.
+It runs in the browser: <https://helloskot.github.io/CoralFlower/handwave/>. Its source is in `tools/handwave/`. The
+hands are tracked on your device with MediaPipe; no picture is shown, kept or sent.
 
 ## Install
 

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Handwave: a chord machine you play with your hands. The pads (seven chords, all in key), the flavours (what kind of
-// chord), the groove and the arpeggiator (the sound engine: handwave-worklet.js), the chord memory, and the camera:
-// MediaPipe's hand tracker, the right hand's height picking the chord and a pinch playing it, the left hand's fingers
-// picking the flavour. MIDI in (any key plays a chord in key) and out (the chords to a synth), and a video of it all.
+// Handwave: an ambient house chord machine you play with your hands. The pads (seven chords, all in key), the flavours
+// (what kind of chord), a soft groove, the arpeggiator and Drift (a generative bed on your chord: the sound engine is
+// handwave-worklet.js), the chord memory, and the camera, used only to see your hands (MediaPipe's hand tracker; no
+// picture is shown or kept): the right hand's height picks the chord and a pinch plays it, the left hand's fingers pick
+// the flavour. The stage shows your hands in neon over a slow aurora. MIDI in (any key plays a chord in key) and out.
 "use strict";
 (() => {
   const T = globalThis.HWTheory, $ = (id) => document.getElementById(id), app = $("app");
@@ -10,11 +11,15 @@
 
   // ------------------------------------------------------------------------------------------- the state ---
   const KEY = "handwave-state";
-  const DEF = { key: 9, scale: "minor", flavour: 0, hold: false, tempo: 122, memory: Array(8).fill(null), mask: "off", pic: "bright",
-    p: { sound: "saw", cutoff: 0.72, reso: 0.25, attack: 0.04, release: 0.8, swing: 0.54, arp: "off", arpRate: 16, strum: 0, bass: "sub", drums: "house",
-         pump: 0.45, delay: 0.22, verb: 0.32, vol: 0.8, chordVol: 0.8, bassVol: 0.8, drumVol: 0.75 } };
+  const DEF = { key: 9, scale: "minor", flavour: 1, hold: false, tempo: 116, memory: Array(8).fill(null),
+    p: { sound: "saw", cutoff: 0.6, reso: 0.2, attack: 0.3, release: 1.4, swing: 0.55, arp: "off", arpRate: 16, strum: 0.12, bass: "sub", drums: "deep",
+         pump: 0.35, delay: 0.32, verb: 0.5, vol: 0.8, chordVol: 0.8, bassVol: 0.8, drumVol: 0.65, drift: 0.6, texture: "vinyl", bells: true } };
   const S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s) return { ...DEF, ...s, p: { ...DEF.p, ...(s.p || {}) }, memory: (s.memory || DEF.memory).slice(0, 8) }; } catch {} return structuredClone(DEF); })();
   if (!T.SCALES[S.scale]) S.scale = "minor";             // (a scale that's gone: minor)
+  delete S.mask; delete S.pic;                            // (from before: what's gone, or changed)
+  if (S.p.sound === "stab") S.p.sound = "organ";
+  if (!["off", "deep", "dub", "garage", "breaks", "halftime"].includes(S.p.drums)) S.p.drums = "deep";
+  if (!["off", "sub", "deep", "dub"].includes(S.p.bass)) S.p.bass = "sub";
   let saveT = 0;
   const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} }, 250); };
 
@@ -50,11 +55,11 @@
   function play(deg, opts = {}) {
     audio().then(() => {
       const c = opts.chord || build(deg, opts.flavour);
-      cur = c; curDeg = deg; lastNotes = c.notes; chordT = performance.now();
+      cur = c; curDeg = deg; lastNotes = c.notes;
       post({ type: "chord", notes: c.notes, root: c.root, vel: opts.vel == null ? 0.85 : opts.vel, dir: opts.dir || 1 });
       midiChord(c.notes, opts.vel);
       drawNow(); drawPads();
-      burstAt(deg);
+      ripple(deg, opts.at);
       if (memRec && !opts.fromMemory) record(c, deg);
     });
   }
@@ -136,7 +141,7 @@
   $("soundBtn").addEventListener("click", () => show($("soundSheet")));
   $("grooveBtn").addEventListener("click", () => show($("grooveSheet")));
   $("arpBtn").addEventListener("click", () => show($("arpSheet")));
-  $("maskBtn").addEventListener("click", () => show($("maskSheet")));
+  $("driftBtn").addEventListener("click", () => show($("driftSheet")));
   $("menuBtn").addEventListener("click", () => show($("menuSheet")));
   $("helpBtn").addEventListener("click", () => { $("menuSheet").close(); show($("helpSheet")); });
   $("keyGrid").innerHTML = T.NAMES.map((n, i) => `<button type="button" data-key="${i}">${n}</button>`).join("");
@@ -144,19 +149,20 @@
   $("keyGrid").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; S.key = +b.dataset.key; lastNotes = null; save(); drawAll(); });
   $("scaleGrid").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; S.scale = b.dataset.scale; lastNotes = null; save(); drawAll(); });
   // the segments (data-set) and the sliders (data-p)
-  const SOUNDS = { saw: "Pad", pluck: "Pluck", stab: "Stab", keys: "Keys" }, GROOVES = { off: "Off", house: "House", garage: "Garage", techno: "Techno", breaks: "Breaks", halftime: "Half-time" };
-  const ARPS = { off: "Off", up: "Up", down: "Down", updown: "Up-down" }, MASKS = { off: "Mask", wire: "Wireframe", visor: "Visor", outline: "Outline" };
+  const SOUNDS = { saw: "Pad", keys: "Keys", organ: "Organ", pluck: "Pluck" }, GROOVES = { off: "Off", deep: "Deep", dub: "Dub", garage: "Garage", breaks: "Breaks", halftime: "Half-time" };
+  const ARPS = { off: "Off", up: "Up", down: "Down", updown: "Up-down" }, TEXTURES = { none: "None", vinyl: "Vinyl", rain: "Rain", ocean: "Ocean", birds: "Birds" };
+  const driftName = () => (S.p.drift <= 0 ? "Off" : TEXTURES[S.p.texture] && S.p.texture !== "none" ? TEXTURES[S.p.texture] : "On");
   if (!ARPS[S.p.arp]) S.p.arp = "up";
   if (![8, 16, 24].includes(S.p.arpRate)) S.p.arpRate = 16;
   document.querySelectorAll("[data-set]").forEach((sg) => sg.addEventListener("click", (e) => {
     const b = e.target.closest("button"); if (!b) return;
     const k = sg.dataset.set, v = b.dataset.v;
-    if (k === "mask") { S.mask = v; setMask(v); } else if (k === "pic") S.pic = v;
-    else S.p[k] = k === "arpRate" ? +v : v;
+    S.p[k] = k === "arpRate" ? +v : k === "bells" ? v === "on" : v;
+    if (k === "texture" && v !== "none" && S.p.drift <= 0) S.p.drift = 0.6;   // (a texture: Drift on)
     sendParams(); save(); drawAll();
     if (k === "sound" && curDeg >= 0) play(curDeg);
   }));
-  document.querySelectorAll("input[data-p]").forEach((i) => i.addEventListener("input", () => { S.p[i.dataset.p] = +i.value; sendParams(); save(); }));
+  document.querySelectorAll("input[data-p]").forEach((i) => i.addEventListener("input", () => { S.p[i.dataset.p] = +i.value; sendParams(); save(); if (i.dataset.p === "drift") drawAll(); }));
   $("holdBtn").addEventListener("click", () => { S.hold = !S.hold; save(); drawAll(); if (!S.hold && !padDown.size && !keysDown.size && !handPlaying) release(true); });
   function drawAll() {
     $("keyName").textContent = T.NAMES[S.key] + " " + T.SCALES[S.scale].name.toLowerCase();
@@ -164,11 +170,11 @@
     $("soundName").textContent = SOUNDS[S.p.sound]; $("grooveName").textContent = GROOVES[S.p.drums]; $("arpName").textContent = ARPS[S.p.arp];
     $("tempo").textContent = S.tempo;
     $("holdBtn").setAttribute("aria-pressed", String(S.hold));
-    $("maskName").textContent = MASKS[S.mask]; $("maskBtn").dataset.on = S.mask !== "off" ? "1" : "";
+    $("driftName").textContent = driftName(); $("driftBtn").dataset.on = S.p.drift > 0 ? "1" : "";
     $("keyGrid").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.key === S.key)));
     $("scaleGrid").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.scale === S.scale)));
     document.querySelectorAll("[data-set]").forEach((sg) => sg.querySelectorAll("button").forEach((b) => {
-      const k = sg.dataset.set, v = k === "mask" ? S.mask : k === "pic" ? S.pic : S.p[k];
+      const k = sg.dataset.set, v = k === "bells" ? (S.p.bells ? "on" : "off") : S.p[k];
       b.setAttribute("aria-pressed", String(String(v) === b.dataset.v));
     }));
     document.querySelectorAll("input[data-p]").forEach((i) => { if (document.activeElement !== i) i.value = S.p[i.dataset.p]; });
@@ -218,56 +224,57 @@
   });
 
   // --------------------------------------------------------------------------------------- the stage ---
+  // no picture: a slow aurora in the chord's colours (breathing with the sound, a pulse on the kick), Drift's bells as
+  // motes rising, a ripple for each chord played (from the pinch, with hands), and the hands themselves in neon
   const cv = $("stage"), g = cv.getContext("2d"), video = $("cam");
-  let W = 0, H = 0, dpr = 1, viz = { step: -1, level: 0, kick: false, voices: [] }, kickT = 0, parts = [];
+  let W = 0, H = 0, dpr = 1, viz = { step: -1, level: 0, kick: false, voices: [], drift: [], bells: [] }, kickT = 0, rings = [], motes = [];
   function fit() { const r = cv.getBoundingClientRect(); dpr = Math.min(2, devicePixelRatio || 1); W = Math.max(2, Math.round(r.width * dpr)); H = Math.max(2, Math.round(r.height * dpr)); cv.width = W; cv.height = H; }
   new ResizeObserver(fit).observe($("stageBox")); fit();
   function onViz(m) {
     viz = m; if (m.kick) kickT = performance.now();
-    if (m.prog !== progNow && S.loop) { progNow = m.prog; drawSlots(); const s = S.memory[m.prog]; if (s) { cur = { ...(cur || {}), name: s.name, numeral: T.chord(S.key, S.scale, s.deg, 0).numeral }; curDeg = s.deg; drawNow(); drawPads(); burstAt(s.deg); setTimeout(() => { if (curDeg === s.deg && !padDown.size && !handPlaying && !keysDown.size) { curDeg = -1; drawPads(); } }, 300); } }
+    for (const n of m.bells || []) motes.push({ x: (0.08 + ((n % 12) / 12) * 0.84 + (Math.random() - 0.5) * 0.06) * W, y: H * (0.7 + Math.random() * 0.25), h: (n % 12) * 30, life: 1, r: (2 + Math.random() * 2.5) * dpr });
+    if (motes.length > 80) motes.splice(0, motes.length - 80);
+    if (m.prog !== progNow && S.loop) { progNow = m.prog; drawSlots(); const s = S.memory[m.prog]; if (s) { cur = { ...(cur || {}), name: s.name, numeral: T.chord(S.key, S.scale, s.deg, 0).numeral }; curDeg = s.deg; drawNow(); drawPads(); ripple(s.deg); setTimeout(() => { if (curDeg === s.deg && !padDown.size && !handPlaying && !keysDown.size) { curDeg = -1; drawPads(); } }, 300); } }
   }
-  function burstAt(deg) {
-    const h = hue(deg), n = 26;
-    for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + Math.random() * 0.2, s = (0.25 + Math.random() * 0.5) * Math.min(W, H); parts.push({ x: W / 2, y: H * 0.42, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, h }); }
-    if (parts.length > 400) parts.splice(0, parts.length - 400);
+  // a ripple: rings spreading from where the chord was played (the middle of the stage, from a pad or a key)
+  function ripple(deg, at) {
+    const [x, y] = at || [W / 2, H * 0.45];
+    for (let k = 0; k < 3; k++) rings.push({ x, y, h: hue(deg), t: -k * 0.16 });
+    if (rings.length > 30) rings.splice(0, rings.length - 30);
   }
-  let tPrev = 0;
+  let tPrev = 0, auraH = 280;
   function frame(now) {
-    const dt = Math.min(0.05, tPrev ? (now - tPrev) / 1000 : 0.016); tPrev = now;
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    // the backdrop: the camera (mirrored, dark) or a horizon grid that pulses on the kick
-    const kick = Math.max(0, 1 - (now - kickT) / 300);
-    vfit = null;
-    if (camOn && video.readyState >= 2) {
-      g.save(); g.translate(W, 0); g.scale(-1, 1);
-      const vr = video.videoWidth / video.videoHeight, cr = W / H; let sw = W, sh = H, sx = 0, sy = 0;
-      if (vr > cr) { sw = H * vr; sx = (W - sw) / 2; } else { sh = W / vr; sy = (H - sh) / 2; }
-      g.drawImage(video, sx, sy, sw, sh); g.restore();
-      vfit = { sx, sy, sw, sh };
-      g.fillStyle = `rgba(6,3,14,${S.pic === "dim" ? 0.62 : 0.2})`; g.fillRect(0, 0, W, H);
-    } else {
-      const grd = g.createLinearGradient(0, 0, 0, H); grd.addColorStop(0, "#0b0520"); grd.addColorStop(0.55, "#1a0838"); grd.addColorStop(1, "#05030b");
-      g.fillStyle = grd; g.fillRect(0, 0, W, H);
-      const hz = H * 0.62, t = now / 1000, ch = curDeg >= 0 ? hue(curDeg) : 280;
-      g.strokeStyle = `hsla(${ch},90%,60%,${0.35 + kick * 0.4})`; g.lineWidth = 1.2 * dpr;
-      for (let i = -12; i <= 12; i++) { g.beginPath(); g.moveTo(W / 2 + i * W * 0.02, hz); g.lineTo(W / 2 + i * W * 0.16, H); g.stroke(); }
-      for (let k = 0; k < 10; k++) { const z = ((k + (t * (S.tempo / 60)) % 1) / 10), y = hz + (H - hz) * z * z; g.globalAlpha = z; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
-      g.globalAlpha = 1;
-      const sunR = Math.min(W, H) * (0.16 + viz.level * 0.4 + kick * 0.02), sg = g.createLinearGradient(0, hz - sunR, 0, hz);
-      sg.addColorStop(0, `hsl(${ch + 40},100%,65%)`); sg.addColorStop(1, `hsl(${ch},100%,55%)`);
-      g.fillStyle = sg; g.beginPath(); g.arc(W / 2, hz, sunR, Math.PI, 0); g.fill();
-    }
-    // the notes sounding: a glowing keyboard along the bottom
-    const lo = 36, hi = 96, kw = W / (hi - lo);
-    for (const n of viz.voices || []) { const x = (n - lo) * kw; g.fillStyle = `hsla(${(n % 12) * 30},100%,65%,.85)`; g.fillRect(x, H - 6 * dpr, kw * 0.9, 6 * dpr); }
-    // the bursts
-    for (const p of parts) { p.life -= dt * 1.4; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.96; p.vy *= 0.96; }
-    parts = parts.filter((p) => p.life > 0);
+    const dt = Math.min(0.05, tPrev ? (now - tPrev) / 1000 : 0.016), t = now / 1000; tPrev = now;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = "source-over";
+    const kick = Math.max(0, 1 - (now - kickT) / 400), lvl = Math.min(1, (viz.level || 0) * 4);
+    // the colour drifts toward the chord's
+    const want = curDeg >= 0 ? hue(curDeg) : auraH, dh = ((want - auraH + 540) % 360) - 180; auraH = (auraH + dh * Math.min(1, dt * 1.5) + 360) % 360;
+    const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#04030c"); bg.addColorStop(0.6, `hsl(${auraH},45%,7%)`); bg.addColorStop(1, "#020208");
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    // the aurora: three slow ribbons
     g.globalCompositeOperation = "lighter";
-    for (const p of parts) { g.fillStyle = `hsla(${p.h},100%,65%,${p.life})`; g.beginPath(); g.arc(p.x, p.y, 2.2 * dpr, 0, 6.283); g.fill(); }
+    const breathe = 0.5 + 0.5 * Math.sin(t * 0.4), driftOn = (viz.drift || []).length > 0;
+    for (let k = 0; k < 3; k++) {
+      const hh = auraH + (k - 1) * 28, base = H * (0.28 + k * 0.13), amp = H * (0.07 + lvl * 0.05), a = (0.07 + lvl * 0.12 + kick * 0.05 + (driftOn ? 0.05 : 0)) * (0.7 + 0.3 * breathe);
+      const gr = g.createLinearGradient(0, base - H * 0.25, 0, base + H * 0.12);
+      gr.addColorStop(0, `hsla(${hh},90%,60%,0)`); gr.addColorStop(0.7, `hsla(${hh},90%,62%,${a})`); gr.addColorStop(1, `hsla(${hh + 20},90%,55%,0)`);
+      g.fillStyle = gr; g.beginPath(); g.moveTo(0, H);
+      for (let x = 0; x <= W + 1; x += W / 24) { const y = base + Math.sin(x / W * 5 + t * (0.15 + k * 0.07) + k * 2) * amp + Math.sin(x / W * 11 - t * 0.2 + k) * amp * 0.35; g.lineTo(x, y); }
+      g.lineTo(W, H); g.closePath(); g.fill();
+    }
+    // the bells: motes rising, fading
+    for (const m of motes) { m.life -= dt * 0.22; m.y -= dt * H * 0.05; m.x += Math.sin(t + m.h) * dt * 4 * dpr; }
+    motes = motes.filter((m) => m.life > 0);
+    for (const m of motes) { const rg = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r * 5); rg.addColorStop(0, `hsla(${m.h},100%,80%,${m.life})`); rg.addColorStop(1, `hsla(${m.h},100%,60%,0)`); g.fillStyle = rg; g.fillRect(m.x - m.r * 5, m.y - m.r * 5, m.r * 10, m.r * 10); }
+    // the ripples
+    for (const r of rings) r.t += dt;
+    rings = rings.filter((r) => r.t < 1.8);
+    for (const r of rings) { if (r.t < 0) continue; const f = r.t / 1.8; g.strokeStyle = `hsla(${r.h},100%,70%,${(1 - f) * 0.7})`; g.lineWidth = (3 - f * 2) * dpr; g.beginPath(); g.arc(r.x, r.y, 12 * dpr + f * Math.min(W, H) * 0.45, 0, 6.283); g.stroke(); }
+    // the notes sounding: a soft glow along the bottom
+    const lo = 36, hi = 96, kw = W / (hi - lo);
+    for (const n of viz.voices || []) { const x = (n - lo) * kw; g.fillStyle = `hsla(${(n % 12) * 30},100%,65%,.6)`; g.fillRect(x, H - 4 * dpr, kw * 0.9, 4 * dpr); }
     g.globalCompositeOperation = "source-over";
-    if (face && S.mask !== "off") drawFace(now, kick);
-    if (handsOn || demoT) drawHands();
+    if (handsOn || demoT) drawHands(now);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -306,9 +313,10 @@
     }
     return out;
   }
-  let camOn = false, handsOn = false, lastHands = { chord: null, flav: null }, handPlaying = false, prevY = 0, demoT = 0, vfit = null, face = null, chordT = 0;
-  // a point on the camera's picture (0..1) to the stage, mirrored, as the picture is drawn there
-  const toC = (p) => (vfit && !demoT ? [W - (vfit.sx + p.x * vfit.sw), vfit.sy + p.y * vfit.sh] : [(1 - p.x) * W, p.y * H]);
+  let camOn = false, handsOn = false, lastHands = { chord: null, flav: null }, handPlaying = false, prevY = 0, demoT = 0;
+  // a point the camera saw (0..1) to the stage, mirrored (as a mirror shows you)
+  const toC = (p) => [(1 - p.x) * W, p.y * H];
+  const pinchAt = (c) => { if (!c.lm) return null; const [x1, y1] = toC(c.lm[4]), [x2, y2] = toC(c.lm[8]); return [(x1 + x2) / 2, (y1 + y2) / 2]; };
   function applyHands(ctl) {
     lastHands = ctl;
     if (ctl.flav) {
@@ -318,125 +326,98 @@
     const c = ctl.chord;
     if (c && c.pinch) {
       const dir = c.y < prevY ? -1 : 1;
-      if (!handPlaying || c.deg !== curDeg) { handPlaying = true; play(c.deg, { vel: 0.85, dir }); }
+      if (!handPlaying || c.deg !== curDeg) { handPlaying = true; play(c.deg, { vel: 0.85, dir, at: pinchAt(c) }); }
     } else if (handPlaying) { handPlaying = false; if (!padDown.size && !keysDown.size) release(); }
     if (c) prevY = c.y;
-    $("hint").textContent = !ctl.chord && !ctl.flav ? (handsOn ? "Raise your hands into the picture" : "")
+    $("hint").textContent = !ctl.chord && !ctl.flav ? (handsOn ? "Raise your hands in front of the camera" : "")
       : ctl.chord && !ctl.chord.pinch ? "Pinch to play · move up or down for another chord" : ctl.chord ? "Let go to stop · left hand: fingers for the flavour" : "Right hand: pinch to play";
   }
-  function drawHands() {
-    // the zones: on the right, the seven chords (low to high); on the left, the six flavours (by fingers)
-    const zx = W * 0.5, zy = (v) => (vfit && !demoT ? vfit.sy + v * vfit.sh : v * H), zh = zy(0.88) / 7 - zy(0.12) / 7, z0 = zy(0.12);
-    g.font = `${Math.round(12 * dpr)}px ui-rounded, system-ui, sans-serif`; g.textBaseline = "middle";
+  // the hands, in neon: the chord hand cyan, the flavour hand violet; the chord's name by the right hand (bright when
+  // it plays), the flavour's by the left; the seven chord heights as faint ticks down the right edge
+  function drawHands(now) {
+    const fs = Math.round(13 * dpr), z0 = 0.12 * H, zh = (0.76 * H) / 7, c = lastHands.chord, f = lastHands.flav;
+    g.textBaseline = "middle"; g.lineCap = "round"; g.lineJoin = "round";
+    g.font = `600 ${Math.round(11 * dpr)}px ui-rounded, system-ui, sans-serif`; g.textAlign = "right";
     for (let d = 0; d < 7; d++) {
-      const y = z0 + (6 - d) * zh, on = lastHands.chord && lastHands.chord.deg === d, c = build(d, S.flavour, 0);
-      g.fillStyle = on ? `hsla(${hue(d)},90%,55%,.35)` : `hsla(${hue(d)},70%,40%,.10)`; g.fillRect(zx, y + 1, W - zx, zh - 2);
-      g.fillStyle = on ? "#fff" : "rgba(255,255,255,.55)"; g.textAlign = "right"; g.fillText(c.numeral + "  " + c.name, W - 10 * dpr, y + zh / 2);
+      const y = z0 + (6 - d) * zh + zh / 2, on = c && c.deg === d;
+      g.fillStyle = on ? `hsla(${hue(d)},100%,75%,.95)` : "rgba(255,255,255,.22)";
+      g.fillRect(W - (on ? 22 : 12) * dpr, y - 1 * dpr, (on ? 18 : 8) * dpr, 2 * dpr);
+      g.fillText(build(d, S.flavour, 0).numeral, W - 28 * dpr, y);
     }
-    g.textAlign = "left";
-    T.FLAVOURS.forEach((f, i) => {
-      const y = z0 + i * (H * 0.76 / 6) + 10 * dpr, on = i === S.flavour;
-      g.fillStyle = on ? "#c9a6ff" : "rgba(255,255,255,.45)"; g.fillText((i === 0 ? "fist" : i === 5 ? "open" : i + " up") + "  " + f.name, 10 * dpr, y);
-    });
-    for (const h of [lastHands.chord, lastHands.flav]) {
+    for (const h of [c, f]) {
       if (!h || !h.lm) continue;
-      const P = (k) => toC(h.lm[k]), pin = h === lastHands.chord && h.pinch;
-      g.strokeStyle = h === lastHands.chord ? "rgba(43,240,255,.9)" : "rgba(196,140,255,.9)"; g.lineWidth = 3 * dpr; g.lineCap = "round";
-      for (const [a, b] of BONES) { const [x1, y1] = P(a), [x2, y2] = P(b); g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); }
-      for (const k of TIP) { const [x, y] = P(k); g.fillStyle = "#fff"; g.beginPath(); g.arc(x, y, 4 * dpr, 0, 6.283); g.fill(); }
-      if (h === lastHands.chord) { const [x, y] = P(4), [x2, y2] = P(8); g.strokeStyle = pin ? "#ff3da8" : "rgba(255,255,255,.4)"; g.lineWidth = (pin ? 4 : 2) * dpr; g.beginPath(); g.arc((x + x2) / 2, (y + y2) / 2, (pin ? 16 : 10) * dpr, 0, 6.283); g.stroke(); }
+      const P = (k) => toC(h.lm[k]), isC = h === c, pin = isC && h.pinch, col = isC ? (pin ? `hsl(${hue(h.deg)},100%,68%)` : "#2bf0ff") : "#c48cff";
+      g.save(); g.globalCompositeOperation = "lighter"; g.shadowColor = col; g.shadowBlur = (pin ? 22 : 12) * dpr;
+      g.strokeStyle = col; g.lineWidth = (pin ? 4 : 3) * dpr; g.beginPath();
+      for (const [a, b] of BONES) { const [x1, y1] = P(a), [x2, y2] = P(b); g.moveTo(x1, y1); g.lineTo(x2, y2); } g.stroke();
+      g.fillStyle = "#fff"; for (const k of TIP) { const [x, y] = P(k); g.beginPath(); g.arc(x, y, 3.5 * dpr, 0, 6.283); g.fill(); }
+      g.restore();
+      // the label above the hand
+      const pts = h.lm.map(toC), top = Math.min(...pts.map((q) => q[1])), xs = pts.map((q) => q[0]), cx = clamp((Math.min(...xs) + Math.max(...xs)) / 2, 70 * dpr, W - 70 * dpr);
+      const ly = Math.max(fs * 1.6, top - fs * 2.6);
+      g.textAlign = "center";
+      if (isC) {
+        const ch = build(h.deg, S.flavour, 0);
+        g.font = `800 ${Math.round(fs * (pin ? 1.9 : 1.5))}px ui-rounded, system-ui, sans-serif`; g.fillStyle = pin ? "#fff" : "rgba(255,255,255,.6)";
+        g.fillText(ch.name, cx, ly); g.font = `600 ${fs}px ui-rounded, system-ui, sans-serif`; g.fillStyle = pin ? `hsl(${hue(h.deg)},100%,75%)` : "rgba(43,240,255,.75)";
+        g.fillText(pin ? ch.numeral : ch.numeral + " · pinch to play", cx, ly + fs * 1.5);
+        // the pinch: a ring between thumb and finger
+        const [x1, y1] = P(4), [x2, y2] = P(8); g.strokeStyle = pin ? "#fff" : "rgba(255,255,255,.35)"; g.lineWidth = (pin ? 3 : 1.5) * dpr;
+        g.beginPath(); g.arc((x1 + x2) / 2, (y1 + y2) / 2, (pin ? 14 + 3 * Math.sin(now / 120) : 9) * dpr, 0, 6.283); g.stroke();
+      } else {
+        const fl = T.FLAVOURS[S.flavour], n = h.fingers;
+        g.font = `800 ${Math.round(fs * 1.4)}px ui-rounded, system-ui, sans-serif`; g.fillStyle = "#e3ccff"; g.fillText(fl.name, cx, ly);
+        g.font = `600 ${fs}px ui-rounded, system-ui, sans-serif`; g.fillStyle = "rgba(196,140,255,.8)";
+        g.fillText((n === 0 ? "fist" : n >= 5 ? "open hand" : n + " up") + " · higher is brighter", cx, ly + fs * 1.5);
+      }
     }
-    if (demoT) { g.fillStyle = "rgba(255,210,63,.9)"; g.textAlign = "center"; g.fillText("DEMO", W / 2, 14 * dpr); g.textAlign = "left"; }
+    if (demoT) { g.font = `700 ${fs}px ui-rounded, system-ui, sans-serif`; g.fillStyle = "rgba(255,210,63,.9)"; g.textAlign = "center"; g.fillText("DEMO", W / 2, 14 * dpr); }
+    g.textAlign = "left";
   }
-  // the camera, shared by the hands and the mask; MediaPipe's trackers from a CDN the first time (then the browser
-  // keeps them): the hand landmarker, the face landmarker
+  // the camera, only to see the hands (never shown, never kept); MediaPipe's hand tracker from a CDN the first time (then
+  // the browser keeps it)
   const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
   const MODELS = "https://storage.googleapis.com/mediapipe-models/";
-  let vision = null, files = null, handTr = null, faceTr = null, FACE = null, camLoop = 0, faceFake = null;   // (faceFake: the tests' made-up face)
+  let vision = null, files = null, handTr = null, camLoop = 0;
   async function visionLib() {
-    if (!vision) { toast("Loading the tracker (the first time takes a moment)…"); vision = await import(/* webpackIgnore: true */ MP + "/vision_bundle.mjs"); files = await vision.FilesetResolver.forVisionTasks(MP + "/wasm"); }
+    if (!vision) { toast("Loading the hand tracker (the first time takes a moment)…"); vision = await import(/* webpackIgnore: true */ MP + "/vision_bundle.mjs"); files = await vision.FilesetResolver.forVisionTasks(MP + "/wasm"); }
     return vision;
   }
   async function cameraOn() {
     if (camOn) return;
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
     video.srcObject = stream; await video.play(); camOn = true;
-    let lastT = -1, n = 0; const me = ++camLoop;
+    let lastT = -1; const me = ++camLoop;
     const loop = () => {
       if (!camOn || me !== camLoop) return;
       if (video.readyState >= 2 && video.currentTime !== lastT) {
-        lastT = video.currentTime; n++;
-        const ts = performance.now();
-        if (handsOn && handTr) applyHands(handsToControl(handTr.detectForVideo(video, ts).landmarks || []));
-        if (S.mask !== "off" && faceTr && (!TOUCH || handsOn === false || n % 2 === 0)) { const res = faceTr.detectForVideo(video, ts + 0.5); face = faceFake || (res.faceLandmarks && res.faceLandmarks[0]) || null; }
+        lastT = video.currentTime;
+        if (handsOn && handTr) applyHands(handsToControl(handTr.detectForVideo(video, performance.now()).landmarks || []));
       }
       requestAnimationFrame(loop);
     };
     loop();
   }
-  function cameraOffIfIdle() {
-    if (handsOn || S.mask !== "off") return;
-    camOn = false; const st = video.srcObject; if (st) st.getTracks().forEach((t) => t.stop()); video.srcObject = null;
-  }
-  const camErr = (err, what) => toast(err && err.name === "NotAllowedError" ? "The camera wasn't allowed: allow it in the browser's settings for " + what : "The camera couldn't start: " + (err.message || err), null, null, 7000);
-  const TOUCH = matchMedia("(pointer: coarse)").matches;
+  function cameraOff() { camOn = false; const st = video.srcObject; if (st) st.getTracks().forEach((t) => t.stop()); video.srcObject = null; }
+  const camErr = (err) => toast(err && err.name === "NotAllowedError" ? "The camera wasn't allowed: allow it in the browser's settings to play with your hands" : "The camera couldn't start: " + (err.message || err), null, null, 7000);
   async function startHands() {
     try {
-      toast("Starting the camera…");
+      toast("Starting the camera (only to see your hands)…");
       await cameraOn();
       const v = await visionLib();
       if (!handTr) handTr = await v.HandLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODELS + "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate: "GPU" }, runningMode: "VIDEO", numHands: 2 });
       handsOn = true; $("handsBtn").setAttribute("aria-pressed", "true");
       toast("Hands on: right hand pinches to play, left hand's fingers pick the flavour");
-    } catch (err) { stopHands(); camErr(err, "the hands"); }
+    } catch (err) { stopHands(); camErr(err); }
   }
   function stopHands() {
     handsOn = false; $("handsBtn").setAttribute("aria-pressed", "false");
     if (handPlaying) { handPlaying = false; release(); }
     lastHands = { chord: null, flav: null }; $("hint").textContent = "";
-    cameraOffIfIdle();
-  }
-  async function setMask(v) {
-    if (v === "off") { face = null; cameraOffIfIdle(); drawAll(); return; }
-    try {
-      await cameraOn();
-      const lib = await visionLib();
-      if (!faceTr) {
-        faceTr = await lib.FaceLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODELS + "face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" }, runningMode: "VIDEO", numFaces: 1 });
-        const F = lib.FaceLandmarker, pairs = (a) => a.map((c) => [c.start, c.end]);
-        FACE = { mesh: pairs(F.FACE_LANDMARKS_TESSELATION), oval: pairs(F.FACE_LANDMARKS_FACE_OVAL), lines: pairs([...F.FACE_LANDMARKS_LEFT_EYE, ...F.FACE_LANDMARKS_RIGHT_EYE, ...F.FACE_LANDMARKS_LEFT_EYEBROW, ...F.FACE_LANDMARKS_RIGHT_EYEBROW, ...F.FACE_LANDMARKS_LIPS]) };
-      }
-      toast("Mask on: it follows your face (the red button records it)");
-    } catch (err) { S.mask = "off"; save(); drawAll(); camErr(err, "the mask"); }
-  }
-  // the masks: a glowing mesh, a visor over the eyes, an outline; coloured by the chord, pulsing on the kick, flashing
-  // on a new chord
-  function drawFace(now, kick) {
-    if (!FACE) return;
-    const h = curDeg >= 0 ? hue(curDeg) : 285, flash = Math.max(0, 1 - (now - chordT) / 450), P = (k) => toC(face[k]);
-    g.save(); g.globalCompositeOperation = "lighter"; g.lineCap = "round"; g.lineJoin = "round";
-    const edges = (list, w, a) => { g.lineWidth = w * dpr; g.strokeStyle = `hsla(${h},100%,${62 + flash * 20}%,${a})`; g.beginPath(); for (const [i, j] of list) { const [x1, y1] = P(i), [x2, y2] = P(j); g.moveTo(x1, y1); g.lineTo(x2, y2); } g.stroke(); };
-    if (S.mask === "wire") { edges(FACE.mesh, 1, 0.32 + kick * 0.3 + flash * 0.3); edges(FACE.oval, 2.5, 0.8); }
-    else if (S.mask === "outline") { g.shadowColor = `hsl(${h},100%,60%)`; g.shadowBlur = (10 + kick * 14) * dpr; edges(FACE.oval, 3.5, 0.95); edges(FACE.lines, 3, 0.95); }
-    else if (S.mask === "visor") {                      // over the outer corners of the eyes, tilted with the head
-      const [ax, ay] = P(33), [bx, by] = P(263), cx = (ax + bx) / 2, cy = (ay + by) / 2, d = Math.hypot(bx - ax, by - ay), ang = Math.atan2(by - ay, bx - ax);
-      const w = d * 1.75, ht = d * 0.48;
-      g.translate(cx, cy); g.rotate(ang); g.globalCompositeOperation = "source-over";
-      const gr = g.createLinearGradient(-w / 2, 0, w / 2, 0); gr.addColorStop(0, `hsla(${h + 40},100%,55%,.88)`); gr.addColorStop(1, `hsla(${h - 40},100%,55%,.88)`);
-      g.fillStyle = gr; g.beginPath(); g.roundRect(-w / 2, -ht / 2, w, ht, ht * 0.45); g.fill();
-      g.save(); g.clip();
-      g.fillStyle = "rgba(0,0,0,.25)"; for (let y = -ht / 2; y < ht / 2; y += 3 * dpr) g.fillRect(-w / 2, y, w, 1.2 * dpr);
-      const label = (cur ? cur.name + "  ·  " : "") + "HANDWAVE  ·  ", fs = ht * 0.5; g.font = `800 ${fs}px ui-rounded, system-ui, sans-serif`; g.textBaseline = "middle";
-      const tw = g.measureText(label).width, off = ((now / 1000) * fs * 2.2) % tw;
-      g.fillStyle = "rgba(255,255,255,.92)"; for (let x = -w / 2 - off; x < w / 2; x += tw) g.fillText(label, x, 0);
-      g.restore();
-      g.strokeStyle = `hsla(${h},100%,80%,${0.7 + kick * 0.3})`; g.lineWidth = (2 + flash * 3) * dpr; g.shadowColor = `hsl(${h},100%,60%)`; g.shadowBlur = 14 * dpr;
-      g.beginPath(); g.roundRect(-w / 2, -ht / 2, w, ht, ht * 0.45); g.stroke();
-    }
-    g.restore();
+    cameraOff();
   }
   $("handsBtn").addEventListener("click", () => (handsOn ? stopHands() : startHands()));
-  document.addEventListener("visibilitychange", () => { if (document.hidden && camOn) { stopHands(); if (S.mask !== "off") { S.mask = "off"; setMask("off"); } } });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && camOn) stopHands(); });
   // made-up hands (the demo, and the tests): a hand at (x, y) on the camera's picture, pinching or not, so many fingers up
   function makeHand(x, y, { pinch = false, fingers = 4, s = 0.22 } = {}) {
     const lm = Array.from({ length: 21 }, () => ({ x: 0, y: 0, z: 0 })), P = (k, dx, dy) => { lm[k] = { x: x + dx * s, y: y + dy * s, z: 0 }; };
@@ -503,30 +484,6 @@
     } catch (err) { $("midiMsg").textContent = "MIDI wasn't allowed: " + err.message; }
   });
 
-  // --------------------------------------------------------------------------------------- recording ---
-  // a video of the stage with the sound (or the sound alone where video can't be made)
-  let rec = null, recChunks = [], recDest = null;
-  $("recBtn").addEventListener("click", async () => {
-    await audio();
-    if (rec) { rec.stop(); return; }
-    if (!window.MediaRecorder) { toast("This browser can't record"); return; }
-    if (!recDest) { recDest = ctx.createMediaStreamDestination(); node.connect(recDest); }
-    let stream = recDest.stream;
-    if (cv.captureStream) { stream = cv.captureStream(30); recDest.stream.getAudioTracks().forEach((t) => stream.addTrack(t)); }
-    const type = ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm", "audio/mp4", "audio/webm"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
-    try { rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined); } catch (err) { toast("Can't record: " + err.message); rec = null; return; }
-    recChunks = [];
-    rec.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
-    rec.onstop = async () => {
-      const blob = new Blob(recChunks, { type: rec.mimeType }), ext = /mp4/.test(rec.mimeType) ? "mp4" : "webm";
-      rec = null; $("recBtn").setAttribute("aria-pressed", "false");
-      const file = new File([blob], `handwave-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.${ext}`, { type: blob.type });
-      try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Handwave" }); return; } } catch (err) { if (err && err.name === "AbortError") return; }
-      const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    };
-    rec.start(500); $("recBtn").setAttribute("aria-pressed", "true"); toast("Recording: tap the red button again to stop");
-  });
-
   // ------------------------------------------------------------------------------------------ the toast ---
   let toastT = 0;
   function toast(text, label, f, ms = 3200) {
@@ -552,10 +509,11 @@
 
   // -------------------------------------------------------------------------------------------- start ---
   drawAll();
-  if (S.mask !== "off") { S.mask = "off"; save(); drawAll(); }   // (the camera only on a tap: a mask from last time waits)
   try { if (!localStorage.getItem("handwave-seen")) { localStorage.setItem("handwave-seen", "1"); setTimeout(() => show($("helpSheet")), 400); } } catch {}
-  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+  // (browser only: an old install's service worker, and its cache, let go)
+  if ("serviceWorker" in navigator) navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => { if (/\/handwave\//.test(r.scope)) r.unregister(); })).catch(() => {});
+  if (window.caches) caches.keys().then((ks) => ks.forEach((k) => { if (/^handwave/.test(k)) caches.delete(k); })).catch(() => {});
   // (for the tests)
   window.handwave = { S, play, release, setFlavour, handsToControl, applyHands, makeHand, readHand, runDemo, ctx: () => ctx, viz: () => viz, cur: () => cur, curDeg: () => curDeg, HS,
-    setFace: (lm) => { faceFake = lm; face = lm; }, face: () => face, faceReady: () => !!FACE, camOn: () => camOn };
+    camOn: () => camOn, handsOn: () => handsOn, rings: () => rings.length, motes: () => motes.length };
 })();

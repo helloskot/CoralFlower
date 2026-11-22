@@ -5,25 +5,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Handwave</title>
-<meta name="description" content="A chord machine you play with your hands: every chord in key, so there's no wrong note. Pads, a groove, an arpeggiator, and your camera for hands in the air.">
+<meta name="description" content="An ambient house chord machine you play with your hands: every chord in key, so there's no wrong note. Pads, a soft groove, Drift (a generative bed on your chords), and the camera to see your hands in the air.">
 <meta name="theme-color" content="#07040f">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Handwave">
-<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="handwave.css">
 </head>
 <body>
 <div class="app" id="app">
   <header class="bar">
     <button type="button" class="play" id="play" aria-pressed="false"><i aria-hidden="true"></i><span>Play</span></button>
-    <div class="tempo" aria-label="Tempo"><button type="button" data-tempo="-1" aria-label="Slower">&#9664;</button><span><small>BPM</small><b id="tempo">122</b></span><button type="button" data-tempo="1" aria-label="Faster">&#9654;</button></div>
+    <div class="tempo" aria-label="Tempo"><button type="button" data-tempo="-1" aria-label="Slower">&#9664;</button><span><small>BPM</small><b id="tempo">116</b></span><button type="button" data-tempo="1" aria-label="Faster">&#9654;</button></div>
     <button type="button" class="chip" id="keyBtn" aria-haspopup="dialog"><small>Key</small><b><span id="keyName">A minor</span><span id="keyShort">Am</span></b></button>
-    <button type="button" class="chip chip--hands" id="handsBtn" aria-pressed="false" aria-label="Hands: play with the camera" title="Play with your hands in the air (uses the camera; nothing leaves this device)"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5a1.5 1.5 0 0 1 3 0V11m0-5a1.5 1.5 0 0 1 3 0V12m0-3.5a1.5 1.5 0 0 1 3 0V15c0 4-2.5 6.5-6.5 6.5-3 0-4.6-1.3-6.2-3.5L4.2 14.2a1.5 1.5 0 0 1 2.4-1.8L8 14"/></svg><span>Hands</span></button>
-    <button type="button" class="chip chip--rec" id="recBtn" aria-pressed="false" aria-label="Record a video" title="Record a video of the stage with the sound"><i aria-hidden="true"></i></button>
+    <button type="button" class="chip chip--hands" id="handsBtn" aria-pressed="false" aria-label="Hands: play with the camera" title="Play with your hands in the air (the camera only sees your hands: no picture is shown or kept)"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5a1.5 1.5 0 0 1 3 0V11m0-5a1.5 1.5 0 0 1 3 0V12m0-3.5a1.5 1.5 0 0 1 3 0V15c0 4-2.5 6.5-6.5 6.5-3 0-4.6-1.3-6.2-3.5L4.2 14.2a1.5 1.5 0 0 1 2.4-1.8L8 14"/></svg><span>Hands</span></button>
     <button type="button" class="chip chip--menu" id="menuBtn" aria-haspopup="dialog" aria-label="Menu"><b>&#8943;</b></button>
   </header>
 
@@ -48,7 +41,7 @@
     <button type="button" class="dock__b" id="soundBtn" aria-haspopup="dialog"><small>Sound</small><b id="soundName">Pad</b></button>
     <button type="button" class="dock__b" id="grooveBtn" aria-haspopup="dialog"><small>Groove</small><b id="grooveName">Off</b></button>
     <button type="button" class="dock__b" id="arpBtn" aria-haspopup="dialog"><small>Arp</small><b id="arpName">Off</b></button>
-    <button type="button" class="dock__b" id="maskBtn" aria-haspopup="dialog" title="A neon mask on your face, in the camera's picture and in your videos"><small>Face</small><b id="maskName">Mask</b></button>
+    <button type="button" class="dock__b" id="driftBtn" aria-haspopup="dialog" title="Drift: a slow pad, bells and a texture on your chord, still drifting when you let go"><small>Drift</small><b id="driftName">Vinyl</b></button>
     <button type="button" class="dock__b" id="holdBtn" aria-pressed="false" title="Hold: a chord keeps sounding after you let go, until the next"><small>Pads</small><b>Hold</b></button>
   </nav>
 </div>
@@ -67,8 +60,8 @@
 <dialog class="sheet" id="soundSheet" aria-labelledby="soundTitle">
   <h2 id="soundTitle">Sound</h2>
   <div class="grid grid--4" id="soundGrid" data-set="sound">
-    <button type="button" data-v="saw"><b>Pad</b><small>Supersaw</small></button><button type="button" data-v="pluck"><b>Pluck</b><small>A plucked string</small></button>
-    <button type="button" data-v="stab"><b>Stab</b><small>Rave chords</small></button><button type="button" data-v="keys"><b>Keys</b><small>Electric piano</small></button>
+    <button type="button" data-v="saw"><b>Pad</b><small>Warm and slow</small></button><button type="button" data-v="keys"><b>Keys</b><small>Electric piano</small></button>
+    <button type="button" data-v="organ"><b>Organ</b><small>Deep house</small></button><button type="button" data-v="pluck"><b>Pluck</b><small>A plucked string</small></button>
   </div>
   <div class="knobs">
     <label><span>Brightness</span><input type="range" data-p="cutoff" min="0" max="1" step="0.01"></label>
@@ -81,17 +74,17 @@
     <label><span>Pump</span><input type="range" data-p="pump" min="0" max="1" step="0.01"></label>
     <label><span>Volume</span><input type="range" data-p="vol" min="0" max="1" step="0.01"></label>
   </div>
-  <p class="sheet__hint">Pump ducks the chords and the bass on every kick (with the drums on).</p>
+  <p class="sheet__hint">Pump ducks the chords on every kick (with the drums on): the breathing of house music.</p>
   <form method="dialog"><button class="sheet__done">Done</button></form>
 </dialog>
 
 <dialog class="sheet" id="grooveSheet" aria-labelledby="grooveTitle">
   <h2 id="grooveTitle">Groove</h2>
   <h3>Drums</h3>
-  <div class="grid grid--3" data-set="drums"><button type="button" data-v="off">Off</button><button type="button" data-v="house">House</button><button type="button" data-v="garage">Garage</button><button type="button" data-v="techno">Techno</button><button type="button" data-v="breaks">Breaks</button><button type="button" data-v="halftime">Half-time</button></div>
+  <div class="grid grid--3" data-set="drums"><button type="button" data-v="off">Off</button><button type="button" data-v="deep">Deep</button><button type="button" data-v="dub">Dub</button><button type="button" data-v="garage">Garage</button><button type="button" data-v="breaks">Breaks</button><button type="button" data-v="halftime">Half-time</button></div>
   <h3>Bass</h3>
   <p class="sheet__hint">It follows each chord's root.</p>
-  <div class="grid grid--3" data-set="bass"><button type="button" data-v="off">Off</button><button type="button" data-v="sub">Sub</button><button type="button" data-v="root">On the beat</button><button type="button" data-v="offbeat">Offbeat</button><button type="button" data-v="rolling">Rolling</button><button type="button" data-v="acid">Acid</button></div>
+  <div class="grid grid--4b" data-set="bass"><button type="button" data-v="off">Off</button><button type="button" data-v="sub">Sub</button><button type="button" data-v="deep">Deep</button><button type="button" data-v="dub">Dub</button></div>
   <div class="knobs"><label><span>Drums level</span><input type="range" data-p="drumVol" min="0" max="1" step="0.01"></label></div>
   <form method="dialog"><button class="sheet__done">Done</button></form>
 </dialog>
@@ -107,16 +100,14 @@
   <form method="dialog"><button class="sheet__done">Done</button></form>
 </dialog>
 
-<dialog class="sheet" id="maskSheet" aria-labelledby="maskTitle">
-  <h2 id="maskTitle">Mask</h2>
-  <p class="sheet__hint">A neon mask on your face, coloured by the chord and pulsing with the beat. It's in your videos too. (It uses the camera; the face is tracked on this device and no picture leaves it.)</p>
-  <div class="grid grid--4" data-set="mask">
-    <button type="button" data-v="off"><b>Off</b><small>Just you</small></button><button type="button" data-v="wire"><b>Wireframe</b><small>A glowing mesh</small></button>
-    <button type="button" data-v="visor"><b>Visor</b><small>Cyber shades</small></button><button type="button" data-v="outline"><b>Outline</b><small>A light drawing</small></button>
-  </div>
-  <h3>The picture</h3>
-  <div class="seg" data-set="pic"><button type="button" data-v="bright">Bright</button><button type="button" data-v="dim">Dim</button></div>
-  <p class="sheet__hint">Bright shows you clearly (for videos); Dim puts the chords and the hands in front.</p>
+<dialog class="sheet" id="driftSheet" aria-labelledby="driftTitle">
+  <h2 id="driftTitle">Drift</h2>
+  <p class="sheet__hint">A bed that follows your chords: a slow pad swelling under them, bells wandering over them, a texture underneath. Let go and it keeps drifting on the last chord.</p>
+  <div class="knobs"><label><span>Amount</span><input type="range" data-p="drift" min="0" max="1" step="0.01"></label></div>
+  <h3>Texture</h3>
+  <div class="grid grid--3" data-set="texture"><button type="button" data-v="none">None</button><button type="button" data-v="vinyl">Vinyl</button><button type="button" data-v="rain">Rain</button><button type="button" data-v="ocean">Ocean</button><button type="button" data-v="birds">Birds</button></div>
+  <h3>Bells</h3>
+  <div class="seg" data-set="bells"><button type="button" data-v="on">On</button><button type="button" data-v="off">Off</button></div>
   <form method="dialog"><button class="sheet__done">Done</button></form>
 </dialog>
 
@@ -129,7 +120,7 @@
   <label class="field" id="midiOutRow" hidden><span>Chords out to</span><select id="midiOut"><option value="">Nowhere</option></select></label>
   <p class="sheet__msg" id="midiMsg"></p>
   <h3>About</h3>
-  <p class="sheet__hint">Handwave is part of CoralFlower. The hands are tracked on this device (MediaPipe, loaded the first time); no picture leaves it.</p>
+  <p class="sheet__hint">Handwave is part of CoralFlower and runs in the browser. The camera only sees your hands: they're tracked on this device (MediaPipe, loaded the first time), and no picture is shown, kept or sent.</p>
   <form method="dialog"><button class="sheet__done">Done</button></form>
 </dialog>
 
@@ -138,9 +129,9 @@
   <ol class="steps">
     <li><b>Tap a pad.</b> Each one is a chord, and every one is in key: there's no wrong note. Slide across them to move through chords.</li>
     <li><b>Pick a flavour.</b> Triad, 7th, 9th, Sus, Power or Wide changes what kind of chord every pad plays.</li>
-    <li><b>Press Play</b> for a groove; set the drums and the bass in <b>Groove</b>. The bass follows your chords.</li>
-    <li><b>Hands:</b> turn on the camera. <b>Right hand</b>: its height picks the chord (low is I, high is VII); <b>pinch</b> thumb and finger to play, let go to stop. <b>Left hand</b>: how many fingers you hold up picks the flavour (a fist is Triad, an open hand is Wide); raise it to brighten the sound.</li>
-    <li><b>Mask:</b> a neon wireframe, a visor or an outline on your face, in the picture and in your videos (the red button records).</li>
+    <li><b>Press Play</b> for a soft groove; set the drums and the bass in <b>Groove</b>. The bass follows your chords.</li>
+    <li><b>Drift</b> lays a slow pad, bells and a texture (vinyl, rain, the sea, birds) under whatever you play, and keeps drifting on the last chord when you stop.</li>
+    <li><b>Hands:</b> turn on the camera (it only sees your hands; you'll see them in neon). <b>Right hand</b>: its height picks the chord (low is I, high is VII); <b>pinch</b> thumb and finger to play, let go to stop. <b>Left hand</b>: how many fingers you hold up picks the flavour (a fist is Triad, an open hand is Wide); raise it to brighten the sound.</li>
     <li><b>Chord memory:</b> tap <b>Rec</b>, play some chords (each goes into the next slot), then <b>Loop</b> to play them back a bar each and jam over them.</li>
   </ol>
   <div class="menu__row"><button type="button" id="helpDemo">Watch the hands demo</button></div>

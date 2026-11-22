@@ -33,12 +33,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 #keyShort { display: none; }
 @media (max-width: 420px) { #keyName { display: none; } #keyShort { display: inline; } }
 :root.fold-lr #keyName { display: none; } :root.fold-lr #keyShort { display: inline; }
-.bar > .play, .bar > .tempo, .chip--hands, .chip--rec, .chip--menu { flex: 0 0 auto; }
+.bar > .play, .bar > .tempo, .chip--hands, .chip--menu { flex: 0 0 auto; }
 .chip--hands { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
-.chip--rec { display: grid; place-items: center; width: 48px; padding: 0; }
-.chip--rec i { width: 18px; height: 18px; border-radius: 50%; background: #ff4d5e; box-shadow: 0 0 10px rgba(255, 77, 94, .6); }
-.chip--rec[aria-pressed="true"] { background: #ff4d5e; }
-.chip--rec[aria-pressed="true"] i { border-radius: 3px; background: #160208; box-shadow: none; animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: .35; } }
 .chip--hands[aria-pressed="true"] { background: var(--cyan); color: #04121a; box-shadow: 0 0 20px rgba(43, 240, 255, .4); }
 .chip--menu { justify-items: center; padding: 0 14px; min-width: 48px; }
@@ -129,7 +125,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   .chip b { font-size: 13px; }
   .chip--hands span { display: none; }
   .chip--hands { padding: 0 11px; }
-  .chip--rec, .chip--menu { width: 44px; min-width: 44px; }
+  .chip--menu { width: 44px; min-width: 44px; }
   .tempo span { min-width: 2.6em; }
   .tempo button { width: 28px; }
   .flav b { font-size: 12px; }
@@ -139,7 +135,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   .slot { font-size: 10px; }
   .dock__b b { font-size: 12px; }
 }
-@media (max-width: 350px) { .tempo button { width: 22px; } .bar { gap: 6px; } .chip--rec, .chip--menu { width: 40px; min-width: 40px; } .play { padding: 0 12px; } }
+@media (max-width: 350px) { .tempo button { width: 22px; } .bar { gap: 6px; } .chip--menu { width: 40px; min-width: 40px; } .play { padding: 0 12px; } }
 
 /* ---- phones held sideways: the stage on the left, the controls on the right */
 @media (orientation: landscape) and (max-height: 520px) {

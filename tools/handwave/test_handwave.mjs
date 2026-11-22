@@ -153,6 +153,13 @@ for (const sound of ["saw", "pluck", "organ", "keys"]) {      // each sound: a n
   a.send({ type: "params", p: { drift: 0 } }); const off = a.render(6).L;
   ok(rms(off, off.length - 4410) < 0.002, `Drift off: the pad fades away (${rms(off, off.length - 4410).toExponential(1)})`);
 }
+{ // Drift through quick changes: each new chord gets its whole pad (the fading ones give way)
+  const a = load(); a.send({ type: "params", p: { drift: 0.7, bells: true, texture: "none", chordVol: 0 } });
+  const cs = [[57, 60, 64, 67], [53, 57, 60, 64], [48, 52, 55, 59], [55, 59, 62, 65], [57, 60, 64, 67], [52, 55, 59, 62]];
+  for (const c of cs) { a.send({ type: "chord", notes: c, root: c[0] }); a.render(0.4); }
+  const v = a.posted.filter((m) => m.type === "viz"), l = v[v.length - 1];
+  ok(l.drift.length === 4 && l.drift.every((n) => [4, 7, 11, 2].includes(n % 12)), `Drift: six quick chords, the last one's pad whole (${l.drift.join(" ")})`);
+}
 { // Drift's bells: the chord's notes, up high
   const a = load(); a.send({ type: "params", p: { drift: 1, bells: true, texture: "none", chordVol: 0 } });
   a.send({ type: "chord", notes: [57, 60, 64], root: 57, vel: 0.8 }); a.render(8);

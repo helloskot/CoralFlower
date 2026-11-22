@@ -110,7 +110,7 @@ class Handwave extends AudioWorkletProcessor {
                strum: 0, bass: "off", drums: "off", pump: 0.35, delay: 0.3, verb: 0.45, vol: 0.8, chordVol: 0.8, bassVol: 0.8, drumVol: 0.8,
                drift: 0, texture: "vinyl", bells: true };
     // Drift: a slow pad on the chord, bells wandering over it, a texture under it all
-    this.dv = Array.from({ length: 12 }, () => new Voice()); this.last = null; this.dKey = null; this.bellT = SR; this.dPh = 0; this.bellsSeen = [];
+    this.dv = Array.from({ length: 16 }, () => new Voice()); this.last = null; this.dKey = null; this.bellT = SR; this.dPh = 0; this.bellsSeen = [];
     this.tx = { lp: 0, lp2: 0, crack: 0, drop: 0, dlp: 0, swell: 0, chirpT: SR * 2, chirpN: 0, chirpLeft: 0, cph: 0, cf: 0 };
     this.voices = Array.from({ length: 14 }, () => new Voice());
     this.held = null;                                   // the chord being held: { notes, root, vel }
@@ -162,7 +162,16 @@ class Handwave extends AudioWorkletProcessor {
     for (const n of ns) { const v = this.dFree(); v.start(n, 0.7, "drift", this.P, 0); v.pan = noise() * 0.45; }
   }
   stopDrift() { for (const v of this.dv) if (v.on && v.type === "drift") v.release(); this.dKey = null; }
-  dFree() { return this.dv.find((x) => !x.on) || this.dv.reduce((a, b) => (a.type === "bell" && (b.type !== "bell" || a.env < b.env) ? a : b)); }
+  // a free Drift voice, or the one that will be missed least (fading out, then a bell, then the quietest)
+  dFree() {
+    let best = null, bs = Infinity;
+    for (const v of this.dv) {
+      if (!v.on) return v;
+      const sc = v.env + (v.stage === 3 ? 0 : v.type === "bell" ? 1 : 2);
+      if (sc < bs) { bs = sc; best = v; }
+    }
+    return best;
+  }
   // a bell: one of the chord's notes, an octave or two up
   bell() {
     const ns = this.last.notes, n = ns[Math.floor(Math.random() * ns.length)] % 12 + 72 + (Math.random() < 0.35 ? 12 : 0);

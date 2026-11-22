@@ -42,6 +42,13 @@ for m in fm1pkg.js fm1ota.js fm1backup.js; do
     MS=$(cat "web/$m" | shasum | cut -c1-10)
     sed -i.bak "s|from \"./$m\"|from \"./$m?v=$MS\"|" "$OUT/index.html"
 done
-rm -f "$OUT/index.html.bak" "$OUT/play/index.html.bak"
+# Handwave: each file named with its own stamp, so a phone never mixes a new page with an old script it kept
+for m in handwave.css theory.js handwave.js; do
+    MS=$(cat "tools/handwave/$m" | shasum | cut -c1-10)
+    sed -i.bak "s|\"$m\"|\"$m?v=$MS\"|" "$OUT/handwave/index.html"
+done
+WS=$(cat tools/handwave/handwave-worklet.js | shasum | cut -c1-10)
+sed -i.bak "s|addModule(\"handwave-worklet.js\")|addModule(\"handwave-worklet.js?v=$WS\")|" "$OUT/handwave/handwave.js"
+rm -f "$OUT/index.html.bak" "$OUT/play/index.html.bak" "$OUT/handwave/index.html.bak" "$OUT/handwave/handwave.js.bak"
 touch "$OUT/.nojekyll"
 echo "site: $OUT"

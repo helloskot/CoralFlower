@@ -16,6 +16,7 @@ on:
     paths:
       - "tools/emu/**"
       - "tools/acid/**"
+      - "tools/handwave/**"
       - "web/**"
       - "firmware/**"
       - "assets/**"

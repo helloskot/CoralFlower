@@ -73,6 +73,9 @@ jobs:
       - name: Acid Flower's sound and clock (tools/acid, offline in node)
         run: node tools/acid/test_acid.mjs
 
+      - name: Handwave's chords and sound (tools/handwave, offline in node)
+        run: node tools/handwave/test_handwave.mjs
+
       - name: The tracked tree is as it was
         run: |
           set -euo pipefail

@@ -25,7 +25,7 @@
 
   // ------------------------------------------------------------------------------------------- the state ---
   const KEY = "handwave-hands";
-  const DEF = { scene: "sky", mood: "night", vol: 0.8, hands: true, face: true, body: true, v: 3 };
+  const DEF = { scene: "sky", mood: "night", vol: 0.8, hands: true, face: true, body: true, dials: true, v: 3 };
   const S = (() => { try { return { ...DEF, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { return { ...DEF }; } })();
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {} };
   try { localStorage.removeItem("handwave-state"); } catch {}   // (the chord machine's, from before)
@@ -37,6 +37,7 @@
   };
   if (!MOODS[S.mood]) S.mood = "night";
   if (S.hands === undefined) S.hands = true;
+  if (S.dials === undefined) S.dials = true;
   if (!["aurora", "nebula", "sky"].includes(S.scene) || (S.v || 0) < 3) { S.scene = "sky"; S.v = 3; S.face = S.face !== false; S.body = S.body !== false; save(); }   // (the flight first)
 
   // ------------------------------------------------------------------------------------------- the sound ---
@@ -405,6 +406,35 @@ void main() {
     g.restore();
   }
 
+  // the strip: four dials that turn as you move (blue the pitch and green the swell, the right hand's; white the groove and
+  // orange the filter, the left hand's), and a little black display (the tempo, the mood, the sound's line, who's seen)
+  const DIALS = [["dPitch", () => viz.pitch], ["dSwell", () => Math.min(1, viz.near + (viz.mouth || 0) * 0.3)], ["dGroove", () => viz.energy], ["dFilter", () => viz.drive]].map(([id, f]) => {
+    const el = $(id); return { f, val: el.querySelector(".val"), tick: el.querySelector(".tick"), num: el.querySelector(".num"), shown: -1 };
+  });
+  const scope = $("scope"), sg = scope.getContext("2d"), hist = new Float32Array(96);
+  let histI = 0, scopeT = 0;
+  function drawStrip(now) {
+    if (!started || !S.dials) return;
+    for (const d of DIALS) {
+      const v = clamp(d.f() || 0, 0, 1), q2 = Math.round(v * 99);
+      if (q2 === d.shown) continue;
+      d.shown = q2; d.val.setAttribute("stroke-dasharray", `${(v * 100).toFixed(1)} 100`);
+      d.tick.setAttribute("transform", `rotate(${(135 + v * 270).toFixed(1)})`); d.num.textContent = String(q2).padStart(2, "0");
+    }
+    if (now - scopeT < 33) return;
+    scopeT = now;
+    hist[histI++ % hist.length] = Math.min(1, viz.level * 5 + kickP * 0.4);
+    const w = scope.clientWidth * dpr, h = scope.clientHeight * dpr;
+    if (scope.width !== Math.round(w)) { scope.width = Math.round(w); scope.height = Math.round(h); }
+    sg.clearRect(0, 0, scope.width, scope.height); sg.strokeStyle = "#e9f2e4"; sg.lineWidth = 1.5 * dpr; sg.beginPath();
+    const n = hist.length;
+    for (let i = 0; i < n; i++) { const v = hist[(histI + i) % n], x = (i / (n - 1)) * scope.width, y = scope.height / 2 + Math.sin(i * 0.9 + now / 120) * v * scope.height * 0.42; i ? sg.lineTo(x, y) : sg.moveTo(x, y); }
+    sg.stroke();
+    $("lcdBpm").textContent = MOODS[S.mood].tempo + " BPM"; $("lcdMood").textContent = (paused ? "PAUSED" : S.mood).toUpperCase();
+    const h2 = current();
+    $("dotHands").classList.toggle("on", !!(h2.r || h2.l)); $("dotFace").classList.toggle("on", !!(face && S.face)); $("dotBody").classList.toggle("on", !!(body && S.body));
+  }
+
   // ------------------------------------------------------------------------------------------- a frame ---
   function frame(now) {
     const dt = Math.min(0.1, tPrev ? (now - tPrev) / 1000 : 0.016); tPrev = now;
@@ -469,6 +499,7 @@ void main() {
     g.restore();
     if (h.r) drawHand(h.r, "60,235,255", now, trails[0].pulse, 0); else tipsWas[0] = [];
     if (h.l) drawHand(h.l, "200,140,255", now, trails[1].pulse, 1); else tipsWas[1] = [];
+    drawStrip(now);
     $("hint").textContent = !started ? "" : handsOn && !h.r && !h.l && !face && !body ? "Step into the camera's view" : !handsOn && !h.r && !h.l && now - startT < 9000 ? "Touch and drag, or tap the hand to use the camera" : "";
     requestAnimationFrame(frame);
   }
@@ -478,7 +509,7 @@ void main() {
   let startT = 0;
   function begin() {
     if (started) return;
-    started = true; startT = performance.now(); $("start").classList.add("is-gone");
+    started = true; startT = performance.now(); $("start").classList.add("is-gone"); $("strip").hidden = !S.dials;
     audio().then(() => post({ type: "on", on: true }));
   }
   // the start: choose what the camera follows, then start with it, or without (touch and drag)
@@ -494,6 +525,7 @@ void main() {
   $("menuBtn").addEventListener("click", () => { drawMenu(); show($("menuSheet")); });
   $("helpBtn").addEventListener("click", () => { $("menuSheet").close(); show($("helpSheet")); });
   $("pauseBtn").addEventListener("click", () => { paused = !paused; begin(); post({ type: "on", on: !paused }); drawMenu(); });
+  $("dialsBtn").addEventListener("click", () => { S.dials = !S.dials; save(); drawMenu(); $("strip").hidden = !S.dials || !started; });
   $("vol").addEventListener("input", () => { S.vol = +$("vol").value; sendParams(); save(); });
   for (const k of ["hands", "face", "body"]) $(k + "Follow").addEventListener("click", () => { S[k] = !S[k]; save(); drawMenu(); drawFollow(); if (!S[k]) { if (k === "face") face = null; else if (k === "body") body = null; else camHands = { r: null, l: null }; } else if (handsOn) loadFaceBody(); });
   document.querySelectorAll("[data-set]").forEach((sg) => sg.addEventListener("click", (e) => {
@@ -505,6 +537,7 @@ void main() {
     document.querySelectorAll("[data-set]").forEach((sg) => sg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(S[sg.dataset.set] === b.dataset.v))));
     $("vol").value = S.vol; $("pauseBtn").textContent = paused ? "Play" : "Pause";
     for (const k of ["hands", "face", "body"]) $(k + "Follow").setAttribute("aria-pressed", String(!!S[k]));
+    $("dialsBtn").setAttribute("aria-pressed", String(!!S.dials));
   }
   addEventListener("keydown", (e) => { if (e.code === "Space" && !e.target.closest("dialog") && started) { e.preventDefault(); $("pauseBtn").click(); } });
   drawMenu();
@@ -531,5 +564,5 @@ void main() {
   }
   window.handwave = { S, begin, ctx: () => ctx, viz: () => viz, started: () => started, zone: () => zone, camOn: () => camOn, handsOn: () => handsOn, quality: () => q,
     readHand, handsToControl, makeHand, current, setHands: (h) => { testHands = h; }, setCamHands: (lms) => { camHands = handsToControl(lms, camHands); }, gl: () => !!gl, scenesOk: () => SCENES.map((n) => !!(gl && prog(n))),
-    view: () => ({ ...view }), setFace: (f) => { face = f; }, setBody: (b) => { body = b; }, readFace, readBody, rings: () => rings.length, kicks: () => kickTotal, trackers: () => ({ hand: !!handTr, face: !!faceTr, pose: !!poseTr }) };
+    view: () => ({ ...view }), dial: (i) => DIALS[i].shown, setFace: (f) => { face = f; }, setBody: (b) => { body = b; }, readFace, readBody, rings: () => rings.length, kicks: () => kickTotal, trackers: () => ({ hand: !!handTr, face: !!faceTr, pose: !!poseTr }) };
 })();
